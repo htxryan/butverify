@@ -1,4 +1,4 @@
-name = "butverify-marketing-site"
+name = "butverify-marketing"
 compatibility_date = "2026-04-01"
 pages_build_output_dir = "dist"
 
@@ -16,5 +16,5 @@ pages_build_output_dir = "dist"
 
 [vars]
 ENVIRONMENT = "production"
-SERVICE_NAME = "butverify-marketing-site"
+SERVICE_NAME = "butverify-marketing"
 SERVICE_VERSION = "0.0.0"

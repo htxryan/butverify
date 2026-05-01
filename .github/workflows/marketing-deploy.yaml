@@ -57,4 +57,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: marketing-site
-          command: pages deploy dist --project-name=butverify-marketing-site --branch=main
+          command: pages deploy dist --project-name=butverify-marketing --branch=main
