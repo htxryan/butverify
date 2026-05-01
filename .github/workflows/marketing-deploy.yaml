@@ -1,0 +1,60 @@
+name: Marketing deploy
+
+# Auto-deploy the marketing-site to Cloudflare Pages on every push to main
+# that touches marketing-site/. Post-2026-05-01 split, this is the canonical
+# deploy path for butverify.dev/* (the docs and landing pages). The CF Pages
+# project is `butverify-marketing-site`; production hostname is butverify.dev
+# (apex) and docs.butverify.dev, both wired at the zone level in the CF
+# Dashboard.
+#
+# Secrets required (must be set on htxryan/butverify):
+#   - CLOUDFLARE_API_TOKEN  (scoped to Pages:Edit on the butverify account)
+#   - CLOUDFLARE_ACCOUNT_ID (the zone's Cloudflare account id)
+#
+# If either secret is missing the deploy step will fail with a clear error;
+# the build job above still runs as a smoke test, so a missing secret does
+# not silently mask a broken build.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "marketing-site/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: marketing-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy marketing-site
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: marketing-site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.11.0"
+          cache: pnpm
+          cache-dependency-path: marketing-site/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm build
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: marketing-site
+          command: pages deploy dist --project-name=butverify-marketing-site --branch=main
