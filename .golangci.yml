@@ -1,0 +1,74 @@
+# golangci-lint config for the butverify Go subtree (audit P6).
+# Minimum baseline: errcheck, govet, ineffassign, staticcheck, unused.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - depguard
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+  settings:
+    # Layer-boundary enforcement (audit P12).
+    #   - go/pkg/* MUST NOT import go/cmd/* or go/internal/* (kernels are the bottom).
+    #   - go/internal/* MUST NOT import go/cmd/*.
+    depguard:
+      rules:
+        pkg-cannot-import-cmd-or-internal:
+          list-mode: lax
+          files:
+            - "$all"
+            - "!**/internal/**"
+            - "!**/cmd/**"
+          # Default: only files under pkg/** match (after the negative filters).
+          deny:
+            - pkg: "github.com/htxryan/butverify/cmd"
+              desc: "go/pkg/* is a kernel layer and must not import go/cmd/* (top of the stack). Lift shared code into pkg/."
+            - pkg: "github.com/htxryan/butverify/internal"
+              desc: "go/pkg/* is a kernel layer and must not import go/internal/*. Lift shared code into pkg/."
+        internal-cannot-import-cmd:
+          list-mode: lax
+          files:
+            - "**/internal/**"
+          deny:
+            - pkg: "github.com/htxryan/butverify/cmd"
+              desc: "go/internal/* must not import go/cmd/* (cmd is the entry-point layer, not a library)."
+
+
+    errcheck:
+      # `fmt.Fprint(f|ln)` to stdout/stderr is fine to ignore.
+      # Deferred Close on read-only handles is the conventional Go pattern.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintln
+        - fmt.Fprintf
+        - (io.Closer).Close
+        - (io/fs.File).Close
+        - (*os.File).Close
+    staticcheck:
+      # Drop the QF (quick-fix / refactoring) checks — they are stylistic,
+      # not correctness-relevant. Keep SA / S / ST core checks.
+      checks:
+        - all
+        - -QF*
+
+  exclusions:
+    rules:
+      # Tests: relax errcheck and the http-status-constants nag.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - staticcheck
+        text: "ST1013"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --bv-bg: #0b0d12;
+    --bv-surface: #11141b;
+    --bv-surface-2: #181c25;
+    --bv-text: #e6e8ef;
+    --bv-text-dim: #94a0b3;
+    --bv-border: #232735;
+    --bv-accent: #8aa9ff;
+    --bv-accent-strong: #5b85ff;
+  }
+
+  html {
+    background: var(--bv-bg);
+    color: var(--bv-text);
+  }
+
+  html,
+  body {
+    @apply font-sans antialiased;
+  }
+
+  body {
+    @apply bg-bv-bg text-bv-text;
+    margin: 0;
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background: var(--bv-accent);
+    color: var(--bv-bg);
+  }
+
+  pre,
+  code {
+    @apply font-mono;
+  }
+
+  pre {
+    @apply rounded-md border border-bv-border bg-bv-surface p-4 overflow-x-auto;
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+
+  a {
+    text-underline-offset: 3px;
+  }
+}
+
+/*
+ * Cross-cutting reduced-motion gate.
+ * One blanket rule strips animation, transition, and scroll-behavior from
+ * everything on the page when the user has set system reduce-motion. This
+ * is the safety net — individual components still ship their own
+ * @media (prefers-reduced-motion: reduce) blocks where the *resting* state
+ * differs from the animating state (e.g. show the final frame of a hero
+ * loop), but they never need to spell out animation/transition: none again.
+ *
+ * Specificity note: !important is intentional. The blanket needs to win
+ * over Tailwind utility classes and component-scoped styles without forcing
+ * every author to remember a higher-specificity selector.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer components {
+  .bv-prose {
+    @apply max-w-prose text-bv-text leading-relaxed;
+  }
+  .bv-prose h1 {
+    @apply text-3xl md:text-4xl font-semibold tracking-tight mt-0 mb-6;
+  }
+  .bv-prose h2 {
+    @apply text-2xl font-semibold tracking-tight mt-12 mb-4;
+  }
+  .bv-prose h3 {
+    @apply text-xl font-semibold tracking-tight mt-8 mb-3;
+  }
+  .bv-prose p {
+    @apply my-4;
+  }
+  .bv-prose a {
+    @apply text-accent-300 hover:text-accent-200 underline;
+  }
+  .bv-prose ul {
+    @apply list-disc pl-6 my-4 space-y-2;
+  }
+  .bv-prose ol {
+    @apply list-decimal pl-6 my-4 space-y-2;
+  }
+  .bv-prose code {
+    @apply rounded bg-bv-surface px-1.5 py-0.5 text-[0.9em] border border-bv-border;
+  }
+  .bv-prose pre code {
+    @apply bg-transparent border-0 p-0;
+  }
+
+  .bv-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md
+      font-medium transition-colors
+      focus-visible:outline-none focus-visible:ring-2
+      focus-visible:ring-bv-accent-strong focus-visible:ring-offset-2
+      focus-visible:ring-offset-bv-bg;
+  }
+  .bv-btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+  .bv-btn-md {
+    @apply px-5 py-2.5 text-sm;
+  }
+  .bv-btn-primary {
+    @apply bg-accent-400 text-gray-950 hover:bg-accent-300;
+  }
+  .bv-btn-secondary {
+    @apply border border-bv-border text-bv-text hover:bg-bv-surface;
+  }
+
+  .bv-card {
+    @apply rounded-lg border border-bv-border bg-bv-surface p-6;
+  }
+}
+
+/*
+ * Scroll-triggered section reveal.
+ * Gated on html[data-bv-js] so no-JS users see content immediately. The
+ * initial state hides the section; an IntersectionObserver in BaseLayout
+ * sets data-revealed="true" when the section enters the viewport.
+ * Transform-only so the reveal doesn't cause CLS.
+ */
+html[data-bv-js] [data-bv-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 600ms ease-out,
+    transform 600ms ease-out;
+  will-change: opacity, transform;
+}
+html[data-bv-js] [data-bv-reveal][data-revealed='true'] {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-bv-js] [data-bv-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}

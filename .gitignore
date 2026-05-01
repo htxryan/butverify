@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+.astro/
+.wrangler/
+build/
+
+# Test / coverage
+coverage/
+*.out
+*.test
+
+# Go-built bv binary at repo root
+/bv
+/bv.exe
+
+# Editor / OS
+.DS_Store
+*.bak
+*.swp
+*.tmp
+/tmp/
+
+# Local env
+.env
+.env.local
+
+# Windows binaries
+*.exe

@@ -1,0 +1,180 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import CopyCommand from "../components/CopyCommand.svelte";
+import HeroTerminal from "../components/HeroTerminal.astro";
+import TerminalIcon from "../components/icons/TerminalIcon.astro";
+import LockIcon from "../components/icons/LockIcon.astro";
+import HourglassIcon from "../components/icons/HourglassIcon.astro";
+import AgentLogo from "../components/icons/AgentLogo.astro";
+import TrustStrip from "../components/TrustStrip.astro";
+import { AGENTS, SITE, resolveInstallUrl } from "../lib/site";
+
+const installUrl = resolveInstallUrl("{{INSTALL_URL}}");
+---
+
+<BaseLayout title={SITE.name} description={SITE.description}>
+  <section class="mx-auto max-w-6xl px-6 pt-20 pb-16 md:pt-28">
+    <div class="grid grid-cols-1 items-center gap-12 md:grid-cols-2 md:gap-10 lg:gap-16">
+      <div>
+        <p class="font-mono text-sm tracking-wider text-accent-300">
+          static hosting / for agents
+        </p>
+        <h1
+          class="mt-3 max-w-3xl text-4xl font-semibold tracking-tight md:text-5xl lg:text-6xl"
+        >
+          Your agent ships work.
+          <span class="text-accent-300">You see it instantly.</span>
+        </h1>
+        <p class="mt-6 max-w-copy text-lg text-gray-300">
+          {SITE.description} One CLI command, one private URL — no DNS, no
+          buckets, no IAM.
+        </p>
+
+        <div class="mt-10 max-w-xl">
+          <CopyCommand
+            client:idle
+            command={SITE.installCmd}
+            cta="hero-install-copy"
+          />
+          <p class="mt-2 text-xs text-gray-400">
+            macOS / Linux. Windows users:
+            <a class="text-accent-300 underline" href="/docs/quickstart/install"
+              >see the docs</a>.
+          </p>
+        </div>
+
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a
+            href={installUrl}
+            class="bv-btn bv-btn-md bv-btn-primary"
+            data-cta="hero-install-app"
+            rel="noopener noreferrer"
+          >
+            Install GitHub App
+          </a>
+          <a
+            href="/docs/quickstart/first-push"
+            class="bv-btn bv-btn-md bv-btn-secondary"
+            data-cta="hero-quickstart"
+          >
+            Read the quickstart →
+          </a>
+        </div>
+      </div>
+
+      <div class="flex justify-center md:justify-end">
+        <HeroTerminal />
+      </div>
+    </div>
+  </section>
+
+  <section class="border-t border-bv-border bg-bv-surface/40" data-bv-reveal>
+    <div class="mx-auto grid max-w-6xl gap-10 px-6 py-20 md:grid-cols-3">
+      <div>
+        <div
+          class="flex h-10 w-10 items-center justify-center rounded-md border border-accent-300/30 bg-accent-300/10 text-accent-300"
+          data-feature-icon="terminal"
+        >
+          <TerminalIcon size={22} />
+        </div>
+        <h2 class="mt-4 text-xl font-semibold">One command publishes</h2>
+        <p class="mt-3 text-gray-300">
+          <code class="rounded bg-bv-surface px-1.5 py-0.5 text-sm">bv push</code>
+          {" "}
+          tarballs the directory, uploads it, and prints a private URL the
+          human can open. JSON output is built in for agent loops.
+        </p>
+      </div>
+      <div>
+        <div
+          class="flex h-10 w-10 items-center justify-center rounded-md border border-accent-300/30 bg-accent-300/10 text-accent-300"
+          data-feature-icon="lock"
+        >
+          <LockIcon size={22} />
+        </div>
+        <h2 class="mt-4 text-xl font-semibold">Private by default</h2>
+        <p class="mt-3 text-gray-300">
+          Sites are gated by GitHub identity through Cloudflare Access. Share
+          with collaborators by GitHub login, no auth code to write.
+        </p>
+      </div>
+      <div>
+        <div
+          class="flex h-10 w-10 items-center justify-center rounded-md border border-accent-300/30 bg-accent-300/10 text-accent-300"
+          data-feature-icon="hourglass"
+        >
+          <HourglassIcon size={22} />
+        </div>
+        <h2 class="mt-4 text-xl font-semibold">Disposable, on purpose</h2>
+        <p class="mt-3 text-gray-300">
+          Every push is a content-addressed snapshot. Free sites expire in 30
+          days; pin the ones you want to keep. Your storage stays small.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-6xl px-6 py-20" data-bv-reveal>
+    <h2 class="text-2xl font-semibold tracking-tight">
+      Drop into the agent you already use
+    </h2>
+    <p class="mt-2 max-w-copy text-gray-300">
+      Recipes you can paste in five minutes — no plugins, no SDKs.
+    </p>
+
+    <div class="mt-10 grid gap-4 md:grid-cols-3">
+      {
+        AGENTS.map((agent) => (
+          <a
+            href={agent.docsHref}
+            class="bv-card hover:border-accent-300/60 transition-colors"
+            data-cta={`home-agent-${agent.slug}`}
+          >
+            <div class="flex items-center gap-3">
+              <span
+                class="text-accent-300"
+                data-agent-logo={agent.slug}
+              >
+                <AgentLogo slug={agent.slug} size={26} />
+              </span>
+              <p class="font-semibold">{agent.name}</p>
+            </div>
+            <p class="mt-3 text-sm text-gray-300">{agent.blurb}</p>
+            <p class="mt-4 text-sm text-accent-300">Read recipe →</p>
+          </a>
+        ))
+      }
+    </div>
+  </section>
+
+  <TrustStrip />
+
+  <section class="border-t border-bv-border" data-bv-reveal>
+    <div class="mx-auto max-w-3xl px-6 py-20 text-center">
+      <h2 class="text-3xl font-semibold tracking-tight">
+        Stop screenshotting deploy logs.
+      </h2>
+      <p class="mt-4 text-gray-300">
+        Free for 5 sites. No credit card. Install the GitHub App and your
+        next agent run can publish.
+      </p>
+      <div class="mt-8 flex flex-wrap justify-center gap-3">
+        <a
+          href={installUrl}
+          class="bv-btn bv-btn-md bv-btn-primary"
+          data-cta="footer-install-app"
+          rel="noopener noreferrer"
+        >
+          Install GitHub App
+        </a>
+        <a
+          href="/pricing"
+          class="bv-btn bv-btn-md bv-btn-secondary"
+          data-cta="footer-pricing"
+        >
+          See pricing
+        </a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

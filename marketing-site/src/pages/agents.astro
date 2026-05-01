@@ -1,0 +1,69 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import AgentLogo from "../components/icons/AgentLogo.astro";
+import { AGENTS } from "../lib/site";
+---
+
+<BaseLayout
+  title="Agents"
+  description="Integration recipes for Claude Code, Cursor, and the OpenAI Codex CLI."
+  ogImage="/og/agents.png"
+>
+  <section class="mx-auto max-w-4xl px-6 pt-20 pb-12">
+    <h1 class="text-4xl font-semibold tracking-tight md:text-5xl">
+      Agent integration recipes
+    </h1>
+    <p class="mt-4 text-gray-300 max-w-copy">
+      butverify is built for agents that work autonomously. Each recipe is a
+      five-minute paste — no plugins, no SDKs, no extra auth flows.
+    </p>
+  </section>
+
+  <section class="mx-auto max-w-4xl px-6 pb-24">
+    <ul class="grid gap-4 md:grid-cols-2" role="list">
+      {
+        AGENTS.map((agent) => (
+          <li>
+            <a
+              href={agent.docsHref}
+              class="bv-card block hover:border-accent-300/60 transition-colors"
+              data-cta={`agents-${agent.slug}`}
+            >
+              <div class="flex items-center gap-3">
+                <span class="text-accent-300" data-agent-logo={agent.slug}>
+                  <AgentLogo slug={agent.slug} size={28} />
+                </span>
+                <div>
+                  <p class="font-mono text-xs uppercase tracking-wider text-accent-300">
+                    Recipe
+                  </p>
+                  <p class="text-lg font-semibold leading-tight">{agent.name}</p>
+                </div>
+              </div>
+              <p class="mt-3 text-sm text-gray-300">{agent.blurb}</p>
+              <p class="mt-4 text-sm text-accent-300">Read recipe →</p>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+
+    <div class="mt-12 bv-card">
+      <h2 class="text-lg font-semibold">Don't see your agent?</h2>
+      <p class="mt-2 text-sm text-gray-300">
+        Anything that can shell out and parse JSON works.
+        <code class="rounded bg-bv-surface px-1.5 py-0.5">bv push --json</code>
+        prints
+        <code class="rounded bg-bv-surface px-1.5 py-0.5">{`{"site_id":"...","url":"..."}`}</code>
+        on success and a structured error on failure. Pipe it through
+        <code class="rounded bg-bv-surface px-1.5 py-0.5">jq</code> or read it
+        in your agent's tool harness.
+      </p>
+      <p class="mt-3 text-sm">
+        <a class="text-accent-300 underline" href="/docs/quickstart/json-output">
+          See the JSON output reference →
+        </a>
+      </p>
+    </div>
+  </section>
+</BaseLayout>

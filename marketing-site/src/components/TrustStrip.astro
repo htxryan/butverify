@@ -1,0 +1,126 @@
+---
+/**
+ * Trust strip — sits between the agent recipes and the closing
+ * CTA on the homepage. Three sub-rows, each conveying a different kind of
+ * signal:
+ *
+ *   1. A grayscale grid of agent/IDE marks that can drive `bv push` today.
+ *   2. (Optional) a small fact strip — currently empty pre-MVP because we
+ *      don't have telemetry to publish honestly.
+ *   3. A security/compliance row of three claims, each linking to /security.
+ *
+ * Every label is factually true today. No invented logos, no fake quotes,
+ * no telemetry stat we don't actually have.
+ */
+import AgentLogo from "./icons/AgentLogo.astro";
+import { COMPATIBLE_AGENTS, TRUST_CLAIMS } from "../lib/site";
+---
+
+<section
+  class="border-t border-bv-border bg-bv-surface/30"
+  data-bv-reveal
+  data-trust-strip
+  aria-labelledby="trust-strip-heading"
+>
+  <div class="mx-auto max-w-6xl px-6 py-20">
+    <p
+      id="trust-strip-heading"
+      class="text-center font-mono text-xs uppercase tracking-wider text-gray-400"
+    >
+      Works with the agents you already use
+    </p>
+
+    <ul
+      class="mt-8 grid grid-cols-3 items-center gap-x-6 gap-y-6 md:grid-cols-6"
+      role="list"
+      data-trust-logo-grid
+    >
+      {
+        COMPATIBLE_AGENTS.map((agent) => {
+          const inner = (
+            <>
+              <span class="trust-logo-mark" data-agent-logo={agent.slug}>
+                <AgentLogo slug={agent.slug} size={26} />
+              </span>
+              <span class="text-sm font-medium">{agent.name}</span>
+            </>
+          );
+          return (
+            <li class="flex items-center justify-center">
+              {agent.recipeHref ? (
+                <a
+                  href={agent.recipeHref}
+                  class="trust-logo group inline-flex items-center gap-2 text-gray-400 transition-colors hover:text-bv-text"
+                  data-cta={`trust-${agent.slug}`}
+                >
+                  {inner}
+                </a>
+              ) : (
+                <span class="trust-logo inline-flex items-center gap-2 text-gray-400">
+                  {inner}
+                </span>
+              )}
+            </li>
+          );
+        })
+      }
+    </ul>
+
+    <p class="mt-6 text-center text-xs text-gray-500">
+      Anything that can shell out and parse JSON works.
+      <a class="underline hover:text-bv-text" href="/docs/quickstart/json-output"
+        >See the JSON contract →</a
+      >
+    </p>
+
+    <ul
+      class="mt-12 grid gap-3 md:grid-cols-3"
+      role="list"
+      data-trust-claims
+    >
+      {
+        TRUST_CLAIMS.map((claim) => (
+          <li>
+            <a
+              href={claim.href}
+              class="bv-card block text-sm transition-colors hover:border-accent-300/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bv-accent-strong focus-visible:ring-offset-2 focus-visible:ring-offset-bv-bg"
+              data-cta={`trust-claim-${claim.label
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-|-$/g, "")}`}
+            >
+              <p class="font-mono text-xs uppercase tracking-wider text-accent-300">
+                {claim.label}
+              </p>
+              <p class="mt-2 text-gray-300">{claim.detail}</p>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  /*
+   * Logos render in a muted grayscale by default and pop to full brightness
+   * on hover or keyboard focus. saturate(0) neutralizes any accent tint
+   * inherited from the SVG without changing structure, so reduced-motion
+   * users still see the final hover state without the transition.
+   */
+  .trust-logo .trust-logo-mark {
+    color: var(--bv-text-dim);
+    filter: saturate(0);
+    transition: color 200ms ease, filter 200ms ease;
+  }
+  .trust-logo:hover .trust-logo-mark,
+  .trust-logo:focus-visible .trust-logo-mark {
+    color: var(--bv-accent);
+    filter: saturate(1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .trust-logo .trust-logo-mark {
+      transition: none;
+    }
+  }
+</style>

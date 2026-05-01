@@ -1,0 +1,109 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import PricingCta from "../components/PricingCta.svelte";
+import { PLANS, resolveInstallUrl } from "../lib/site";
+---
+
+<BaseLayout
+  title="Pricing"
+  description="Free for 5 sites, $10/mo for unlimited lifetime, $30/user for orgs. No credit card to start."
+  ogImage="/og/pricing.png"
+>
+  <section class="mx-auto max-w-6xl px-6 pt-20 pb-12">
+    <h1 class="text-4xl font-semibold tracking-tight md:text-5xl">Pricing</h1>
+    <p class="mt-4 max-w-copy text-gray-300">
+      Free for 5 sites and 100 MB. Upgrade only when your agent fleet
+      outgrows it. No surprise overages — pushes hit the cap and return a
+      JSON error your agent can react to.
+    </p>
+  </section>
+
+  <section class="mx-auto grid max-w-6xl gap-6 px-6 pb-20 md:grid-cols-3 md:items-stretch">
+    {
+      PLANS.map((plan) => (
+        <article
+          class:list={[
+            "bv-card relative flex flex-col",
+            plan.highlight &&
+              "border-accent-400 bg-accent-900/20 shadow-lg shadow-accent-900/30 md:z-10 md:scale-[1.02]",
+          ]}
+          aria-label={`${plan.name} plan${plan.highlight ? " (most popular)" : ""}`}
+        >
+          {plan.highlight && (
+            <span
+              aria-hidden="true"
+              class="absolute right-4 top-0 -translate-y-1/2 rounded-full bg-accent-400 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-950 shadow-md"
+            >
+              Most popular
+            </span>
+          )}
+          <header>
+            <h2 class="text-lg font-semibold tracking-tight">{plan.name}</h2>
+            <p class="mt-1 text-sm text-gray-300">{plan.blurb}</p>
+            <p class="mt-6">
+              <span class="text-4xl font-semibold tracking-tight text-white">
+                {plan.price}
+              </span>
+              <span class="ml-1 text-sm text-gray-300">{plan.cadence}</span>
+            </p>
+          </header>
+
+          <ul class="mt-6 flex-1 space-y-2 text-sm text-gray-200" role="list">
+            {plan.features.map((feat) => (
+              <li class="flex gap-2">
+                <span aria-hidden="true" class="text-accent-300">✓</span>
+                <span>{feat}</span>
+              </li>
+            ))}
+          </ul>
+
+          <div class="mt-8">
+            <PricingCta
+              client:idle
+              plan={plan.id}
+              href={resolveInstallUrl(plan.ctaHref)}
+              label={plan.ctaLabel}
+              primary={plan.highlight === true}
+            />
+          </div>
+        </article>
+      ))
+    }
+  </section>
+
+  <section class="mx-auto max-w-3xl px-6 pb-24">
+    <h2 class="text-xl font-semibold">Frequently asked</h2>
+    <div class="mt-6 space-y-4 text-gray-300">
+      <details class="bv-card">
+        <summary class="cursor-pointer font-medium text-white">
+          What happens when I hit a quota?
+        </summary>
+        <p class="mt-3 text-sm">
+          The CLI returns a structured 402 error
+          (<code>quota_exceeded</code>) with the limit and current usage.
+          Agents can branch on it; the dashboard shows a banner with a link
+          to upgrade or delete sites.
+        </p>
+      </details>
+      <details class="bv-card">
+        <summary class="cursor-pointer font-medium text-white">
+          Do you read site contents?
+        </summary>
+        <p class="mt-3 text-sm">
+          No. We only operate on the tarball your CLI uploads, server-side
+          metadata (size, ETag, content-types), and viewer access logs. R2
+          object URLs are redacted from logs and error reports.
+        </p>
+      </details>
+      <details class="bv-card">
+        <summary class="cursor-pointer font-medium text-white">
+          Can I cancel any time?
+        </summary>
+        <p class="mt-3 text-sm">
+          Yes. Cancellation enters a 7-day grace period during which sites
+          stay live; after that they fall back to free-tier limits.
+        </p>
+      </details>
+    </div>
+  </section>
+</BaseLayout>

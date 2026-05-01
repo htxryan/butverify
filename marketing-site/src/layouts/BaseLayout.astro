@@ -1,0 +1,136 @@
+---
+import "../styles/global.css";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import { posthogSnippet } from "../lib/posthog";
+import { SITE } from "../lib/site";
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Path used to generate the canonical link; pass `Astro.url.pathname`. */
+  canonicalPath?: string;
+  /**
+   * Site-relative path (e.g. `/og/pricing.png`) of the social-share image.
+   * Defaults to `/og/default.png`. The image must be 1200x630.
+   */
+  ogImage?: string;
+}
+
+const {
+  title,
+  description = SITE.description,
+  canonicalPath = Astro.url.pathname,
+  ogImage = "/og/default.png",
+} = Astro.props;
+
+const fullTitle =
+  title === SITE.name ? title : `${title} — ${SITE.name}`;
+
+const siteOrigin = Astro.site ?? `https://${SITE.domain}`;
+const canonical = new URL(canonicalPath, siteOrigin);
+const ogImageUrl = new URL(ogImage, siteOrigin).toString();
+
+const phKey = import.meta.env.PUBLIC_POSTHOG_KEY ?? "";
+const phHost =
+  import.meta.env.PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com";
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href={canonical.toString()} />
+    <meta name="description" content={description} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical.toString()} />
+    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:secure_url" content={ogImageUrl} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={fullTitle} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+    <meta name="twitter:image:alt" content={fullTitle} />
+    <title>{fullTitle}</title>
+    {
+      phKey && (
+        <script
+          is:inline
+          set:html={posthogSnippet({ key: phKey, host: phHost })}
+        />
+      )
+    }
+    <script is:inline>
+      // Mark the html element so [data-bv-reveal] sections start hidden only
+      // when JS + IntersectionObserver are available. Without this gate, a
+      // no-JS visitor would see the sections stuck at opacity:0.
+      if ("IntersectionObserver" in window) {
+        document.documentElement.dataset.bvJs = "";
+      }
+    </script>
+  </head>
+  <body class="flex min-h-dvh flex-col">
+    <Header />
+    <main class="flex-1">
+      <slot />
+    </main>
+    <Footer />
+    <script>
+      // Wire any element with [data-cta] to a posthog cta_click event. Safe if
+      // posthog is missing (e.g. local dev): the helper guards on window.posthog.
+      import { captureCta } from "../lib/posthog";
+
+      document.addEventListener("click", (e) => {
+        const el = (e.target as HTMLElement | null)?.closest?.<HTMLElement>(
+          "[data-cta]",
+        );
+        if (!el) return;
+        const cta = el.dataset.cta ?? "unknown";
+        captureCta({
+          name: "cta_click",
+          cta,
+          location: window.location.pathname,
+        });
+      });
+    </script>
+    <script>
+      // Section reveal: fade-up sections as they enter the
+      // viewport. Reduced-motion users get the final state with no
+      // transition. Each section is observed once and unobserved after
+      // it reveals, so this never fires repeatedly on scroll.
+      import { prefersReducedMotion } from "../lib/motion";
+
+      const els = document.querySelectorAll<HTMLElement>("[data-bv-reveal]");
+      if (els.length > 0 && "IntersectionObserver" in window) {
+        if (prefersReducedMotion()) {
+          els.forEach((el) => {
+            el.dataset.revealed = "true";
+          });
+        } else {
+          const io = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  (entry.target as HTMLElement).dataset.revealed = "true";
+                  io.unobserve(entry.target);
+                }
+              }
+            },
+            { rootMargin: "0px 0px -10% 0px", threshold: 0.1 },
+          );
+          els.forEach((el) => io.observe(el));
+        }
+      }
+    </script>
+  </body>
+</html>

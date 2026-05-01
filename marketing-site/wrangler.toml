@@ -1,0 +1,20 @@
+name = "butverify-marketing-site"
+compatibility_date = "2026-04-01"
+pages_build_output_dir = "dist"
+
+# Marketing + docs surface — deploys to Cloudflare Pages on the apex
+# `butverify.dev` and on `docs.butverify.dev` (mapped at the zone level
+# during F0 procurement). Static-only output; no Worker bindings here.
+#
+# Custom domains and DNS are configured manually in the Pages dashboard
+# during F0 — the routes block below is intentionally inert for now.
+#
+# routes = [
+#   { pattern = "butverify.dev/*", zone_name = "butverify.dev" },
+#   { pattern = "docs.butverify.dev/*", zone_name = "butverify.dev" }
+# ]
+
+[vars]
+ENVIRONMENT = "production"
+SERVICE_NAME = "butverify-marketing-site"
+SERVICE_VERSION = "0.0.0"

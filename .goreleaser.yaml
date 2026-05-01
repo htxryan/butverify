@@ -1,0 +1,104 @@
+# GoReleaser config for the bv CLI.
+#
+# The Go module is at the repo root in this public repo. Releases run
+# from `.github/workflows/release.yaml` on tag pushes matching `v*` and
+# publish:
+#   - GitHub release archives (tar.gz / zip) with cosign keyless OIDC sigs
+#   - A Homebrew tap formula at htxryan/homebrew-butverify (requires
+#     HOMEBREW_TAP_TOKEN in Actions)
+
+version: 2
+
+project_name: bv
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: bv
+    main: ./cmd/bv
+    binary: bv
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Windows on arm64 is supported by Go 1.23+ but the runner matrix
+    # keeps it on amd64 only at v1.
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE*
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+# Homebrew tap publication. Requires HOMEBREW_TAP_TOKEN in Actions.
+brews:
+  - name: bv
+    repository:
+      owner: htxryan
+      name: homebrew-butverify
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://butverify.dev
+    description: butverify.dev agent CLI — publish AI-generated work for human review.
+    license: Apache-2.0
+    install: |
+      bin.install "bv"
+    test: |
+      system "#{bin}/bv version"
+
+# cosign keyless OIDC signing of the produced binaries + checksums file.
+# Activates only when the release runs in GH Actions (the OIDC issuer is
+# the Actions runtime).
+signs:
+  - cmd: cosign
+    artifacts: all
+    args:
+      - sign-blob
+      - --yes
+      - --output-signature=${signature}
+      - --output-certificate=${certificate}
+      - ${artifact}
+    certificate: "${artifact}.pem"
+    output: true
+
+# Release-time manifest at dl.butverify.dev/cli/{stable,beta}/manifest.json.
+# Currently disabled — the upload step requires R2 credentials wired into
+# Actions; once procurement closes, enable via the `extra_files` block.
+# release:
+#   github:
+#     owner: butverify
+#     name: bv
+#   draft: false
+#   prerelease: auto
+#   extra_files:
+#     - glob: ./manifest.json

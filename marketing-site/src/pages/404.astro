@@ -1,0 +1,150 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Not found"
+  description="The page you asked for isn't here. Free butverify sites live for 30 days; pin the ones you want to keep."
+>
+  <section
+    class="mx-auto flex max-w-3xl flex-col items-center px-6 py-24 text-center md:py-32"
+  >
+    <figure
+      class="not-found-terminal"
+      role="img"
+      aria-label="Terminal showing the bv view command returning a site_not_found error."
+    >
+      <div class="window">
+        <div class="chrome" aria-hidden="true">
+          <span class="dot dot-r"></span>
+          <span class="dot dot-y"></span>
+          <span class="dot dot-g"></span>
+          <span class="title">~/this-page</span>
+        </div>
+        <pre class="screen"><span class="line"><span
+          class="prompt">$</span> <span class="cmd">bv view</span> <span
+          class="dim" data-not-found-path>this-page</span></span>
+<span class="line err"><span class="x" aria-hidden="true">✗</span> <span class="code">site_not_found</span> <span class="dim">(404)</span></span>
+<span class="line dim sub">No snapshot is hosted at this URL.</span></pre>
+      </div>
+    </figure>
+
+    <script is:inline>
+      // The static 404.html is served by Cloudflare Pages for any unmatched
+      // path. Astro.url.pathname at build time is always "/404", so we patch
+      // in the real missed path client-side. Bounded to a sane length so a
+      // pathological URL can't blow out the layout.
+      (function () {
+        var el = document.querySelector("[data-not-found-path]");
+        if (!el) return;
+        var p = window.location.pathname;
+        if (!p || p === "/404") p = "this-page";
+        if (p.length > 48) p = p.slice(0, 45) + "…";
+        el.textContent = p;
+      })();
+    </script>
+
+    <p class="mt-10 font-mono text-sm tracking-wider text-accent-300">
+      404 / site_not_found
+    </p>
+    <h1 class="mt-3 text-4xl font-semibold tracking-tight md:text-5xl">
+      This snapshot isn't here.
+    </h1>
+    <p class="mt-5 max-w-xl text-gray-300">
+      The URL might be wrong, or the site already expired. Free butverify
+      pushes live for 30 days — pin the ones you want to keep.
+    </p>
+
+    <div class="mt-9 flex flex-wrap justify-center gap-3">
+      <a class="bv-btn bv-btn-md bv-btn-primary" href="/" data-cta="404-home">
+        Back to home
+      </a>
+      <a
+        class="bv-btn bv-btn-md bv-btn-secondary"
+        href="/docs/quickstart/install"
+        data-cta="404-quickstart"
+      >
+        Quickstart
+      </a>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .not-found-terminal {
+    margin: 0;
+    width: 100%;
+    max-width: 32rem;
+  }
+
+  .window {
+    border-radius: 12px;
+    border: 1px solid var(--bv-border);
+    background: var(--bv-surface);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 30px 60px -20px rgba(0, 0, 0, 0.6),
+      0 12px 24px -16px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    text-align: left;
+  }
+
+  .chrome {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    background: var(--bv-surface-2);
+    border-bottom: 1px solid var(--bv-border);
+  }
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    display: inline-block;
+  }
+  .dot-r { background: #ff6058; }
+  .dot-y { background: #ffbd2e; }
+  .dot-g { background: #28ca42; }
+
+  .title {
+    margin-left: 8px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Geist Mono", monospace;
+    font-size: 0.78rem;
+    color: var(--bv-text-dim);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .screen {
+    margin: 0;
+    padding: 18px 20px 22px;
+    background: var(--bv-bg);
+    border: 0;
+    border-radius: 0;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Geist Mono", monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--bv-text);
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  .screen .line {
+    display: block;
+    white-space: pre;
+  }
+
+  .prompt { color: var(--bv-accent); margin-right: 6px; }
+  .cmd { color: var(--bv-text); }
+  .dim { color: var(--bv-text-dim); }
+  .err .x { color: #ff6058; margin-right: 6px; font-weight: 600; }
+  .err .code { color: #ff8d86; }
+  .sub { margin-top: 4px; }
+
+  @media (max-width: 640px) {
+    .screen { font-size: 0.76rem; padding: 14px 14px 18px; }
+  }
+</style>

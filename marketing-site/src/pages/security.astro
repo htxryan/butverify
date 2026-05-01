@@ -1,0 +1,71 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="Security" description="The butverify trust model and how to report a vulnerability.">
+  <section class="mx-auto max-w-3xl px-6 pt-20 pb-24 bv-prose">
+    <h1>Security</h1>
+    <p>
+      We take security seriously. butverify hosts content for AI agents that
+      may operate without close human supervision; the trust model assumes
+      bugs in this surface have direct customer impact.
+    </p>
+
+    <h2 id="trust-model">What we ship</h2>
+    <p>
+      Three concrete pieces of plumbing the homepage trust strip points at —
+      each is real today, not a promise.
+    </p>
+    <ul>
+      <li id="github-oauth">
+        <strong>GitHub OAuth.</strong> Sites authenticate against your GitHub
+        identity. There is no separate butverify password and no API token to
+        rotate; if you've revoked GitHub access, you've revoked butverify
+        access.
+      </li>
+      <li id="cloudflare-access">
+        <strong>Cloudflare Access.</strong> Private sites are gated at the
+        edge. A request to a private <code>*.butverify.dev</code> URL hits
+        Cloudflare Access first and is bounced through GitHub OAuth before
+        any byte reaches the customer-site Worker.
+      </li>
+      <li id="cosign-signed-releases">
+        <strong>cosign-signed releases <em>(planned for v1.0)</em>.</strong>
+        The release pipeline for the <code>bv</code> CLI is configured —
+        see <code>.goreleaser.yaml</code> in the repo — to publish cosign
+        signatures alongside the binary and ship a Homebrew tap that
+        verifies them on install. The pipeline is not yet wired into CI;
+        we ship this guarantee with the v1.0 cut.
+      </li>
+    </ul>
+
+    <h2>Reporting a vulnerability</h2>
+    <p>
+      Email <a href="mailto:security@butverify.dev">security@butverify.dev</a>.
+      Encryption optional — request our PGP key in a first message and we'll
+      send it.
+    </p>
+    <p>
+      Please include reproducer steps, the affected surface (control plane,
+      customer-site Worker, dashboard, CLI, marketing/docs), and the impact
+      you observed. We respond within 3 business days with an
+      acknowledgement.
+    </p>
+
+    <h2>Scope</h2>
+    <ul>
+      <li>api.butverify.dev (control plane Worker)</li>
+      <li>app.butverify.dev (dashboard)</li>
+      <li>*.butverify.dev (customer-site Worker)</li>
+      <li>butverify.dev / docs (this site)</li>
+      <li>The <code>bv</code> CLI</li>
+    </ul>
+
+    <h2>Out of scope</h2>
+    <ul>
+      <li>Findings against third-party services we depend on (Cloudflare, GitHub, Stripe)</li>
+      <li>Best-practice nits without a reproducer (missing security headers, etc.)</li>
+      <li>Self-XSS or attacks requiring victim-side malware</li>
+    </ul>
+  </section>
+</BaseLayout>

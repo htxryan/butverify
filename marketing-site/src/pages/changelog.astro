@@ -1,0 +1,46 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { CHANGELOG } from "../lib/site";
+
+function entrySlug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+---
+
+<BaseLayout
+  title="Changelog"
+  description="Recent updates to butverify — what shipped, what's next."
+>
+  <section class="mx-auto max-w-3xl px-6 pt-20 pb-24">
+    <h1 class="text-4xl font-semibold tracking-tight md:text-5xl">
+      Changelog
+    </h1>
+    <p class="mt-4 text-gray-300">
+      What we shipped, in reverse chronological order. Subscribe via
+      <a class="text-accent-300 underline" href="/changelog.xml">RSS</a>.
+    </p>
+
+    <ol class="mt-12 space-y-10" role="list">
+      {
+        CHANGELOG.map((entry) => (
+          <li
+            id={`${entry.date}-${entrySlug(entry.title)}`}
+            class="border-l border-bv-border pl-6 scroll-mt-24"
+          >
+            <time
+              datetime={entry.date}
+              class="font-mono text-xs uppercase tracking-wider text-accent-300"
+            >
+              {entry.date}
+            </time>
+            <h2 class="mt-2 text-lg font-semibold">{entry.title}</h2>
+            <p class="mt-2 text-gray-300">{entry.body}</p>
+          </li>
+        ))
+      }
+    </ol>
+  </section>
+</BaseLayout>

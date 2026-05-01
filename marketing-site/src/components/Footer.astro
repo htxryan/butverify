@@ -1,0 +1,47 @@
+---
+import { SITE } from "../lib/site";
+const year = new Date().getUTCFullYear();
+---
+
+<footer class="mt-24 border-t border-bv-border">
+  <div
+    class="mx-auto grid max-w-6xl gap-8 px-6 py-12 text-sm text-gray-300 md:grid-cols-4"
+  >
+    <div class="md:col-span-2">
+      <p class="font-mono text-accent-300">{`{butverify}`}</p>
+      <p class="mt-2 max-w-prose">{SITE.tagline}</p>
+    </div>
+
+    <div>
+      <p class="font-medium text-white">Product</p>
+      <ul class="mt-3 space-y-2" role="list">
+        <li><a class="hover:text-white" href="/pricing">Pricing</a></li>
+        <li><a class="hover:text-white" href="/agents">Agents</a></li>
+        <li><a class="hover:text-white" href="/changelog">Changelog</a></li>
+        <li><a class="hover:text-white" href="/docs/quickstart/install">Docs</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <p class="font-medium text-white">Company</p>
+      <ul class="mt-3 space-y-2" role="list">
+        <li>
+          <a class="hover:text-white" href="https://status.butverify.dev">Status</a>
+        </li>
+        <li>
+          <a class="hover:text-white" href="mailto:security@butverify.dev">Security</a>
+        </li>
+        <li>
+          <a class="hover:text-white" href="mailto:hello@butverify.dev">Contact</a>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <div
+    class="mx-auto flex max-w-6xl items-center justify-between border-t border-bv-border px-6 py-6 text-xs text-gray-400"
+  >
+    <p>© {year} butverify. All rights reserved.</p>
+    <p class="font-mono">{SITE.domain}</p>
+  </div>
+</footer>

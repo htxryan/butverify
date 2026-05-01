@@ -1,0 +1,23 @@
+---
+import type { AgentSlug } from "../../lib/site";
+import ClaudeLogo from "./ClaudeLogo.astro";
+import CursorLogo from "./CursorLogo.astro";
+import CodexLogo from "./CodexLogo.astro";
+import CopilotLogo from "./CopilotLogo.astro";
+import AiderLogo from "./AiderLogo.astro";
+import ContinueLogo from "./ContinueLogo.astro";
+
+interface Props {
+  slug: AgentSlug;
+  class?: string;
+  size?: number;
+}
+const { slug, class: className = "", size = 28 } = Astro.props;
+---
+
+{slug === "claude-code" && <ClaudeLogo class={className} size={size} />}
+{slug === "cursor" && <CursorLogo class={className} size={size} />}
+{slug === "codex" && <CodexLogo class={className} size={size} />}
+{slug === "copilot" && <CopilotLogo class={className} size={size} />}
+{slug === "aider" && <AiderLogo class={className} size={size} />}
+{slug === "continue" && <ContinueLogo class={className} size={size} />}

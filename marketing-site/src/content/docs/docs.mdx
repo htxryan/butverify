@@ -1,0 +1,32 @@
+---
+title: butverify docs
+description: Quickstarts, agent integration recipes, and reference for the butverify CLI and API.
+template: splash
+hero:
+  tagline: Static site hosting your AI agents can publish to.
+  actions:
+    - text: Install the CLI
+      link: /docs/quickstart/install
+      icon: right-arrow
+      variant: primary
+    - text: Push your first site
+      link: /docs/quickstart/first-push
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+  <Card title="Quickstart" icon="rocket">
+    Five-minute path from zero to a published URL. [Install the CLI →](/docs/quickstart/install)
+  </Card>
+  <Card title="Agent recipes" icon="puzzle">
+    Drop-in configs for Claude Code, Cursor, and Codex. [Browse recipes →](/docs/agents/claude-code)
+  </Card>
+  <Card title="Reference" icon="document">
+    Every command, every error code. [CLI reference →](/docs/reference/cli)
+  </Card>
+  <Card title="Troubleshooting" icon="warning">
+    Common failure modes and how to recover. [See troubleshooting →](/docs/troubleshooting)
+  </Card>
+</CardGrid>

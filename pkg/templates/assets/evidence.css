@@ -1,0 +1,450 @@
+/* butverify.dev evidence template — design-pass stylesheet (E12-T7).
+ *
+ * One file covers both layouts. Layout-specific rules are gated on
+ * `[data-layout="stacked"]` / `[data-layout="carousel"]` attribute selectors
+ * on <body>, keeping the layout contract (EV-U-10) observable from the
+ * rendered HTML alone.
+ *
+ * Design philosophy:
+ *   - Constraint-based: spacing/type follow geometric scales (Weber-Fechner).
+ *   - Three-channel hierarchy: size + weight + color. De-emphasis carries
+ *     as much weight as emphasis.
+ *   - Borders only where spacing/background can't carry the structure.
+ *   - System font stack (no network roundtrip) — this is a static bundle
+ *     and we will not block first paint on a font request.
+ *   - JS-free. Carousel is CSS-only: scroll-snap + :target.
+ */
+
+/* ---------- Tokens ---------- */
+
+:root {
+  /* Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 / 96.
+   * Geometric increments — perceptually uniform per Weber-Fechner. */
+  --ev-s-1: 0.25rem;
+  --ev-s-2: 0.5rem;
+  --ev-s-3: 0.75rem;
+  --ev-s-4: 1rem;
+  --ev-s-5: 1.5rem;
+  --ev-s-6: 2rem;
+  --ev-s-7: 3rem;
+  --ev-s-8: 4rem;
+  --ev-s-9: 6rem;
+
+  /* Type scale (modular, ~1.25). Captions get fluid clamps so titles
+   * breathe on desktop without overflowing on mobile. */
+  --ev-t-meta: 0.75rem;
+  --ev-t-small: 0.875rem;
+  --ev-t-body: 1rem;
+  --ev-t-lead: clamp(1.0625rem, 0.95rem + 0.6vw, 1.1875rem);
+  --ev-t-h2: clamp(1.0625rem, 0.95rem + 0.7vw, 1.25rem);
+  --ev-t-h1: clamp(1.75rem, 1.25rem + 2.4vw, 2.625rem);
+
+  /* Measure for prose. 65ch sits in the middle of the 45–75ch comfort band. */
+  --ev-measure: 65ch;
+
+  /* Color — light mode. Off-white surface, neutral text, restrained accent. */
+  --ev-bg: #fafafa;
+  --ev-surface: #ffffff;
+  --ev-surface-2: #f4f4f5;
+  --ev-fg: #18181b;
+  --ev-fg-strong: #09090b;
+  --ev-fg-muted: #52525b;
+  --ev-fg-faint: #71717a;
+  --ev-border: #e4e4e7;
+  --ev-border-strong: #d4d4d8;
+  --ev-accent: #2563eb;
+  --ev-accent-soft: rgba(37, 99, 235, 0.12);
+  --ev-focus: #2563eb;
+
+  /* Elevation. Shadow scale instead of arbitrary values. */
+  --ev-shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 1px rgba(15, 23, 42, 0.03);
+  --ev-shadow-2: 0 4px 12px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+
+  --ev-radius: 10px;
+  --ev-radius-sm: 6px;
+
+  --ev-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ev-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ev-bg: #0a0a0b;
+    --ev-surface: #131316;
+    --ev-surface-2: #1c1c20;
+    --ev-fg: #e4e4e7;
+    --ev-fg-strong: #fafafa;
+    --ev-fg-muted: #a1a1aa;
+    --ev-fg-faint: #71717a;
+    --ev-border: #27272a;
+    --ev-border-strong: #3f3f46;
+    --ev-accent: #60a5fa;
+    --ev-accent-soft: rgba(96, 165, 250, 0.15);
+    --ev-focus: #60a5fa;
+    --ev-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.3);
+    --ev-shadow-2: 0 4px 16px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* ---------- Reset / base ---------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--ev-bg);
+  color: var(--ev-fg);
+  font-family: var(--ev-sans);
+  font-size: var(--ev-t-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+html { scroll-behavior: smooth; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+a {
+  color: var(--ev-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 0.06em;
+}
+
+a:hover { text-decoration-thickness: 0.12em; }
+
+:focus-visible {
+  outline: 2px solid var(--ev-focus);
+  outline-offset: 2px;
+  border-radius: var(--ev-radius-sm);
+}
+
+/* Skip-link is offscreen until focused. Keyboard-first navigation cue. */
+.ev-skip {
+  position: absolute;
+  left: -9999px;
+  top: var(--ev-s-2);
+  background: var(--ev-fg-strong);
+  color: var(--ev-bg);
+  padding: var(--ev-s-2) var(--ev-s-4);
+  border-radius: var(--ev-radius-sm);
+  text-decoration: none;
+  font-weight: 600;
+  z-index: 10;
+}
+.ev-skip:focus {
+  left: var(--ev-s-4);
+}
+
+/* ---------- Page frame ---------- */
+
+.ev-page {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: clamp(var(--ev-s-6), 4vw, var(--ev-s-8)) clamp(var(--ev-s-4), 4vw, var(--ev-s-6)) var(--ev-s-9);
+}
+
+/* ---------- Header / hero ---------- */
+
+.ev-header {
+  margin-bottom: var(--ev-s-7);
+}
+
+.ev-kicker {
+  display: inline-block;
+  margin: 0 0 var(--ev-s-3) 0;
+  font-size: var(--ev-t-meta);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ev-fg-muted);
+}
+
+.ev-title {
+  font-size: var(--ev-t-h1);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  margin: 0;
+  color: var(--ev-fg-strong);
+  text-wrap: balance;
+}
+
+.ev-summary {
+  font-size: var(--ev-t-lead);
+  line-height: 1.6;
+  color: var(--ev-fg-muted);
+  white-space: pre-wrap;
+  margin: var(--ev-s-5) 0 0 0;
+  max-width: var(--ev-measure);
+  text-wrap: pretty;
+}
+
+/* ---------- Item card (shared by both layouts) ---------- */
+
+.ev-item {
+  margin: 0;
+  background: var(--ev-surface);
+  border: 1px solid var(--ev-border);
+  border-radius: var(--ev-radius);
+  overflow: hidden;
+  box-shadow: var(--ev-shadow-1);
+  transition: box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.ev-item:hover,
+.ev-item:focus-within {
+  border-color: var(--ev-border-strong);
+  box-shadow: var(--ev-shadow-2);
+}
+
+.ev-media {
+  background: #000;
+  display: block;
+}
+
+.ev-item img,
+.ev-item video {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: 80vh;
+  object-fit: contain;
+  background: #000;
+}
+
+.ev-caption {
+  padding: var(--ev-s-5) var(--ev-s-5) var(--ev-s-5) var(--ev-s-5);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: var(--ev-s-4);
+  row-gap: var(--ev-s-2);
+  align-items: baseline;
+}
+
+.ev-seq {
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  align-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 var(--ev-s-2);
+  border-radius: 999px;
+  background: var(--ev-surface-2);
+  color: var(--ev-fg-muted);
+  font-family: var(--ev-mono);
+  font-size: var(--ev-t-meta);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.ev-item-title {
+  grid-row: 1;
+  grid-column: 2;
+  font-size: var(--ev-t-h2);
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0;
+  color: var(--ev-fg-strong);
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+.ev-item-desc {
+  grid-row: 2;
+  grid-column: 2;
+  font-size: var(--ev-t-body);
+  line-height: 1.6;
+  color: var(--ev-fg-muted);
+  white-space: pre-wrap;
+  margin: 0;
+  max-width: var(--ev-measure);
+  text-wrap: pretty;
+}
+
+/* When caption has only one of title/desc, keep the seq badge aligned. */
+.ev-caption:has(> .ev-item-title:only-of-type:not(+ .ev-item-desc)) .ev-seq,
+.ev-caption:has(> .ev-item-desc:only-of-type:not(+ .ev-item-title)) .ev-seq {
+  grid-row: 1;
+}
+
+/* ---------- Footer ---------- */
+
+.ev-footer {
+  margin-top: var(--ev-s-8);
+  padding-top: var(--ev-s-5);
+  border-top: 1px solid var(--ev-border);
+  font-size: var(--ev-t-small);
+  color: var(--ev-fg-faint);
+  text-align: center;
+}
+
+.ev-footer p { margin: 0; }
+.ev-footer a {
+  color: var(--ev-fg-muted);
+  text-decoration: none;
+}
+.ev-footer a:hover { color: var(--ev-accent); }
+
+/* ---------- Stacked layout ---------- */
+
+[data-layout="stacked"] .ev-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ev-s-7);
+}
+
+/* On wider screens, stacked items can breathe a bit on the sides. */
+@media (min-width: 48rem) {
+  [data-layout="stacked"] .ev-caption {
+    padding: var(--ev-s-5) var(--ev-s-6) var(--ev-s-6) var(--ev-s-6);
+  }
+}
+
+/* ---------- Carousel layout ---------- */
+
+[data-layout="carousel"] .carousel {
+  position: relative;
+  margin: 0;
+  padding: 0;
+}
+
+[data-layout="carousel"] .carousel-track {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: row;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  gap: var(--ev-s-5);
+  scrollbar-gutter: stable;
+  scroll-padding: 0;
+  /* Subtle inset so the focused item's shadow isn't clipped. */
+  padding: var(--ev-s-1) var(--ev-s-1) var(--ev-s-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-layout="carousel"] .carousel-track { scroll-behavior: auto; }
+}
+
+[data-layout="carousel"] .carousel-item {
+  flex: 0 0 100%;
+  width: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  list-style: none;
+}
+
+[data-layout="carousel"] .carousel-item .ev-item {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-layout="carousel"] .carousel-item .ev-media {
+  flex: 0 0 auto;
+}
+
+[data-layout="carousel"] .carousel-item .ev-caption {
+  flex: 1 1 auto;
+}
+
+/* Pager: sticky chip row. The :target pseudo-class lights up the current
+ * page indicator without any JS — pure CSS routing on the URL fragment. */
+[data-layout="carousel"] .carousel-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ev-s-2);
+  justify-content: center;
+  padding: var(--ev-s-4) 0;
+  position: sticky;
+  bottom: 0;
+  background: color-mix(in srgb, var(--ev-bg) 92%, transparent);
+  backdrop-filter: saturate(180%) blur(8px);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+  border-top: 1px solid var(--ev-border);
+  margin-top: var(--ev-s-4);
+}
+
+[data-layout="carousel"] .carousel-pager a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  padding: 0 var(--ev-s-3);
+  text-align: center;
+  text-decoration: none;
+  color: var(--ev-fg-muted);
+  background: var(--ev-surface);
+  border: 1px solid var(--ev-border);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ev-t-small);
+  font-weight: 500;
+  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+}
+
+[data-layout="carousel"] .carousel-pager a:hover {
+  color: var(--ev-fg-strong);
+  border-color: var(--ev-border-strong);
+}
+
+[data-layout="carousel"] .carousel-pager a:active {
+  background: var(--ev-accent-soft);
+  color: var(--ev-fg-strong);
+  border-color: var(--ev-accent);
+}
+
+/* When the user navigates via pager link the targeted item gets a
+ * subtle accent treatment — the visible affordance for "you are here"
+ * without needing JS or hardcoded item counts. */
+[data-layout="carousel"] .carousel-item:target .ev-item {
+  border-color: var(--ev-accent);
+  box-shadow: var(--ev-shadow-2), 0 0 0 1px var(--ev-accent);
+}
+
+/* On tablet+ the carousel item caption pads a touch more. */
+@media (min-width: 48rem) {
+  [data-layout="carousel"] .carousel-track { gap: var(--ev-s-6); }
+}
+
+/* ---------- Print ---------- */
+
+@media print {
+  .ev-skip,
+  [data-layout="carousel"] .carousel-pager { display: none; }
+  .ev-page { max-width: none; padding: 0; }
+  [data-layout="carousel"] .carousel-track {
+    display: block;
+    overflow: visible;
+  }
+  [data-layout="carousel"] .carousel-item {
+    width: 100%;
+    page-break-inside: avoid;
+    margin-bottom: var(--ev-s-5);
+  }
+  .ev-item {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+}

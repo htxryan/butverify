@@ -1,0 +1,51 @@
+---
+import { NAV, SITE } from "../lib/site";
+import MobileNav from "./MobileNav.svelte";
+---
+
+<header class="border-b border-bv-border">
+  <nav
+    class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"
+    aria-label="Primary"
+  >
+    <a href="/" class="font-semibold tracking-tight text-bv-text" aria-label={SITE.name}>
+      <span class="font-mono text-accent-300">{`{`}</span>
+      <span>but</span><span class="text-accent-300">verify</span>
+      <span class="font-mono text-accent-300">{`}`}</span>
+    </a>
+
+    <ul class="hidden gap-8 md:flex" role="list">
+      {
+        NAV.map((item) => (
+          <li>
+            <a
+              href={item.href}
+              class="text-sm text-gray-200 hover:text-white"
+            >
+              {item.label}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+
+    <div class="flex items-center gap-3">
+      <a
+        href={`https://${SITE.appHost}`}
+        class="hidden text-sm text-gray-300 hover:text-white sm:inline"
+      >
+        Sign in
+      </a>
+      <a
+        href="/pricing"
+        class="bv-btn bv-btn-sm bv-btn-primary"
+        data-cta="header-get-started"
+      >
+        Get started
+      </a>
+      <div class="md:hidden">
+        <MobileNav client:load nav={NAV} appHost={SITE.appHost} />
+      </div>
+    </div>
+  </nav>
+</header>

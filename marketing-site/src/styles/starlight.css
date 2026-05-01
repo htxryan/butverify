@@ -1,0 +1,42 @@
+/* Starlight theme overrides — keep docs visually coherent with marketing. */
+
+:root {
+  /*
+   * Match the marketing site's font stack (apps/marketing-site/tailwind.config.mjs).
+   * Without this, Starlight falls back to its default ui-sans-serif/system-ui
+   * stack and the typeface visibly changes when you cross from marketing into
+   * /docs. Mono stack is matched to global.css's pre/code rule.
+   */
+  --sl-font:
+    'Inter', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --sl-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, 'Geist Mono', monospace;
+}
+
+:root,
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #16306d;
+  --sl-color-accent: #5b85ff;
+  --sl-color-accent-high: #b8c9ff;
+  --sl-color-white: #e6e8ef;
+  --sl-color-gray-1: #c4cad6;
+  --sl-color-gray-2: #94a0b3;
+  --sl-color-gray-3: #6c7689;
+  --sl-color-gray-4: #4a5364;
+  --sl-color-gray-5: #232735;
+  --sl-color-gray-6: #181c25;
+  --sl-color-black: #0b0d12;
+}
+
+[data-theme='light'] {
+  --sl-color-accent-low: #dde7ff;
+  --sl-color-accent: #274cc7;
+  --sl-color-accent-high: #1d3a99;
+  --sl-color-white: #11141b;
+  --sl-color-gray-1: #232735;
+  --sl-color-gray-2: #4a5364;
+  --sl-color-gray-3: #6c7689;
+  --sl-color-gray-4: #94a0b3;
+  --sl-color-gray-5: #e6e8ef;
+  --sl-color-gray-6: #f1f3f8;
+  --sl-color-black: #ffffff;
+}

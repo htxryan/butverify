@@ -1,0 +1,304 @@
+---
+/**
+ * Animated terminal mock for the landing-page hero. Pure CSS so it costs
+ * ~zero on LCP (no video, no images). The animation loops a `bv push`
+ * session and a browser frame opening the resulting URL.
+ *
+ * Reduced motion: animations are disabled and the final frame is shown.
+ */
+const SITE_ID = "kind-otter-7q";
+const SITE_URL = `https://${SITE_ID}.butverify.dev`;
+---
+
+<figure
+  class="hero-terminal"
+  role="img"
+  aria-label="Animated demo: running bv push and opening the published butverify URL in a browser"
+>
+  <div class="window terminal" aria-hidden="true">
+    <div class="chrome">
+      <span class="dot dot-r"></span>
+      <span class="dot dot-y"></span>
+      <span class="dot dot-g"></span>
+      <span class="title">~/my-site</span>
+    </div>
+    <pre class="screen"><span class="line"><span class="prompt">$</span> <span class="cmd">bv push .</span></span>
+<span class="line out l1">Provisioned <span class="hl">{SITE_ID}</span></span>
+<span class="line out l2">Bundled 142 files (3.4 MB)</span>
+<span class="line out l3">Uploaded tar to staging</span>
+<span class="line out l4">Site:    <span class="dim">{SITE_ID}</span></span>
+<span class="line out l5">URL:     <span class="link">{SITE_URL}</span></span>
+<span class="line out l6">Status:  <span class="ok">live</span></span></pre>
+  </div>
+
+  <div class="window browser" aria-hidden="true">
+    <div class="chrome chrome-browser">
+      <span class="dot dot-r"></span>
+      <span class="dot dot-y"></span>
+      <span class="dot dot-g"></span>
+      <span class="addr">{SITE_URL}</span>
+    </div>
+    <div class="page">
+      <div class="page-h"></div>
+      <div class="page-row"></div>
+      <div class="page-row short"></div>
+      <div class="page-block"></div>
+      <div class="page-row"></div>
+      <div class="page-row short"></div>
+    </div>
+  </div>
+
+  <figcaption class="sr-only">
+    A terminal runs `bv push` and prints a private URL; a browser opens
+    the same URL showing the published site.
+  </figcaption>
+</figure>
+
+<style>
+  .hero-terminal {
+    position: relative;
+    margin: 0;
+    width: 100%;
+    max-width: 36rem;
+    color: var(--bv-text);
+    /* Reserve space so the visual doesn't shift in during font load */
+    aspect-ratio: 4 / 3;
+    /* Clip the browser window's translateY at narrow widths or zoom. */
+    overflow: hidden;
+    /* Inside a flex parent (`.flex.justify-center` on the page) the figure
+     * would otherwise default to min-width:auto and expand to its
+     * min-content — the longest non-wrapping line in the .screen pre.
+     * That blows the column past the viewport on mobile. Allow shrinking. */
+    min-width: 0;
+  }
+
+  .window {
+    position: absolute;
+    border-radius: 12px;
+    border: 1px solid var(--bv-border);
+    background: var(--bv-surface);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 30px 60px -20px rgba(0, 0, 0, 0.6),
+      0 12px 24px -16px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .terminal {
+    top: 0;
+    left: 0;
+    width: 88%;
+    z-index: 2;
+  }
+
+  .browser {
+    bottom: 0;
+    right: 0;
+    width: 70%;
+    z-index: 1;
+    transform: translateY(8%);
+    opacity: 0;
+    /* Browser opens partway through the terminal output, before the
+     * terminal lines start fading. Cycle matches the terminal (8s). */
+    animation: browserIn 8s ease-in-out infinite both;
+  }
+
+  .chrome {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    background: var(--bv-surface-2);
+    border-bottom: 1px solid var(--bv-border);
+  }
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    display: inline-block;
+  }
+  .dot-r { background: #ff6058; }
+  .dot-y { background: #ffbd2e; }
+  .dot-g { background: #28ca42; }
+
+  .title,
+  .addr {
+    margin-left: 8px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Geist Mono", monospace;
+    font-size: 0.78rem;
+    color: var(--bv-text-dim);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .chrome-browser .addr {
+    flex: 1;
+    margin-left: 12px;
+    background: var(--bv-bg);
+    border: 1px solid var(--bv-border);
+    border-radius: 999px;
+    padding: 4px 10px;
+    color: var(--bv-text);
+  }
+
+  .screen {
+    margin: 0;
+    padding: 16px 18px 22px;
+    background: var(--bv-bg);
+    border: 0;
+    border-radius: 0;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Geist Mono", monospace;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--bv-text);
+    overflow: hidden;
+    min-height: 12.5em;
+    /* The pre's `white-space: pre` lines would otherwise force min-content
+     * width on the window. Constrain explicitly so long URLs clip
+     * gracefully instead of pushing the column past the viewport. */
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .screen .line {
+    display: block;
+    white-space: pre;
+  }
+
+  .prompt { color: var(--bv-accent); margin-right: 6px; }
+  .cmd { color: var(--bv-text); }
+  .dim { color: var(--bv-text-dim); }
+  .ok { color: #5fd49e; }
+  .link { color: var(--bv-accent); }
+  .hl { color: var(--bv-accent); }
+
+  /* Typewriter for the command line */
+  .cmd {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    border-right: 0.5ch solid var(--bv-text);
+    width: 0;
+    vertical-align: bottom;
+    animation:
+      typeCmd 8s steps(10, end) infinite,
+      caret 0.85s steps(1, end) infinite;
+  }
+
+  /* Output lines stagger in after the command */
+  .out {
+    opacity: 0;
+    animation: lineIn 8s ease-out infinite both;
+  }
+  .l1 { animation-delay: 1.1s; }
+  .l2 { animation-delay: 1.6s; }
+  .l3 { animation-delay: 2.1s; }
+  .l4 { animation-delay: 2.6s; }
+  .l5 { animation-delay: 3.0s; }
+  .l6 { animation-delay: 3.4s; }
+
+  @keyframes typeCmd {
+    0%, 5% { width: 0; }
+    /* Type "bv push ." (10 chars) over ~0.9s */
+    16% { width: 10ch; border-right-color: var(--bv-text); }
+    /* Hold the typed command, then the loop ends and resets */
+    92% { width: 10ch; border-right-color: transparent; }
+    100% { width: 0; }
+  }
+
+  @keyframes caret {
+    50% { border-right-color: transparent; }
+  }
+
+  @keyframes lineIn {
+    /* Fade in quickly at the line's delay, hold while the browser opens,
+     * fade out cleanly before the loop resets. */
+    0% { opacity: 0; transform: translateY(2px); }
+    2% { opacity: 1; transform: translateY(0); }
+    70% { opacity: 1; transform: translateY(0); }
+    78% { opacity: 0; transform: translateY(0); }
+    100% { opacity: 0; }
+  }
+
+  @keyframes browserIn {
+    /* Stay hidden until terminal has finished printing (last line at 3.4s
+     * + ~0.4s settle = ~3.8s = 47% of an 8s loop). Then fade in and hold
+     * until the loop resets. */
+    0%, 47% { opacity: 0; transform: translateY(12%) scale(0.98); }
+    58% { opacity: 1; transform: translateY(8%) scale(1); }
+    94% { opacity: 1; transform: translateY(8%) scale(1); }
+    100% { opacity: 0; transform: translateY(12%) scale(0.98); }
+  }
+
+  /* Browser body — minimal placeholder shapes so it reads as "a page". */
+  .page {
+    padding: 18px 20px;
+    background: var(--bv-bg);
+    min-height: 9em;
+  }
+  .page-h {
+    height: 14px;
+    width: 55%;
+    background: var(--bv-surface-2);
+    border-radius: 4px;
+    margin-bottom: 12px;
+  }
+  .page-row {
+    height: 8px;
+    width: 100%;
+    background: var(--bv-surface-2);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    opacity: 0.85;
+  }
+  .page-row.short { width: 70%; }
+  .page-block {
+    height: 38px;
+    width: 100%;
+    background: linear-gradient(135deg, rgba(138, 169, 255, 0.18), rgba(91, 133, 255, 0.06));
+    border: 1px solid var(--bv-border);
+    border-radius: 6px;
+    margin: 12px 0;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Reduced motion: freeze the final state. */
+  @media (prefers-reduced-motion: reduce) {
+    .cmd {
+      width: 10ch;
+      animation: none;
+      border-right-color: transparent;
+    }
+    .out {
+      opacity: 1;
+      animation: none;
+    }
+    .browser {
+      opacity: 1;
+      transform: translateY(8%);
+      animation: none;
+    }
+  }
+
+  /* Smaller viewports: tighten spacing and shrink type. */
+  @media (max-width: 640px) {
+    .hero-terminal { aspect-ratio: 5 / 4; }
+    .screen { font-size: 0.78rem; padding: 14px 14px 18px; }
+    .browser { width: 78%; }
+  }
+</style>

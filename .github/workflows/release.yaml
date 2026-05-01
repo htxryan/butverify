@@ -1,0 +1,59 @@
+name: Release
+
+# Tag-driven release pipeline for the bv CLI.
+#
+# Trigger: push a tag matching `v*` (e.g. `v0.1.0`, `v0.1.1-rc1`).
+#
+# Produces:
+#   - cross-compiled binaries (linux/darwin/windows × amd64/arm64) via GoReleaser
+#   - a checksums.txt file with cosign signatures (.sig + .pem certs alongside)
+#   - a GitHub Release with all artifacts attached and a generated changelog
+#   - a Homebrew formula pushed to htxryan/homebrew-butverify
+#
+# Secrets required (already provisioned at v0.1.1):
+#   - GITHUB_TOKEN (auto-provided)
+#   - HOMEBREW_TAP_TOKEN (PAT with contents:write on htxryan/homebrew-butverify;
+#     using the maintainer's classic gh CLI token at v0.1.1, swap to a
+#     fine-grained PAT scoped to that single repo when convenient)
+#
+# Cosign keyless OIDC signing uses the workflow's id-token to authenticate
+# to Sigstore Fulcio. No long-lived signing key is stored anywhere.
+# Verify with:
+#   cosign verify-blob --certificate-identity-regexp \
+#     '^https://github.com/htxryan/butverify/.github/workflows/release.yaml@' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     --signature checksums.txt.sig \
+#     --certificate checksums.txt.pem \
+#     checksums.txt
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # GoReleaser needs to create releases
+  id-token: write # cosign keyless OIDC
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # GoReleaser uses git history for the changelog
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+      - uses: sigstore/cosign-installer@v3
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

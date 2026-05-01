@@ -1,0 +1,31 @@
+---
+/* Custom Starlight header — passes Starlight's own route data through to
+ * the default header so the search box and theme toggle keep working, and
+ * adds a "Back to butverify.dev" link for parity with the marketing nav. */
+import Default from "@astrojs/starlight/components/Header.astro";
+import type { Props } from "@astrojs/starlight/props";
+
+const props = Astro.props as Props;
+---
+
+<div class="bv-docs-header">
+  <Default {...props} />
+  <a href="/" class="bv-back" aria-label="Back to butverify.dev">← butverify.dev</a>
+</div>
+
+<style>
+  .bv-docs-header {
+    display: contents;
+  }
+  .bv-back {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.75rem;
+    color: var(--sl-color-gray-3);
+    font-size: 0.85rem;
+    text-decoration: none;
+  }
+  .bv-back:hover {
+    color: var(--sl-color-white);
+  }
+</style>
