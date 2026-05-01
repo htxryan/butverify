@@ -35,8 +35,9 @@ The cross-repo deploy-order runbook (which side ships first when a CLI feature d
 - **Go (ubuntu-latest)** — `gofmt` format check → `go vet` → `golangci-lint` → `go test -count=1 ./...` → `go build ./cmd/bv`.
 - **Marketing site (ubuntu-latest)** — `pnpm install --frozen-lockfile` → `pnpm typecheck` (`astro check`) → `pnpm test` (vitest, ~145 tests) → `pnpm build` (Astro) → `pnpm link-check` (no broken internal links in `dist/`).
 - **Secret scan** — `gitleaks` across full git history.
+- **CodeQL** — static security + quality analysis on Go and JS/TS using the `security-extended` query suite. Runs on every push/PR + weekly schedule. Severity ≥ high blocks merge via the ruleset's `code_scanning` rule.
 
-All three are required by the `main` branch ruleset before merge.
+All four are required by the `main` branch ruleset before merge.
 
 ## Releasing the CLI
 
