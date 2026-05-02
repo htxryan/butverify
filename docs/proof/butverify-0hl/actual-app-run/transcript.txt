@@ -1,0 +1,160 @@
+$ go build -o /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/bv ./cmd/bv
+BUILD: PASS
+
+====================================================================================================
+
+SCENARIO: Expired saved token refreshes before bv push creates a site
+
+Live local server: http://127.0.0.1:58199
+Command:
+$ BV_CONFIG_PATH=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/proactive-expired-token-refresh/config.json GH_TOKEN=ghu_refresh /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/bv --json push /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/proactive-expired-token-refresh/site
+
+Exit code: 0
+
+CLI stdout:
+{
+  "site_id": "site_proactive_expired_token_refresh",
+  "url": "https://site_proactive_expired_token_refresh.butverify.dev",
+  "status": "active",
+  "manifest_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "expires_at": "2026-05-04T10:00:00Z",
+  "idempotent": false,
+  "file_count": 1,
+  "total_bytes": 69
+}
+
+CLI stderr:
+<empty>
+
+Server observed real HTTP requests:
+  1. POST /v1/auth/login auth=Bearer ghu_refresh
+  2. POST /v1/sites attempt=1 auth=Bearer ghs_new_proactive upload_id=u-0012391e4f7402acfa823d31
+  3. PUT /staging/proactive-expired-token-refresh bytes=2048 content_type=application/x-tar
+  4. POST /v1/sites/site_proactive_expired_token_refresh/finalize attempt=1 auth=Bearer ghs_new_proactive
+
+Config after run:
+{
+  "api_url": "http://127.0.0.1:58199",
+  "installation_token": "ghs_new_proactive",
+  "tenant_id": "t_alice",
+  "account_login": "alice",
+  "installation_id": 42,
+  "token_expires_at": "2026-05-03T00:32:32Z"
+}
+
+Result: PASS - config now stores refreshed token ghs_new_proactive
+
+
+====================================================================================================
+
+SCENARIO: bv push retries create after 401 by refreshing the token
+
+Live local server: http://127.0.0.1:58206
+Command:
+$ BV_CONFIG_PATH=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/create-401-refresh-retry/config.json GH_TOKEN=ghu_refresh /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/bv --json push /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/create-401-refresh-retry/site
+
+Exit code: 0
+
+CLI stdout:
+{
+  "site_id": "site_create_401_refresh_retry",
+  "url": "https://site_create_401_refresh_retry.butverify.dev",
+  "status": "active",
+  "manifest_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "expires_at": "2026-05-04T10:00:00Z",
+  "idempotent": false,
+  "file_count": 1,
+  "total_bytes": 66
+}
+
+CLI stderr:
+<empty>
+
+Server observed real HTTP requests:
+  1. POST /v1/sites attempt=1 auth=Bearer ghs_old_create_retry upload_id=u-03c4c157c2a125e54ca2291d
+  2. POST /v1/auth/login auth=Bearer ghu_refresh
+  3. POST /v1/sites attempt=2 auth=Bearer ghs_new_create_retry upload_id=u-03c4c157c2a125e54ca2291d
+  4. PUT /staging/create-401-refresh-retry bytes=2048 content_type=application/x-tar
+  5. POST /v1/sites/site_create_401_refresh_retry/finalize attempt=1 auth=Bearer ghs_new_create_retry
+
+Config after run:
+{
+  "api_url": "http://127.0.0.1:58206",
+  "installation_token": "ghs_new_create_retry",
+  "tenant_id": "t_alice",
+  "account_login": "alice",
+  "installation_id": 42,
+  "token_expires_at": "2026-05-03T00:32:33Z"
+}
+
+Result: PASS - config now stores refreshed token ghs_new_create_retry
+
+
+====================================================================================================
+
+SCENARIO: bv push retries finalize after 401 by refreshing the token
+
+Live local server: http://127.0.0.1:58214
+Command:
+$ BV_CONFIG_PATH=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/finalize-401-refresh-retry/config.json GH_TOKEN=ghu_refresh /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/bv --json push /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/finalize-401-refresh-retry/site
+
+Exit code: 0
+
+CLI stdout:
+{
+  "site_id": "site_finalize_401_refresh_retry",
+  "url": "https://site_finalize_401_refresh_retry.butverify.dev",
+  "status": "active",
+  "manifest_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "expires_at": "2026-05-04T10:00:00Z",
+  "idempotent": false,
+  "file_count": 1,
+  "total_bytes": 68
+}
+
+CLI stderr:
+<empty>
+
+Server observed real HTTP requests:
+  1. POST /v1/sites attempt=1 auth=Bearer ghs_old_finalize_retry upload_id=u-d17659b093a93cf5aa71928d
+  2. PUT /staging/finalize-401-refresh-retry bytes=2048 content_type=application/x-tar
+  3. POST /v1/sites/site_finalize_401_refresh_retry/finalize attempt=1 auth=Bearer ghs_old_finalize_retry
+  4. POST /v1/auth/login auth=Bearer ghu_refresh
+  5. POST /v1/sites/site_finalize_401_refresh_retry/finalize attempt=2 auth=Bearer ghs_new_finalize_retry
+
+Config after run:
+{
+  "api_url": "http://127.0.0.1:58214",
+  "installation_token": "ghs_new_finalize_retry",
+  "tenant_id": "t_alice",
+  "account_login": "alice",
+  "installation_id": 42,
+  "token_expires_at": "2026-05-03T00:32:33Z"
+}
+
+Result: PASS - config now stores refreshed token ghs_new_finalize_retry
+
+
+====================================================================================================
+
+SCENARIO: Explicit --token override does not auto-refresh
+
+Live local server: http://127.0.0.1:58220
+Command:
+$ GH_TOKEN=ghu_should_not_be_used /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/bv --json --api-url http://127.0.0.1:58220 --token ghs_override_rejected push /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/token-override-no-refresh/site
+
+Exit code: 4
+
+CLI stdout:
+{"error":{"code":"UNAUTHENTICATED","message":"override token rejected","status":401}}
+
+CLI stderr:
+<empty>
+
+Server observed real HTTP requests:
+  1. POST /v1/sites attempt=1 auth=Bearer ghs_override_rejected upload_id=u-ce97b5da6a2f53167ffc1d54
+
+Config after run:
+<not used: explicit --token override>
+
+Result: PASS - explicit --token override returned 401 without calling /v1/auth/login

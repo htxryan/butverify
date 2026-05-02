@@ -1,0 +1,21 @@
+SCENARIO: Explicit --token override does not auto-refresh
+
+Live local server: http://127.0.0.1:58220
+Command:
+$ GH_TOKEN=ghu_should_not_be_used /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/bv --json --api-url http://127.0.0.1:58220 --token ghs_override_rejected push /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/token-override-no-refresh/site
+
+Exit code: 4
+
+CLI stdout:
+{"error":{"code":"UNAUTHENTICATED","message":"override token rejected","status":401}}
+
+CLI stderr:
+<empty>
+
+Server observed real HTTP requests:
+  1. POST /v1/sites attempt=1 auth=Bearer ghs_override_rejected upload_id=u-ce97b5da6a2f53167ffc1d54
+
+Config after run:
+<not used: explicit --token override>
+
+Result: PASS - explicit --token override returned 401 without calling /v1/auth/login
