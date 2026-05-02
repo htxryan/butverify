@@ -1,0 +1,7 @@
+{
+  "name": "butverify",
+  "private": true,
+  "devDependencies": {
+    "compound-agent": "2.7.2"
+  }
+}

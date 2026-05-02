@@ -34,3 +34,9 @@ coverage/
 .dolt/
 *.db
 .beads-credential-key
+
+# compound-agent managed
+.compound-agent/
+
+# Serena (local tool state)
+.serena/
