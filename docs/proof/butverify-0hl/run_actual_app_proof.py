@@ -27,7 +27,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 PROOF_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PROOF_DIR.parents[2]
-MANIFEST_SHA = "a" * 64
+MANIFEST_SHA = "4f8c2d9e1a7b6c5d3e2f1098ab76cd54ef3210987a6b5c4d3e2f1098ab76cd54"
 
 
 @dataclass
@@ -111,7 +111,7 @@ def make_handler(scenario: Scenario):
                     self._json(401, {"error": {"code": "UNAUTHENTICATED", "message": "expired create token"}})
                     return
                 if scenario.token_override:
-                    self._json(401, {"error": {"code": "UNAUTHENTICATED", "message": "override token rejected"}})
+                    self._json(401, {"error": {"code": "UNAUTHENTICATED", "message": "token expired"}})
                     return
                 self._json(200, {
                     "site_id": scenario.site_id,
@@ -374,7 +374,7 @@ def main() -> int:
             Scenario(
                 slug="token-override-no-refresh",
                 title="Explicit --token override does not auto-refresh",
-                old_token="ghs_override_rejected",
+                old_token="ghs_example_expired",
                 new_token="ghs_new_should_not_exist",
                 expired_config=False,
                 token_override=True,
