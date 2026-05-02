@@ -5,47 +5,56 @@ Beads issue: `butverify-0hl`
 PR: https://github.com/htxryan/butverify/pull/9
 Branch: `feat/bv-push-token-refresh`
 
-## Primary Proof: Actual Running CLI
+## Primary Proof: What A User Sees
 
-This proof exercises the actual built `bv` CLI binary against live local HTTP servers that implement the control-plane and staging endpoints used by `bv push`. The harness builds `bv`, starts a live server per scenario, seeds real `BV_CONFIG_PATH` config files, invokes `bv push`, captures stdout/stderr, records every HTTP request the server observed, and verifies the config after the run.
+The primary proof is now the same terminal output a user would see when running the real `bv` CLI in human mode. These screenshots intentionally hide server traces, config dumps, JSON mode, test output, and CI output.
 
-Run command:
+User-facing screenshots live in [`user-terminal-run/`](./user-terminal-run/):
+
+- [`01-expired-token-user-push.png`](./user-terminal-run/01-expired-token-user-push.png): user runs `bv push demo-site` after the saved token expired and sees `Refreshed auth token for alice`, followed by successful publish output.
+- [`02-create-401-user-push.png`](./user-terminal-run/02-create-401-user-push.png): user runs `bv push demo-site`; the API rejects create once behind the scenes, but the CLI refreshes and still publishes successfully.
+- [`03-finalize-401-user-push.png`](./user-terminal-run/03-finalize-401-user-push.png): user runs `bv push demo-site`; the API rejects finalize once behind the scenes, but the CLI refreshes and still publishes successfully.
+- [`04-token-override-user-push.png`](./user-terminal-run/04-token-override-user-push.png): user runs `bv --token ghs_example_expired push demo-site` and sees a normal auth error, proving explicit token overrides are not silently refreshed.
+- [`full-user-terminal-session.png`](./user-terminal-run/full-user-terminal-session.png): combined terminal view of the same user-facing runs.
+- [`full-user-terminal-transcript.txt`](./user-terminal-run/full-user-terminal-transcript.txt): raw copyable terminal transcript.
+
+Run command used to generate the user-facing proof:
+
+```bash
+python3 docs/proof/butverify-0hl/run_user_terminal_proof.py
+```
+
+## Backing Evidence: Live Local App Runs
+
+The user-facing screenshots are backed by an actual running CLI harness. It builds the real `bv` binary, starts live local HTTP servers that implement the `bv push` control-plane and staging endpoints, seeds real `BV_CONFIG_PATH` config files, invokes `bv push`, and records the HTTP requests observed by the server.
+
+Backing evidence lives in [`actual-app-run/`](./actual-app-run/):
+
+- [`full-transcript.png`](./actual-app-run/full-transcript.png): complete screenshot of all actual `bv` runs with server observations.
+- [`proactive-expired-token-refresh.png`](./actual-app-run/proactive-expired-token-refresh.png): server observes `/v1/auth/login` before create, then create/upload/finalize with the refreshed token.
+- [`create-401-refresh-retry.png`](./actual-app-run/create-401-refresh-retry.png): server observes create attempt 1 with the old token, `/v1/auth/login`, then create attempt 2 with the refreshed token.
+- [`finalize-401-refresh-retry.png`](./actual-app-run/finalize-401-refresh-retry.png): server observes finalize attempt 1 with the old token, `/v1/auth/login`, then finalize attempt 2 with the refreshed token.
+- [`token-override-no-refresh.png`](./actual-app-run/token-override-no-refresh.png): server observes only `/v1/sites` with the explicit token override and no `/v1/auth/login`.
+- [`transcript.txt`](./actual-app-run/transcript.txt): raw copyable transcript for the backing run.
+
+Run command used to generate the backing evidence:
 
 ```bash
 python3 docs/proof/butverify-0hl/run_actual_app_proof.py
 ```
 
-The generated actual-app evidence lives in [`actual-app-run/`](./actual-app-run/):
-
-- [`full-transcript.png`](./actual-app-run/full-transcript.png): complete screenshot of all actual `bv` runs.
-- [`proactive-expired-token-refresh.png`](./actual-app-run/proactive-expired-token-refresh.png): expired saved token refreshes before `POST /v1/sites`.
-- [`create-401-refresh-retry.png`](./actual-app-run/create-401-refresh-retry.png): create returns 401, `bv` refreshes, then retries create with the new token.
-- [`finalize-401-refresh-retry.png`](./actual-app-run/finalize-401-refresh-retry.png): finalize returns 401, `bv` refreshes, then retries finalize with the new token.
-- [`token-override-no-refresh.png`](./actual-app-run/token-override-no-refresh.png): explicit `--token` override returns 401 and does not call `/v1/auth/login`.
-- [`transcript.txt`](./actual-app-run/transcript.txt): raw copyable transcript backing the screenshots.
-
-Verified observable outcomes:
-
-- expired saved installation token triggers `/v1/auth/login` before `POST /v1/sites`
-- refreshed installation token is used for create/upload/finalize
-- create 401 triggers one refresh and one create retry
-- finalize 401 triggers one refresh and one finalize retry
-- refreshed token is persisted back to the config file
-- explicit `--token` override does not refresh and does not call `/v1/auth/login`
-
 ## Screenshot Inspection
 
-I inspected the regenerated screenshot files after the actual CLI harness ran:
+I inspected the final screenshots after regenerating them:
 
-- `actual-app-run/full-transcript.png` shows `go build`, four live local server URLs, each actual `bv` invocation, CLI stdout/stderr, observed HTTP requests, config-after-run state, and PASS results.
-- `actual-app-run/proactive-expired-token-refresh.png` shows `/v1/auth/login` before create, then create/upload/finalize using `ghs_new_proactive`.
-- `actual-app-run/create-401-refresh-retry.png` shows create attempt 1 with `ghs_old_create_retry`, `/v1/auth/login`, then create attempt 2 with `ghs_new_create_retry`.
-- `actual-app-run/finalize-401-refresh-retry.png` shows finalize attempt 1 with `ghs_old_finalize_retry`, `/v1/auth/login`, then finalize attempt 2 with `ghs_new_finalize_retry`.
-- `actual-app-run/token-override-no-refresh.png` shows `--token ghs_override_rejected`, exit code 4, and only one `/v1/sites` request with no `/v1/auth/login`.
+- `user-terminal-run/01-expired-token-user-push.png` shows only `bv push demo-site`, `Refreshed auth token for alice`, and normal successful human-mode publish output.
+- `user-terminal-run/02-create-401-user-push.png` shows only `bv push demo-site`, refresh, and successful human-mode publish output.
+- `user-terminal-run/03-finalize-401-user-push.png` shows only `bv push demo-site`, successful progress output, refresh, and final successful human-mode publish output.
+- `user-terminal-run/04-token-override-user-push.png` shows only `bv --token ghs_example_expired push demo-site` and `bv: error UNAUTHENTICATED: token expired`.
 
 ## Supporting Test/CI Evidence
 
-These are secondary checks only; the actual running CLI screenshots above are the primary proof.
+These are secondary checks only; the user-facing CLI screenshots above are the primary proof.
 
 - [`01-manual-qa-terminal.png`](./01-manual-qa-terminal.png) shows the focused regression tests passing.
 - [`02-ci-green-terminal.png`](./02-ci-green-terminal.png) shows `gh pr checks 9` with every remote CI check passing.
