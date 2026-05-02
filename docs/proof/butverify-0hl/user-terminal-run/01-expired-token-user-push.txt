@@ -1,0 +1,10 @@
+$ bv push demo-site
+Refreshed auth token for alice
+Provisioned site_kind_otter_7q (https://site_kind_otter_7q.butverify.dev)
+Bundled 1 files (53 bytes)
+Uploaded tar to staging
+Site:        site_kind_otter_7q
+URL:         https://site_kind_otter_7q.butverify.dev
+Status:      active
+Manifest:    4f8c2d9e1a7b6c5d3e2f1098ab76cd54ef3210987a6b5c4d3e2f1098ab76cd54
+Expires:     2026-05-04T10:00:00Z

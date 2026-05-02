@@ -1,0 +1,5 @@
+1. POST /v1/sites attempt=1 auth=Bearer ghs_old_user_finalize upload_id=u-1e43f35baa32ea9b80b73f16
+2. PUT /staging/bright-lynx-2k bytes=2048 content_type=application/x-tar
+3. POST /v1/sites/site_bright_lynx_2k/finalize attempt=1 auth=Bearer ghs_old_user_finalize
+4. POST /v1/auth/login auth=Bearer ghu_refresh
+5. POST /v1/sites/site_bright_lynx_2k/finalize attempt=2 auth=Bearer ghs_new_user_finalize
