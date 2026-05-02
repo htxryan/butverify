@@ -1,8 +1,8 @@
 SCENARIO: Expired saved token refreshes before bv push creates a site
 
-Live local server: http://127.0.0.1:58199
+Live local server: http://127.0.0.1:61365
 Command:
-$ BV_CONFIG_PATH=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/proactive-expired-token-refresh/config.json GH_TOKEN=ghu_refresh /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/bv --json push /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-53sbpsi7/proactive-expired-token-refresh/site
+$ BV_CONFIG_PATH=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-5dosb49y/proactive-expired-token-refresh/config.json GH_TOKEN=ghu_refresh /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-5dosb49y/bv --json push /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/bv-actual-app-proof-5dosb49y/proactive-expired-token-refresh/site
 
 Exit code: 0
 
@@ -11,7 +11,7 @@ CLI stdout:
   "site_id": "site_proactive_expired_token_refresh",
   "url": "https://site_proactive_expired_token_refresh.butverify.dev",
   "status": "active",
-  "manifest_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "manifest_sha": "4f8c2d9e1a7b6c5d3e2f1098ab76cd54ef3210987a6b5c4d3e2f1098ab76cd54",
   "expires_at": "2026-05-04T10:00:00Z",
   "idempotent": false,
   "file_count": 1,
@@ -23,18 +23,18 @@ CLI stderr:
 
 Server observed real HTTP requests:
   1. POST /v1/auth/login auth=Bearer ghu_refresh
-  2. POST /v1/sites attempt=1 auth=Bearer ghs_new_proactive upload_id=u-0012391e4f7402acfa823d31
+  2. POST /v1/sites attempt=1 auth=Bearer ghs_new_proactive upload_id=u-92813d96a3c5d2eb1719bca2
   3. PUT /staging/proactive-expired-token-refresh bytes=2048 content_type=application/x-tar
   4. POST /v1/sites/site_proactive_expired_token_refresh/finalize attempt=1 auth=Bearer ghs_new_proactive
 
 Config after run:
 {
-  "api_url": "http://127.0.0.1:58199",
+  "api_url": "http://127.0.0.1:61365",
   "installation_token": "ghs_new_proactive",
   "tenant_id": "t_alice",
   "account_login": "alice",
   "installation_id": 42,
-  "token_expires_at": "2026-05-03T00:32:32Z"
+  "token_expires_at": "2026-05-03T00:47:21Z"
 }
 
 Result: PASS - config now stores refreshed token ghs_new_proactive
