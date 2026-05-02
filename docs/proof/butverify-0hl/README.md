@@ -5,60 +5,54 @@ Beads issue: `butverify-0hl`
 PR: https://github.com/htxryan/butverify/pull/9
 Branch: `feat/bv-push-token-refresh`
 
-## What Was Proved
+## Primary Proof: Actual Running CLI
 
-This is a CLI-only change, so the user-visible surface is terminal execution of the `bv` push flow. The proof artifacts in this folder capture real command output and screenshot images generated from that output.
+This proof exercises the actual built `bv` CLI binary against live local HTTP servers that implement the control-plane and staging endpoints used by `bv push`. The harness builds `bv`, starts a live server per scenario, seeds real `BV_CONFIG_PATH` config files, invokes `bv push`, captures stdout/stderr, records every HTTP request the server observed, and verifies the config after the run.
+
+Run command:
+
+```bash
+python3 docs/proof/butverify-0hl/run_actual_app_proof.py
+```
+
+The generated actual-app evidence lives in [`actual-app-run/`](./actual-app-run/):
+
+- [`full-transcript.png`](./actual-app-run/full-transcript.png): complete screenshot of all actual `bv` runs.
+- [`proactive-expired-token-refresh.png`](./actual-app-run/proactive-expired-token-refresh.png): expired saved token refreshes before `POST /v1/sites`.
+- [`create-401-refresh-retry.png`](./actual-app-run/create-401-refresh-retry.png): create returns 401, `bv` refreshes, then retries create with the new token.
+- [`finalize-401-refresh-retry.png`](./actual-app-run/finalize-401-refresh-retry.png): finalize returns 401, `bv` refreshes, then retries finalize with the new token.
+- [`token-override-no-refresh.png`](./actual-app-run/token-override-no-refresh.png): explicit `--token` override returns 401 and does not call `/v1/auth/login`.
+- [`transcript.txt`](./actual-app-run/transcript.txt): raw copyable transcript backing the screenshots.
 
 Verified observable outcomes:
 
-- an expired saved installation token is refreshed before `POST /v1/sites`
-- a 401 from `POST /v1/sites` refreshes the token and retries once
-- an explicit `--token` override does not auto-refresh
-- remote PR CI checks are green
-
-## Screenshots
-
-- [`01-manual-qa-terminal.png`](./01-manual-qa-terminal.png) shows the manual QA command and all three auth-refresh scenarios passing.
-- [`02-ci-green-terminal.png`](./02-ci-green-terminal.png) shows `gh pr checks 9` with every remote CI check passing.
-
-## Raw Command Evidence
-
-Manual QA command output is preserved in [`manual-qa-output.txt`](./manual-qa-output.txt):
-
-```text
-$ go test -count=1 -v ./cmd/bv -run 'TestPushRefreshesExpiredTokenBeforeCreate|TestPushRefreshesAndRetriesCreateAfter401|TestPushTokenOverrideDoesNotAutoRefresh'
-=== RUN   TestPushRefreshesExpiredTokenBeforeCreate
---- PASS: TestPushRefreshesExpiredTokenBeforeCreate (0.00s)
-=== RUN   TestPushRefreshesAndRetriesCreateAfter401
---- PASS: TestPushRefreshesAndRetriesCreateAfter401 (0.00s)
-=== RUN   TestPushTokenOverrideDoesNotAutoRefresh
---- PASS: TestPushTokenOverrideDoesNotAutoRefresh (0.00s)
-PASS
-ok  	github.com/htxryan/butverify/cmd/bv	0.346s
-```
-
-Remote CI command output is preserved in [`ci-checks-output.txt`](./ci-checks-output.txt):
-
-```text
-$ gh pr checks 9
-CodeQL	pass	2s	https://github.com/htxryan/butverify/runs/74076490583
-CodeQL (go)	pass	1m1s	https://github.com/htxryan/butverify/actions/runs/25264315173/job/74076449352
-CodeQL (javascript-typescript)	pass	1m4s	https://github.com/htxryan/butverify/actions/runs/25264315173/job/74076449345
-Go (ubuntu-latest)	pass	16s	https://github.com/htxryan/butverify/actions/runs/25264315170/job/74076449272
-Marketing site (ubuntu-latest)	pass	39s	https://github.com/htxryan/butverify/actions/runs/25264315170/job/74076449274
-Secret scan	pass	6s	https://github.com/htxryan/butverify/actions/runs/25264315170/job/74076449278
-```
+- expired saved installation token triggers `/v1/auth/login` before `POST /v1/sites`
+- refreshed installation token is used for create/upload/finalize
+- create 401 triggers one refresh and one create retry
+- finalize 401 triggers one refresh and one finalize retry
+- refreshed token is persisted back to the config file
+- explicit `--token` override does not refresh and does not call `/v1/auth/login`
 
 ## Screenshot Inspection
 
-I inspected both screenshot files after generating them:
+I inspected the regenerated screenshot files after the actual CLI harness ran:
 
-- `01-manual-qa-terminal.png` clearly shows the manual QA command and `PASS` results for `TestPushRefreshesExpiredTokenBeforeCreate`, `TestPushRefreshesAndRetriesCreateAfter401`, and `TestPushTokenOverrideDoesNotAutoRefresh`.
-- `02-ci-green-terminal.png` clearly shows `gh pr checks 9` with CodeQL, CodeQL (go), CodeQL (javascript-typescript), Go, Marketing site, and Secret scan all passing.
+- `actual-app-run/full-transcript.png` shows `go build`, four live local server URLs, each actual `bv` invocation, CLI stdout/stderr, observed HTTP requests, config-after-run state, and PASS results.
+- `actual-app-run/proactive-expired-token-refresh.png` shows `/v1/auth/login` before create, then create/upload/finalize using `ghs_new_proactive`.
+- `actual-app-run/create-401-refresh-retry.png` shows create attempt 1 with `ghs_old_create_retry`, `/v1/auth/login`, then create attempt 2 with `ghs_new_create_retry`.
+- `actual-app-run/finalize-401-refresh-retry.png` shows finalize attempt 1 with `ghs_old_finalize_retry`, `/v1/auth/login`, then finalize attempt 2 with `ghs_new_finalize_retry`.
+- `actual-app-run/token-override-no-refresh.png` shows `--token ghs_override_rejected`, exit code 4, and only one `/v1/sites` request with no `/v1/auth/login`.
 
-## Additional Verification
+## Supporting Test/CI Evidence
 
-These checks passed before the PR was opened:
+These are secondary checks only; the actual running CLI screenshots above are the primary proof.
+
+- [`01-manual-qa-terminal.png`](./01-manual-qa-terminal.png) shows the focused regression tests passing.
+- [`02-ci-green-terminal.png`](./02-ci-green-terminal.png) shows `gh pr checks 9` with every remote CI check passing.
+- [`manual-qa-output.txt`](./manual-qa-output.txt) preserves focused regression test output.
+- [`ci-checks-output.txt`](./ci-checks-output.txt) preserves CI check output.
+
+Additional local verification before the PR was opened:
 
 ```bash
 go test -count=1 ./...
