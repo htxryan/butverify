@@ -1,20 +1,40 @@
-// `bv login` exchanges a GitHub user token for a butverify installation
-// token via POST /v1/auth/login, then persists the resulting config so
-// subsequent commands authenticate as the resolved tenant.
+// `bv login` resolves a butverify installation token and persists it to
+// the config file. It supports two paths under the same command:
 //
-// Token sources, tried in order, are:
+//  1. **GitHub-exchange path (default)**: take a GitHub user token (PAT
+//     or `gh auth token`), POST it to /v1/auth/login on the control
+//     plane, receive a freshly-minted installation token in the
+//     response, and save the resulting config. The user-token sources
+//     are tried in order:
 //
-//  1. --gh-token flag
-//  2. GH_TOKEN env
-//  3. GITHUB_TOKEN env
-//  4. `gh auth token` subprocess (degrades silently if gh is missing
-//     or not signed in)
-//  5. Interactive TTY prompt (only when os.Stdin is a character device,
-//     so a piped stdin never blocks waiting for input)
+//       a. --gh-token flag
+//       b. GH_TOKEN env
+//       c. GITHUB_TOKEN env
+//       d. `gh auth token` subprocess (degrades silently if gh is
+//          missing or not signed in)
+//       e. Interactive TTY prompt (only when os.Stdin is a character
+//          device, so a piped stdin never blocks waiting for input)
 //
-// The flag-or-env path lets CI shovel a token in without a TTY; the gh
-// fallback matches what most contributors already have configured; the
-// TTY prompt is the last resort for someone running `bv login` cold.
+//     The flag-or-env path lets CI shovel a token in without a TTY;
+//     the gh fallback matches what most contributors already have
+//     configured; the TTY prompt is the last resort for someone
+//     running `bv login` cold.
+//
+//  2. **Direct-token path (replaces the legacy `bv init`)**: when an
+//     installation token is supplied via --token, the global
+//     --token override, BV_TOKEN env, or piped stdin, skip the
+//     GitHub exchange entirely. Call /v1/auth/whoami with the
+//     installation token to fetch tenant metadata, then save the
+//     config the same way the exchange path would. This is the path
+//     for CI/scripted flows where someone hands you a pre-minted
+//     installation token and you don't have a GitHub user token to
+//     trade in.
+//
+// Token-type rule of thumb:
+//   - --gh-token / GH_TOKEN / GITHUB_TOKEN / `gh auth token` / TTY
+//     prompt → GitHub user token (will be exchanged).
+//   - --token / BV_TOKEN / piped stdin → butverify installation
+//     token (no exchange; saved directly).
 
 package main
 
@@ -39,14 +59,9 @@ func runLogin(ctx context.Context, g globalContext, args []string) int {
 	fs.SetOutput(io.Discard)
 	apiURL := fs.String("api-url", "", "control-plane base URL (defaults to https://api.butverify.dev)")
 	ghTokenFlag := fs.String("gh-token", "", "GitHub user token (otherwise read from GH_TOKEN/GITHUB_TOKEN, gh CLI, or TTY prompt)")
+	installTokenFlag := fs.String("token", "", "butverify installation token (skip GH exchange; otherwise read from BV_TOKEN env or piped stdin)")
 	if err := fs.Parse(args); err != nil {
 		g.w.Status("bv login: %v", err)
-		return 2
-	}
-
-	ghToken := strings.TrimSpace(resolveGHToken(ctx, *ghTokenFlag))
-	if ghToken == "" {
-		g.w.Error(toErrorEnvelope(errors.New("no GitHub token available (use --gh-token, set GH_TOKEN/GITHUB_TOKEN, sign in with the gh CLI, or run interactively)")))
 		return 2
 	}
 
@@ -56,6 +71,20 @@ func runLogin(ctx context.Context, g globalContext, args []string) int {
 	}
 	if url == "" {
 		url = config.DefaultAPIURL
+	}
+
+	// Direct-token path takes precedence: if the caller provided an
+	// installation token through any source, skip the GH exchange. We
+	// check this BEFORE any GH-token resolution so the flag/env/stdin
+	// hierarchy is never short-circuited by a stale gh CLI auth state.
+	if installToken := resolveInstallationToken(*installTokenFlag, g); installToken != "" {
+		return runLoginWithInstallationToken(ctx, g, url, installToken)
+	}
+
+	ghToken := strings.TrimSpace(resolveGHToken(ctx, *ghTokenFlag))
+	if ghToken == "" {
+		g.w.Error(toErrorEnvelope(errors.New("no GitHub token available (use --gh-token, set GH_TOKEN/GITHUB_TOKEN, sign in with the gh CLI, or run interactively); or pass --token <installation-token> if you already have one)")))
+		return 2
 	}
 
 	// IMPORTANT: send the GH user token as the bearer here — the server
@@ -94,6 +123,85 @@ func runLogin(ctx context.Context, g globalContext, args []string) int {
 	g.w.Human("Logged in as %s (tenant=%s)", resp.AccountLogin, resp.TenantID)
 	g.w.Status("Config written to %s", path)
 	return 0
+}
+
+// runLoginWithInstallationToken handles the direct-token path:
+// validate the token via /v1/auth/whoami and persist the config.
+//
+// This is the replacement for the legacy `bv init` flow. Splitting it
+// out of runLogin keeps the GH-exchange branch readable and lets tests
+// drive each path independently.
+func runLoginWithInstallationToken(ctx context.Context, g globalContext, url, token string) int {
+	client := api.New(url, token, Version)
+	var who api.WhoamiResponse
+	if err := client.Do(ctx, "GET", "/v1/auth/whoami", nil, &who); err != nil {
+		return reportError(g.w, err)
+	}
+
+	cfg := &config.Config{
+		APIURL:            url,
+		InstallationToken: token,
+		TenantID:          who.TenantID,
+		AccountLogin:      who.AccountLogin,
+		InstallationID:    who.InstallationID,
+		TokenExpiresAt:    who.ExpiresAt,
+	}
+	if err := config.Save(cfg); err != nil {
+		return reportError(g.w, err)
+	}
+
+	if g.w.IsJSON() {
+		_ = g.w.JSON(struct {
+			OK             bool   `json:"ok"`
+			TenantID       string `json:"tenant_id"`
+			AccountLogin   string `json:"account_login"`
+			InstallationID int64  `json:"installation_id"`
+			ExpiresAt      string `json:"expires_at"`
+		}{true, who.TenantID, who.AccountLogin, who.InstallationID, who.ExpiresAt})
+		return 0
+	}
+	path, _ := config.Path()
+	g.w.Human("Logged in as %s (tenant=%s)", who.AccountLogin, who.TenantID)
+	g.w.Status("Config written to %s", path)
+	return 0
+}
+
+// resolveInstallationToken walks the documented installation-token
+// source priority and returns the first non-empty value. Sources are
+// independent: a missing source silently falls through. Stdin is only
+// consumed when piped (not a TTY) so an interactive caller never
+// blocks waiting for input.
+func resolveInstallationToken(flagVal string, g globalContext) string {
+	if flagVal != "" {
+		return strings.TrimSpace(flagVal)
+	}
+	if g.tokenOverride != "" {
+		return strings.TrimSpace(g.tokenOverride)
+	}
+	if v := os.Getenv("BV_TOKEN"); v != "" {
+		return strings.TrimSpace(v)
+	}
+	if v := readInstallationTokenFromStdin(); v != "" {
+		return v
+	}
+	return ""
+}
+
+// readInstallationTokenFromStdin consumes one line from stdin if and
+// only if stdin is piped (not a TTY). Mirrors the `bv init` behavior
+// so existing CI integrations like `gh auth token | bv login` continue
+// to work after the init→login fold.
+func readInstallationTokenFromStdin() string {
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return ""
+	}
+	if (stat.Mode() & os.ModeCharDevice) != 0 {
+		return ""
+	}
+	r := bufio.NewReader(os.Stdin)
+	line, _ := r.ReadString('\n')
+	return strings.TrimSpace(line)
 }
 
 // resolveGHToken walks the documented source priority and returns the

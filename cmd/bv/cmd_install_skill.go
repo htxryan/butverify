@@ -258,7 +258,7 @@ func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
 	cfg, err := loadConfig(g)
 	if err != nil {
 		if errors.Is(err, config.ErrNotInitialized) {
-			g.w.Error(toErrorEnvelope(errors.New("not logged in; run `bv login` (or `bv init`) first")))
+			g.w.Error(toErrorEnvelope(errors.New("not logged in; run `bv login` first")))
 			logInstallSkillError(g, opts.Agent, "NOT_LOGGED_IN", "")
 			return 2
 		}
@@ -266,7 +266,7 @@ func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
 		return reportError(g.w, err)
 	}
 	if cfg.InstallationToken == "" {
-		g.w.Error(toErrorEnvelope(errors.New("not logged in; run `bv login` (or `bv init`) first")))
+		g.w.Error(toErrorEnvelope(errors.New("not logged in; run `bv login` first")))
 		logInstallSkillError(g, opts.Agent, "NOT_LOGGED_IN", "")
 		return 2
 	}

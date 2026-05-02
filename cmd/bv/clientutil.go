@@ -14,13 +14,13 @@ import (
 
 // loadConfig loads the persisted config and applies any command-line
 // overrides for api_url / token. Returns ErrNotInitialized if no config
-// exists and the override didn't supply an inline token (init bypasses).
+// exists and the override didn't supply an inline token (login bypasses).
 func loadConfig(g globalContext) (*config.Config, error) {
 	c, err := config.Load()
 	if err != nil {
 		if errors.Is(err, config.ErrNotInitialized) {
 			// If both override flags are present, synthesize a config so the
-			// command can still run (e.g. in CI without `bv init`).
+			// command can still run (e.g. in CI without `bv login`).
 			if g.apiURLOverride != "" && g.tokenOverride != "" {
 				return &config.Config{APIURL: g.apiURLOverride, InstallationToken: g.tokenOverride}, nil
 			}
@@ -38,7 +38,7 @@ func loadConfig(g globalContext) (*config.Config, error) {
 }
 
 // newClient builds an API client from the loaded config + global overrides.
-// Used by every command except `init` (which builds its own client without
+// Used by every command except `login` (which builds its own client without
 // requiring an existing config).
 func newClient(g globalContext) (*api.Client, *config.Config, error) {
 	c, err := loadConfig(g)
@@ -49,9 +49,16 @@ func newClient(g globalContext) (*api.Client, *config.Config, error) {
 		c.APIURL = config.DefaultAPIURL
 	}
 	if c.InstallationToken == "" {
-		return nil, nil, errors.New("no installation token configured; run `bv init` or pass --token")
+		return nil, nil, errors.New("no installation token configured; run `bv login` or pass --token")
 	}
 	return api.New(c.APIURL, c.InstallationToken, Version), c, nil
+}
+
+// toErrorEnvelope wraps a plain error in the structured envelope shape
+// the JSON-output mode emits. Lives here (in the shared utilities)
+// rather than in any one command because every subcommand uses it.
+func toErrorEnvelope(err error) output.ErrorEnvelope {
+	return output.ErrorEnvelope{Message: err.Error(), Code: "BAD_REQUEST"}
 }
 
 // reportError prints the error in the writer's mode and returns a process
