@@ -13,6 +13,19 @@ type WhoamiResponse struct {
 	ExpiresAt      string `json:"expires_at"`
 }
 
+// LoginResponse is the POST /v1/auth/login payload. The server exchanges
+// a GitHub user token for a freshly-minted installation token; the CLI
+// persists the result via bv login so subsequent commands authenticate
+// with `Token` against the control plane.
+type LoginResponse struct {
+	Token          string `json:"token"`
+	ExpiresAt      string `json:"expires_at"`
+	TenantID       string `json:"tenant_id"`
+	AccountLogin   string `json:"account_login"`
+	InstallationID int64  `json:"installation_id"`
+	AccountType    string `json:"account_type"`
+}
+
 // CreateSiteRequest is the POST /v1/sites body.
 type CreateSiteRequest struct {
 	UploadID   string `json:"upload_id"`

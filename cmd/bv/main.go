@@ -58,6 +58,9 @@ Usage:
 
 Commands:
   init              Capture an installation token + tenant context.
+  login             Exchange a GitHub user token for a butverify token
+                    via POST /v1/auth/login (uses --gh-token, GH_TOKEN,
+                    GITHUB_TOKEN, the gh CLI, or a TTY prompt).
   push <dir>        Bundle <dir> and upload it as a new site.
   ls                List sites for the authenticated tenant.
   rm <site-id>      Soft-delete a site.
@@ -162,6 +165,8 @@ func main() {
 		exitCode = runVersion(w)
 	case "init":
 		exitCode = runInit(ctx, gctx, cmdArgs)
+	case "login":
+		exitCode = runLogin(ctx, gctx, cmdArgs)
 	case "whoami":
 		exitCode = runWhoami(ctx, gctx, cmdArgs)
 	case "push":
