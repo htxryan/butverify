@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/htxryan/butverify/internal/config"
 	"github.com/htxryan/butverify/internal/output"
@@ -358,6 +359,231 @@ func TestPushHappyPath(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"manifest_sha"`) {
 		t.Errorf("stdout missing manifest_sha: %s", stdout.String())
+	}
+}
+
+func TestPushRefreshesExpiredTokenBeforeCreate(t *testing.T) {
+	withCleanGHEnv(t)
+	t.Setenv("GH_TOKEN", "ghu_refresh")
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>hello</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		stagingURL   string
+		loginCalls   int
+		createAuth   string
+		finalizeAuth string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/auth/login" && r.Method == "POST":
+			loginCalls++
+			if got := r.Header.Get("Authorization"); got != "Bearer ghu_refresh" {
+				t.Errorf("refresh Authorization=%q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"token":           "ghs_new",
+				"expires_at":      time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+				"tenant_id":       "t_alice",
+				"account_login":   "alice",
+				"installation_id": 42,
+				"account_type":    "User",
+			})
+		case r.URL.Path == "/v1/sites" && r.Method == "POST":
+			createAuth = r.Header.Get("Authorization")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"site_id":               "abcd1234",
+				"url":                   "https://abcd1234.butverify.dev",
+				"expires_at":            "2026-05-04T10:00:00Z",
+				"upload_token":          "use_installation_token",
+				"manifest_url":          "https://api.example.test/v1/sites/abcd1234/manifest",
+				"status":                "creating",
+				"idempotent":            false,
+				"upload_url":            stagingURL,
+				"upload_max_bytes":      100 * 1024 * 1024,
+				"upload_url_expires_at": "2026-04-27T10:15:00Z",
+			})
+		case r.URL.Path == "/staging-put" && r.Method == "PUT":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/v1/sites/abcd1234/finalize" && r.Method == "POST":
+			finalizeAuth = r.Header.Get("Authorization")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"site_id":        "abcd1234",
+				"status":         "active",
+				"url":            "https://abcd1234.butverify.dev",
+				"manifest_url":   "x",
+				"expires_at":     "2026-05-04T10:00:00Z",
+				"manifest_sha":   strings.Repeat("a", 64),
+				"last_pushed_at": "2026-04-27T10:00:00Z",
+				"idempotent":     false,
+			})
+		default:
+			http.Error(w, `{"error":{"code":"NOT_FOUND","message":"no route"}}`, http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	stagingURL = srv.URL + "/staging-put"
+
+	isolatedConfigPath(t)
+	if err := config.Save(&config.Config{
+		APIURL:            srv.URL,
+		InstallationToken: "ghs_old",
+		TenantID:          "t_alice",
+		AccountLogin:      "alice",
+		InstallationID:    42,
+		TokenExpiresAt:    time.Now().Add(-time.Hour).UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	w, stdout, _ := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{dir})
+	if rc != 0 {
+		t.Fatalf("push rc: %d, stdout=%s", rc, stdout.String())
+	}
+	if loginCalls != 1 {
+		t.Fatalf("loginCalls=%d, want 1", loginCalls)
+	}
+	if createAuth != "Bearer ghs_new" {
+		t.Errorf("create Authorization=%q, want refreshed token", createAuth)
+	}
+	if finalizeAuth != "Bearer ghs_new" {
+		t.Errorf("finalize Authorization=%q, want refreshed token", finalizeAuth)
+	}
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if loaded.InstallationToken != "ghs_new" {
+		t.Errorf("persisted token=%q, want refreshed token", loaded.InstallationToken)
+	}
+}
+
+func TestPushRefreshesAndRetriesCreateAfter401(t *testing.T) {
+	withCleanGHEnv(t)
+	t.Setenv("GH_TOKEN", "ghu_refresh")
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>hello</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		stagingURL string
+		loginCalls int
+		createAuth []string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/auth/login" && r.Method == "POST":
+			loginCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"token":           "ghs_new",
+				"expires_at":      time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+				"tenant_id":       "t_alice",
+				"account_login":   "alice",
+				"installation_id": 42,
+				"account_type":    "User",
+			})
+		case r.URL.Path == "/v1/sites" && r.Method == "POST":
+			createAuth = append(createAuth, r.Header.Get("Authorization"))
+			if len(createAuth) == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "UNAUTHENTICATED", "message": "expired"}})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"site_id":               "abcd1234",
+				"url":                   "https://abcd1234.butverify.dev",
+				"expires_at":            "2026-05-04T10:00:00Z",
+				"upload_token":          "use_installation_token",
+				"manifest_url":          "https://api.example.test/v1/sites/abcd1234/manifest",
+				"status":                "creating",
+				"idempotent":            false,
+				"upload_url":            stagingURL,
+				"upload_max_bytes":      100 * 1024 * 1024,
+				"upload_url_expires_at": "2026-04-27T10:15:00Z",
+			})
+		case r.URL.Path == "/staging-put" && r.Method == "PUT":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/v1/sites/abcd1234/finalize" && r.Method == "POST":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"site_id":        "abcd1234",
+				"status":         "active",
+				"url":            "https://abcd1234.butverify.dev",
+				"manifest_url":   "x",
+				"expires_at":     "2026-05-04T10:00:00Z",
+				"manifest_sha":   strings.Repeat("a", 64),
+				"last_pushed_at": "2026-04-27T10:00:00Z",
+				"idempotent":     false,
+			})
+		default:
+			http.Error(w, `{"error":{"code":"NOT_FOUND","message":"no route"}}`, http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	stagingURL = srv.URL + "/staging-put"
+
+	isolatedConfigPath(t)
+	if err := config.Save(&config.Config{
+		APIURL:            srv.URL,
+		InstallationToken: "ghs_old",
+		TenantID:          "t_alice",
+		AccountLogin:      "alice",
+		InstallationID:    42,
+		TokenExpiresAt:    time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	w, stdout, _ := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{dir})
+	if rc != 0 {
+		t.Fatalf("push rc: %d, stdout=%s", rc, stdout.String())
+	}
+	if loginCalls != 1 {
+		t.Fatalf("loginCalls=%d, want 1", loginCalls)
+	}
+	if got, want := strings.Join(createAuth, ","), "Bearer ghs_old,Bearer ghs_new"; got != want {
+		t.Errorf("create auth sequence=%q, want %q", got, want)
+	}
+}
+
+func TestPushTokenOverrideDoesNotAutoRefresh(t *testing.T) {
+	withCleanGHEnv(t)
+	t.Setenv("GH_TOKEN", "ghu_refresh")
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>hello</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	loginCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/auth/login":
+			loginCalls++
+			http.Error(w, `{"error":{"code":"UNEXPECTED","message":"should not refresh"}}`, http.StatusInternalServerError)
+		case r.URL.Path == "/v1/sites" && r.Method == "POST":
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "UNAUTHENTICATED", "message": "expired"}})
+		default:
+			http.Error(w, `{"error":{"code":"NOT_FOUND","message":"no route"}}`, http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	isolatedConfigPath(t)
+
+	w, _, _ := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w, apiURLOverride: srv.URL, tokenOverride: "ghs_override"}, []string{dir})
+	if rc != 4 {
+		t.Fatalf("push rc=%d, want 4", rc)
+	}
+	if loginCalls != 0 {
+		t.Fatalf("loginCalls=%d, want 0", loginCalls)
 	}
 }
 

@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/htxryan/butverify/internal/api"
 	"github.com/htxryan/butverify/pkg/tarbundle"
@@ -65,9 +66,15 @@ type pushResult struct {
 // writes output via g.w. Returns a process exit code (0 on success); the
 // caller propagates that to os.Exit. errMsg is empty on success.
 func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
-	client, _, err := newClient(g)
+	client, cfg, err := newClient(g)
 	if err != nil {
 		return reportError(g.w, err)
+	}
+	if canAutoRefreshToken(g, cfg) && shouldRefreshToken(cfg, time.Now()) {
+		client, err = refreshInstallationToken(ctx, g, cfg)
+		if err != nil {
+			return reportError(g.w, err)
+		}
 	}
 	createReq := api.CreateSiteRequest{UploadID: opts.uploadID, Template: opts.template}
 	if opts.ttlSeconds > 0 {
@@ -76,10 +83,20 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 	}
 	var created api.CreateSiteResponse
 	if err := client.Do(ctx, "POST", "/v1/sites", createReq, &created); err != nil {
-		if opts.createErrTransform != nil {
-			err = opts.createErrTransform(err)
+		if api.IsUnauthenticated(err) && canAutoRefreshToken(g, cfg) {
+			refreshedClient, refreshErr := refreshInstallationToken(ctx, g, cfg)
+			if refreshErr != nil {
+				return reportError(g.w, refreshErr)
+			}
+			client = refreshedClient
+			err = client.Do(ctx, "POST", "/v1/sites", createReq, &created)
 		}
-		return reportError(g.w, err)
+		if err != nil {
+			if opts.createErrTransform != nil {
+				err = opts.createErrTransform(err)
+			}
+			return reportError(g.w, err)
+		}
 	}
 	g.w.Status("Provisioned %s (%s)", created.SiteID, created.URL)
 
@@ -101,7 +118,18 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 	var fin api.FinalizeResponse
 	if err := client.Do(ctx, "POST", "/v1/sites/"+created.SiteID+"/finalize",
 		api.FinalizeRequest{UploadID: opts.uploadID}, &fin); err != nil {
-		return reportError(g.w, err)
+		if api.IsUnauthenticated(err) && canAutoRefreshToken(g, cfg) {
+			refreshedClient, refreshErr := refreshInstallationToken(ctx, g, cfg)
+			if refreshErr != nil {
+				return reportError(g.w, refreshErr)
+			}
+			client = refreshedClient
+			err = client.Do(ctx, "POST", "/v1/sites/"+created.SiteID+"/finalize",
+				api.FinalizeRequest{UploadID: opts.uploadID}, &fin)
+		}
+		if err != nil {
+			return reportError(g.w, err)
+		}
 	}
 
 	res := pushResult{
