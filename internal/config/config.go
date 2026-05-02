@@ -5,7 +5,7 @@
 //
 //   - api_url            — control-plane base URL (default api.butverify.dev)
 //   - installation_token — the GitHub App installation token used as Bearer
-//   - tenant_id          — captured from /v1/auth/whoami after `bv init`
+//   - tenant_id          — captured from /v1/auth/whoami after `bv login`
 //   - account_login      — captured from /v1/auth/whoami
 //   - token_expires_at   — RFC 3339 timestamp; CLI refreshes when within
 //     TokenRefreshThreshold of expiry (E-2a).
@@ -38,8 +38,8 @@ type Config struct {
 const DefaultAPIURL = "https://api.butverify.dev"
 
 // ErrNotInitialized is returned by Load when no config exists. Callers
-// surface this as "run `bv init` first."
-var ErrNotInitialized = errors.New("config: not initialized; run `bv init`")
+// surface this as "run `bv login` first."
+var ErrNotInitialized = errors.New("config: not initialized; run `bv login`")
 
 // Path returns the absolute path to the config file. Honors $XDG_CONFIG_HOME
 // when set, otherwise ~/.config/butverify/config.json.

@@ -514,7 +514,7 @@ func TestNotLoggedIn(t *testing.T) {
 	if rc == 0 {
 		t.Errorf("BVS-E-6: not-logged-in should exit non-zero")
 	}
-	if !strings.Contains(stdout, "bv login") && !strings.Contains(stdout, "bv init") {
+	if !strings.Contains(stdout, "bv login") {
 		t.Errorf("BVS-E-6: error envelope should reference bv login: %s", stdout)
 	}
 	// NO files should have been written.

@@ -2,7 +2,10 @@
 //
 // Commands at MVP (E7):
 //
-//	bv init      — capture an installation token + tenant context
+//	bv login     — resolve and persist a butverify installation token
+//	               (exchange a GitHub user token via /v1/auth/login,
+//	               or save a pre-minted installation token directly
+//	               via --token / BV_TOKEN / piped stdin)
 //	bv push      — bundle a directory and upload it as a new site
 //	bv ls        — list sites for the authenticated tenant
 //	bv rm        — soft-delete a site (DELETE /v1/sites/{id})
@@ -57,10 +60,13 @@ Usage:
   bv [--json] [--api-url URL] [--token TOK] <command> [args]
 
 Commands:
-  init              Capture an installation token + tenant context.
-  login             Exchange a GitHub user token for a butverify token
-                    via POST /v1/auth/login (uses --gh-token, GH_TOKEN,
+  login             Resolve and persist a butverify installation token.
+                    Default flow: exchange a GitHub user token via
+                    POST /v1/auth/login (uses --gh-token, GH_TOKEN,
                     GITHUB_TOKEN, the gh CLI, or a TTY prompt).
+                    Direct flow: pass an installation token via
+                    --token, BV_TOKEN env, or piped stdin to skip
+                    the exchange (CI / scripted setups).
   push <dir>        Bundle <dir> and upload it as a new site.
   ls                List sites for the authenticated tenant.
   rm <site-id>      Soft-delete a site.
@@ -164,7 +170,19 @@ func main() {
 	case "version":
 		exitCode = runVersion(w)
 	case "init":
-		exitCode = runInit(ctx, gctx, cmdArgs)
+		// `bv init` was folded into `bv login` (which now accepts
+		// --token / BV_TOKEN / piped stdin to skip the GitHub
+		// exchange). Keep the dispatch here for one release with a
+		// clear migration message instead of a generic "unknown
+		// command" so existing users — and any CI scripts still
+		// running `gh auth token | bv init` — get a precise pointer.
+		fmt.Fprintln(os.Stderr, "bv: 'bv init' has been replaced by 'bv login'.")
+		fmt.Fprintln(os.Stderr, "    Equivalent invocations:")
+		fmt.Fprintln(os.Stderr, "      bv init --token <tok>     →  bv login --token <tok>")
+		fmt.Fprintln(os.Stderr, "      cmd | bv init             →  cmd | bv login")
+		fmt.Fprintln(os.Stderr, "      BV_TOKEN=<tok> bv init    →  BV_TOKEN=<tok> bv login")
+		fmt.Fprintln(os.Stderr, "    Or to mint a fresh token from GitHub: just run 'bv login'.")
+		exitCode = 2
 	case "login":
 		exitCode = runLogin(ctx, gctx, cmdArgs)
 	case "whoami":

@@ -31,13 +31,14 @@ import (
 	"github.com/htxryan/butverify/internal/config"
 )
 
-// withCleanGHEnv unsets GH_TOKEN/GITHUB_TOKEN for the duration of the
-// test so a developer's ambient env never bleeds into a token-source
-// assertion. t.Setenv handles restore-on-cleanup.
+// withCleanGHEnv unsets GH_TOKEN/GITHUB_TOKEN/BV_TOKEN for the duration
+// of the test so a developer's ambient env never bleeds into a
+// token-source assertion. t.Setenv handles restore-on-cleanup.
 func withCleanGHEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("BV_TOKEN", "")
 }
 
 // ---------------- resolveGHToken priority ----------------
@@ -283,6 +284,119 @@ func TestRunLogin_NoTokenSourceFails(t *testing.T) {
 		t.Errorf("rc=%d, want 2 (usage)", rc)
 	}
 	_ = stderr
+}
+
+// ---------------- direct-token path (replaces `bv init`) ----------------
+
+// directTokenServer responds to GET /v1/auth/whoami with a fixed tenant
+// payload, asserting the bearer is the installation token the caller
+// supplied (NOT a GH user token). Returns the server + a pointer that
+// will hold the bearer the server saw.
+func directTokenServer(t *testing.T) (*httptest.Server, *string) {
+	t.Helper()
+	var sawAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/auth/whoami" {
+			http.Error(w, `{"error":{"code":"NOT_FOUND","message":"no route"}}`, 404)
+			return
+		}
+		sawAuth = r.Header.Get("Authorization")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tenant_id":       "t_alice",
+			"account_login":   "alice",
+			"installation_id": 42,
+			"account_type":    "User",
+			"expires_at":      "2026-05-01T11:00:00Z",
+		})
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &sawAuth
+}
+
+func TestRunLogin_DirectTokenViaFlag_HitsWhoamiAndPersistsConfig(t *testing.T) {
+	withCleanGHEnv(t)
+	srv, sawAuth := directTokenServer(t)
+	cfgPath := isolatedConfigPath(t)
+
+	w, stdout, _ := newJSONWriter(t)
+	g := globalContext{w: w, apiURLOverride: srv.URL}
+	rc := runLogin(context.Background(), g, []string{"--token", "ghs_existing_installation_token"})
+	if rc != 0 {
+		t.Fatalf("rc=%d stdout=%s", rc, stdout.String())
+	}
+	if *sawAuth != "Bearer ghs_existing_installation_token" {
+		t.Errorf("server saw Authorization=%q, want Bearer + the supplied installation token", *sawAuth)
+	}
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if loaded.InstallationToken != "ghs_existing_installation_token" {
+		t.Errorf("config installation_token=%q, want the token we passed (no exchange)", loaded.InstallationToken)
+	}
+	if loaded.TenantID != "t_alice" || loaded.AccountLogin != "alice" || loaded.InstallationID != 42 {
+		t.Errorf("tenant fields wrong after whoami: %+v", loaded)
+	}
+	st, err := os.Stat(cfgPath)
+	if err != nil {
+		t.Fatalf("stat config: %v", err)
+	}
+	if mode := st.Mode().Perm(); mode != 0o600 {
+		t.Errorf("config mode=%o, want 0600", mode)
+	}
+}
+
+func TestRunLogin_DirectTokenViaGlobalOverride(t *testing.T) {
+	withCleanGHEnv(t)
+	srv, sawAuth := directTokenServer(t)
+	isolatedConfigPath(t)
+
+	w, _, _ := newJSONWriter(t)
+	// Mirrors `bv --token X login`: main.go pre-parses --token into
+	// globalContext.tokenOverride before dispatch.
+	g := globalContext{w: w, apiURLOverride: srv.URL, tokenOverride: "ghs_global_override"}
+	if rc := runLogin(context.Background(), g, nil); rc != 0 {
+		t.Fatalf("rc=%d", rc)
+	}
+	if *sawAuth != "Bearer ghs_global_override" {
+		t.Errorf("server saw %q, want Bearer ghs_global_override", *sawAuth)
+	}
+}
+
+func TestRunLogin_DirectTokenViaBVTokenEnv(t *testing.T) {
+	withCleanGHEnv(t)
+	t.Setenv("BV_TOKEN", "ghs_from_env")
+	srv, sawAuth := directTokenServer(t)
+	isolatedConfigPath(t)
+
+	w, _, _ := newJSONWriter(t)
+	g := globalContext{w: w, apiURLOverride: srv.URL}
+	if rc := runLogin(context.Background(), g, nil); rc != 0 {
+		t.Fatalf("rc=%d", rc)
+	}
+	if *sawAuth != "Bearer ghs_from_env" {
+		t.Errorf("server saw %q, want Bearer ghs_from_env", *sawAuth)
+	}
+}
+
+func TestRunLogin_DirectTokenFlagWinsOverGHToken(t *testing.T) {
+	// When BOTH --token and a GH source are present, the installation
+	// token wins (skip the exchange). This is the "you already have a
+	// fresh installation token, don't bother re-minting" case.
+	withCleanGHEnv(t)
+	t.Setenv("GH_TOKEN", "ghu_user_token") // would normally exchange
+	srv, sawAuth := directTokenServer(t)
+	isolatedConfigPath(t)
+
+	w, _, _ := newJSONWriter(t)
+	g := globalContext{w: w, apiURLOverride: srv.URL}
+	rc := runLogin(context.Background(), g, []string{"--token", "ghs_direct"})
+	if rc != 0 {
+		t.Fatalf("rc=%d", rc)
+	}
+	if *sawAuth != "Bearer ghs_direct" {
+		t.Errorf("server saw %q, want Bearer ghs_direct (direct-token path must skip exchange)", *sawAuth)
+	}
 }
 
 // ---------------- main.go cohesion ----------------
