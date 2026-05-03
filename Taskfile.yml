@@ -99,7 +99,7 @@ tasks:
 
   docs:generate:
     desc: Generate CLI reference docs from the bv CLI reference source
-    cmd: go run ./scripts/generate-cli-docs.go
+    cmd: go run ./cmd/generate-cli-docs
 
   docs:check:
     desc: Check generated docs are fresh

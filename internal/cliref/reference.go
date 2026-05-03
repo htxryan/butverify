@@ -1,3 +1,4 @@
+// Package cliref defines shared bv CLI command metadata for help and docs.
 package cliref
 
 import (
