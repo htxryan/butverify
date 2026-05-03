@@ -33,7 +33,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/htxryan/butverify/internal/imageopt"
+	"github.com/htxryan/butverify/pkg/imageopt"
 )
 
 // Options control how a directory is bundled. The zero value is fine for
