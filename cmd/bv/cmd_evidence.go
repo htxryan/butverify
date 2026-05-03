@@ -212,6 +212,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	}
 	return runPushFlow(ctx, g, pushOptions{
 		dir:                bundleDir,
+		sourcePath:         publishSourcePath(*from),
 		uploadID:           uploadID,
 		ttlSeconds:         *ttlFlag,
 		template:           "evidence",

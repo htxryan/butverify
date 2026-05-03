@@ -53,16 +53,21 @@ func TestDashboard_RejectsEmpty(t *testing.T) {
 
 func TestDashboard_PushSendsTemplateField(t *testing.T) {
 	srv := newFakeServer(t)
+	withClientHostname(t, "cli-host.test")
+	withPublishInvocationMetadata(t, "bv push ./dist", "/workspace/project")
 	dir := t.TempDir()
 	csvPath := filepath.Join(dir, "data.csv")
 	_ = os.WriteFile(csvPath, []byte("date,n\n2026-04-01,1\n2026-04-02,2\n"), 0o644)
 
-	var seenTemplate string
+	var (
+		seenTemplate string
+		createBody   map[string]any
+		finalizeBody map[string]any
+	)
 	stagingURL := ""
 	srv.create = func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		if v, ok := body["template"].(string); ok {
+		_ = json.NewDecoder(r.Body).Decode(&createBody)
+		if v, ok := createBody["template"].(string); ok {
 			seenTemplate = v
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -79,6 +84,7 @@ func TestDashboard_PushSendsTemplateField(t *testing.T) {
 		})
 	}
 	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
+		_ = json.NewDecoder(r.Body).Decode(&finalizeBody)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"site_id":        siteID,
 			"status":         "active",
@@ -110,6 +116,11 @@ func TestDashboard_PushSendsTemplateField(t *testing.T) {
 	}
 	if seenTemplate != "dashboard" {
 		t.Errorf("expected template=dashboard, got %q", seenTemplate)
+	}
+	assertPublishMetadata(t, createBody, publishSourcePath(csvPath), "cli-host.test")
+	assertPublishMetadata(t, finalizeBody, publishSourcePath(csvPath), "cli-host.test")
+	if got := finalizeBody["upload_id"]; got != createBody["upload_id"] {
+		t.Errorf("finalize upload_id=%v, want create upload_id %v", got, createBody["upload_id"])
 	}
 }
 

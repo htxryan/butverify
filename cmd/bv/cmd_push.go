@@ -69,6 +69,7 @@ func runPush(ctx context.Context, g globalContext, args []string) int {
 	}
 	return runPushFlow(ctx, g, pushOptions{
 		dir:           dir,
+		sourcePath:    publishSourcePath(dir),
 		uploadID:      uploadID,
 		ttlSeconds:    *ttlFlag,
 		includeHidden: *includeHidden,

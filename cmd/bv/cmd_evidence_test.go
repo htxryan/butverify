@@ -277,15 +277,20 @@ func TestEvidence_PushEVE8DistinctiveError(t *testing.T) {
 
 func TestEvidence_PushHappyPath(t *testing.T) {
 	srv := newFakeServer(t)
+	withClientHostname(t, "cli-host.test")
+	withPublishInvocationMetadata(t, "bv push ./dist", "/workspace/project")
 	dir := t.TempDir()
 	jsonPath := stageEvidenceFixture(t, dir)
 
-	var seenTemplate string
+	var (
+		seenTemplate string
+		createBody   map[string]any
+		finalizeBody map[string]any
+	)
 	stagingURL := ""
 	srv.create = func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		if v, ok := body["template"].(string); ok {
+		_ = json.NewDecoder(r.Body).Decode(&createBody)
+		if v, ok := createBody["template"].(string); ok {
 			seenTemplate = v
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -302,6 +307,7 @@ func TestEvidence_PushHappyPath(t *testing.T) {
 		})
 	}
 	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
+		_ = json.NewDecoder(r.Body).Decode(&finalizeBody)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"site_id":        siteID,
 			"status":         "active",
@@ -333,6 +339,11 @@ func TestEvidence_PushHappyPath(t *testing.T) {
 	}
 	if seenTemplate != "evidence" {
 		t.Errorf("expected template=evidence on POST /v1/sites, got %q", seenTemplate)
+	}
+	assertPublishMetadata(t, createBody, publishSourcePath(jsonPath), "cli-host.test")
+	assertPublishMetadata(t, finalizeBody, publishSourcePath(jsonPath), "cli-host.test")
+	if got := finalizeBody["upload_id"]; got != createBody["upload_id"] {
+		t.Errorf("finalize upload_id=%v, want create upload_id %v", got, createBody["upload_id"])
 	}
 	if !strings.Contains(stdout.String(), `"template": "evidence"`) {
 		t.Errorf("response should echo template: %s", stdout.String())

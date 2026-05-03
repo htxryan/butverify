@@ -80,6 +80,7 @@ func runDashboard(ctx context.Context, g globalContext, args []string) int {
 	}
 	return runPushFlow(ctx, g, pushOptions{
 		dir:        outDir,
+		sourcePath: publishSourcePath(*from),
 		uploadID:   uploadID,
 		ttlSeconds: *ttlFlag,
 		template:   "dashboard",
