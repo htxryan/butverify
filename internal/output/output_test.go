@@ -23,9 +23,10 @@ func TestJSONMode(t *testing.T) {
 	if out["hello"] != "world" {
 		t.Errorf("unexpected: %+v", out)
 	}
-	// Human() and Status() should be no-ops in JSON mode.
+	// Human(), Status(), and Progress() should be no-ops in JSON mode.
 	w.Human("ignored")
 	w.Status("ignored")
+	w.Progress("ignored")
 	if strings.Contains(stdout.String(), "ignored") {
 		t.Error("Human should not write in JSON mode")
 	}
@@ -48,6 +49,11 @@ func TestHumanMode(t *testing.T) {
 	if !strings.Contains(stderr.String(), "uploading") {
 		t.Errorf("stderr: %q", stderr.String())
 	}
+	stderr.Reset()
+	w.Progress("bundling...")
+	if got := stderr.String(); got != "bundling...\n" {
+		t.Errorf("progress fallback stderr: %q", got)
+	}
 	// JSON() is a no-op in human mode.
 	stdout.Reset()
 	if err := w.JSON(map[string]string{"x": "y"}); err != nil {
@@ -55,6 +61,49 @@ func TestHumanMode(t *testing.T) {
 	}
 	if stdout.Len() != 0 {
 		t.Error("JSON should be no-op in human mode")
+	}
+}
+
+func TestTTYModeRedrawsProgressAndClearsBeforeHumanOutput(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	w := NewWithTTY(ModeHuman, &stdout, &stderr)
+	w.Progress("[1/4] first")
+	w.Progress("[2/4] second")
+	w.Human("done")
+
+	if got := stderr.String(); got != "\r\033[2K[1/4] first\r\033[2K[2/4] second\r\033[2K\n" {
+		t.Fatalf("stderr: %q", got)
+	}
+	if got := stdout.String(); got != "done\n" {
+		t.Fatalf("stdout: %q", got)
+	}
+}
+
+func TestTTYModeKeepsStatusLinesNewlineDelimited(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	w := NewWithTTY(ModeHuman, &stdout, &stderr)
+	w.Status("first")
+	w.Status("second")
+
+	if got := stderr.String(); got != "first\nsecond\n" {
+		t.Fatalf("stderr: %q", got)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout: %q", stdout.String())
+	}
+}
+
+func TestTTYModeClearsBeforeErrorOutput(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	w := NewWithTTY(ModeHuman, &stdout, &stderr)
+	w.Progress("[1/4] first")
+	w.Error(ErrorEnvelope{Code: "BAD_REQUEST", Message: "missing field"})
+
+	if got := stderr.String(); got != "\r\033[2K[1/4] first\r\033[2K\nbv: error BAD_REQUEST: missing field\n" {
+		t.Fatalf("stderr: %q", got)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout: %q", stdout.String())
 	}
 }
 

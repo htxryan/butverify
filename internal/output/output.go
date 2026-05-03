@@ -30,19 +30,26 @@ const (
 // Writer is the sink for command output. Bind once at command init via
 // New() then pass through the call tree.
 type Writer struct {
-	mode   Mode
-	stdout io.Writer
-	stderr io.Writer
+	mode           Mode
+	stdout         io.Writer
+	stderr         io.Writer
+	statusTTY      bool
+	progressActive bool
 }
 
 // New constructs a Writer bound to os.Stdout / os.Stderr.
 func New(mode Mode) *Writer {
-	return &Writer{mode: mode, stdout: os.Stdout, stderr: os.Stderr}
+	return &Writer{mode: mode, stdout: os.Stdout, stderr: os.Stderr, statusTTY: isTerminal(os.Stderr)}
 }
 
 // NewWith allows tests to inject custom sinks.
 func NewWith(mode Mode, stdout, stderr io.Writer) *Writer {
 	return &Writer{mode: mode, stdout: stdout, stderr: stderr}
+}
+
+// NewWithTTY allows tests to force terminal-style stderr rendering.
+func NewWithTTY(mode Mode, stdout, stderr io.Writer) *Writer {
+	return &Writer{mode: mode, stdout: stdout, stderr: stderr, statusTTY: true}
 }
 
 // IsJSON returns true when the writer is in --json mode.
@@ -64,23 +71,39 @@ func (w *Writer) Human(format string, args ...any) {
 	if w.mode != ModeHuman {
 		return
 	}
+	w.clearProgressLine()
 	fmt.Fprintf(w.stdout, format, args...)
 	if len(format) > 0 && format[len(format)-1] != '\n' {
 		fmt.Fprintln(w.stdout)
 	}
 }
 
-// Status writes a status line to stderr (human mode only — JSON consumers
-// don't want noise on stderr either, but if the caller WANTS to surface a
-// progress hint they can call this).
+// Status writes a newline-delimited status line to stderr in human mode.
 func (w *Writer) Status(format string, args ...any) {
 	if w.mode != ModeHuman {
 		return
 	}
+	w.clearProgressLine()
 	fmt.Fprintf(w.stderr, format, args...)
 	if len(format) > 0 && format[len(format)-1] != '\n' {
 		fmt.Fprintln(w.stderr)
 	}
+}
+
+// Progress redraws an in-place status line when stderr is a terminal. When
+// stderr is not a terminal it falls back to deterministic newline-delimited
+// status output for captured logs and tests.
+func (w *Writer) Progress(format string, args ...any) {
+	if w.mode != ModeHuman {
+		return
+	}
+	if w.statusTTY {
+		fmt.Fprint(w.stderr, "\r\033[2K")
+		fmt.Fprintf(w.stderr, format, args...)
+		w.progressActive = true
+		return
+	}
+	w.Status(format, args...)
 }
 
 // ErrorEnvelope mirrors the server's ApiError shape so error output is
@@ -97,6 +120,7 @@ type ErrorEnvelope struct {
 // Error writes an error envelope. In JSON mode emits a structured object;
 // in human mode prints a formatted error line to stderr.
 func (w *Writer) Error(env ErrorEnvelope) {
+	w.clearProgressLine()
 	if w.mode == ModeJSON {
 		_ = json.NewEncoder(w.stdout).Encode(struct {
 			Error ErrorEnvelope `json:"error"`
@@ -108,4 +132,17 @@ func (w *Writer) Error(env ErrorEnvelope) {
 		return
 	}
 	fmt.Fprintf(w.stderr, "bv: error %s: %s\n", env.Code, env.Message)
+}
+
+func (w *Writer) clearProgressLine() {
+	if !w.statusTTY || !w.progressActive {
+		return
+	}
+	fmt.Fprint(w.stderr, "\r\033[2K\n")
+	w.progressActive = false
+}
+
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
