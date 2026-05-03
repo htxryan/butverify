@@ -25,6 +25,7 @@ func runDashboard(ctx context.Context, g globalContext, args []string) int {
 	maxRows := flags.Int("max-table-rows")
 	uploadIDFlag := flags.String("upload-id")
 	ttlFlag := flags.Int64("ttl-seconds")
+	imageQuality := flags.Int("image-quality")
 	modeFlag := flags.String("mode")
 	if err := fs.Parse(args); err != nil {
 		return handleFlagParseError(g, "dashboard", err)
@@ -80,6 +81,7 @@ func runDashboard(ctx context.Context, g globalContext, args []string) int {
 		uploadID:     uploadID,
 		ttlSeconds:   *ttlFlag,
 		template:     "dashboard",
+		imageQuality: *imageQuality,
 		modeOverride: *modeFlag,
 	})
 }
