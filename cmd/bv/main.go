@@ -47,6 +47,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/htxryan/butverify/internal/cliref"
 	"github.com/htxryan/butverify/internal/output"
 )
 
@@ -54,47 +55,7 @@ import (
 // "dev" in development.
 var Version = "dev"
 
-const usageText = `bv — the butverify.dev agent CLI
-
-Usage:
-  bv [--json] [--api-url URL] [--token TOK] <command> [args]
-
-Commands:
-  login             Resolve and persist a butverify installation token.
-                    Default flow: exchange a GitHub user token via
-                    POST /v1/auth/login (uses --gh-token, GH_TOKEN,
-                    GITHUB_TOKEN, the gh CLI, or a TTY prompt).
-                    Direct flow: pass an installation token via
-                    --token, BV_TOKEN env, or piped stdin to skip
-                    the exchange (CI / scripted setups).
-  logout            Clear saved authentication and switch default mode to local.
-  mode [local|remote]
-                    Print or set the default publish mode.
-  push <dir>        Bundle <dir> and upload it as a new site.
-  ls                List sites for the authenticated tenant.
-  rm <site-id>      Soft-delete a site.
-  cat <site-id> <path>
-                    Print a single file from a site to stdout.
-  get <site-id> <dest>
-                    Download a site's files into <dest>.
-  manifest <site-id>
-                    Print the site's manifest.json.
-  pin <site-id>     Pin a site (paid plan; disables TTL).
-  unpin <site-id>   Unpin a site (re-stamps the default TTL).
-  report --from <out.json> [--out DIR] [--push]
-                    Render a static report site from JSON.
-  dashboard --from <data.csv> [--out DIR] [--push]
-                    Render a static dashboard site from CSV.
-  evidence --from <evidence.json> [--out DIR] [--push] [--layout stacked|carousel]
-                    Render a static evidence/gallery site from JSON.
-                    Use --schema to print the JSON Schema for the input.
-  install-skill <agent> [--force|--uninstall] [--project]
-                    Install the /butverify agent skill (v1: claude only).
-  whoami            Print the resolved tenant for the configured token.
-  version           Print the CLI version.
-
-Run 'bv <command> --help' for command-specific help.
-`
+var usageText = cliref.UsageText()
 
 func main() {
 	if len(os.Args) < 2 {
@@ -147,6 +108,12 @@ func main() {
 	if cmd == "" {
 		fmt.Fprint(os.Stderr, usageText)
 		os.Exit(2)
+	}
+	if len(cmdArgs) == 1 && (cmdArgs[0] == "--help" || cmdArgs[0] == "-h") {
+		if command, ok := cliref.Lookup(cmd); ok && !command.Hidden {
+			printCommandHelp(cmd)
+			os.Exit(0)
+		}
 	}
 
 	mode := output.ModeHuman
