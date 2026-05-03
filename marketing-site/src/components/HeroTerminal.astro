@@ -6,8 +6,6 @@
  *
  * Reduced motion: animations are disabled and the final frame is shown.
  */
-const SITE_ID = "kind-otter-7q";
-const SITE_URL = `https://${SITE_ID}.butverify.dev`;
 ---
 
 <figure
@@ -23,12 +21,13 @@ const SITE_URL = `https://${SITE_ID}.butverify.dev`;
       <span class="title">~/my-site</span>
     </div>
     <pre class="screen"><span class="line"><span class="prompt">$</span> <span class="cmd">bv push .</span></span>
-<span class="line out l1">Provisioned <span class="hl">{SITE_ID}</span></span>
-<span class="line out l2">Bundled 142 files (3.4 MB)</span>
-<span class="line out l3">Uploaded tar to staging</span>
-<span class="line out l4">Site:    <span class="dim">{SITE_ID}</span></span>
-<span class="line out l5">URL:     <span class="link">{SITE_URL}</span></span>
-<span class="line out l6">Status:  <span class="ok">live</span></span></pre>
+<span class="line out l1">[1/4] [#####---------------] Provisioned</span>
+<span class="line out l2">[2/4] [##########----------] Bundled 142 files</span>
+<span class="line out l3">[3/4] [###############-----] Uploaded</span>
+<span class="line out l4">[4/4] [####################] Published</span>
+<span class="line out l5">Published site</span>
+<span class="line out l6">  Open URL: <span class="link">https://kind-otter-7q.butverify.dev</span></span>
+<span class="line out l7">  Status:   <span class="ok">live</span></span></pre>
   </div>
 
   <div class="window browser" aria-hidden="true">
@@ -36,7 +35,7 @@ const SITE_URL = `https://${SITE_ID}.butverify.dev`;
       <span class="dot dot-r"></span>
       <span class="dot dot-y"></span>
       <span class="dot dot-g"></span>
-      <span class="addr">{SITE_URL}</span>
+      <span class="addr">https://kind-otter-7q.butverify.dev</span>
     </div>
     <div class="page">
       <div class="page-h"></div>
@@ -200,6 +199,7 @@ const SITE_URL = `https://${SITE_ID}.butverify.dev`;
   .l4 { animation-delay: 2.6s; }
   .l5 { animation-delay: 3.0s; }
   .l6 { animation-delay: 3.4s; }
+  .l7 { animation-delay: 3.8s; }
 
   @keyframes typeCmd {
     0%, 5% { width: 0; }
@@ -229,7 +229,7 @@ const SITE_URL = `https://${SITE_ID}.butverify.dev`;
      * + ~0.4s settle = ~3.8s = 47% of an 8s loop). Then fade in and hold
      * until the loop resets. */
     0%, 47% { opacity: 0; transform: translateY(12%) scale(0.98); }
-    58% { opacity: 1; transform: translateY(8%) scale(1); }
+    63% { opacity: 1; transform: translateY(8%) scale(1); }
     94% { opacity: 1; transform: translateY(8%) scale(1); }
     100% { opacity: 0; transform: translateY(12%) scale(0.98); }
   }
