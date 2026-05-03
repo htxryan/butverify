@@ -1,0 +1,4 @@
+1. POST /v1/auth/login auth=Bearer ghu_refresh
+2. POST /v1/sites attempt=1 auth=Bearer ghs_new_user_expired upload_id=u-4bf24ed30c44f6e4c078df03
+3. PUT /staging/kind-otter-7q bytes=2048 content_type=application/x-tar
+4. POST /v1/sites/site_kind_otter_7q/finalize attempt=1 auth=Bearer ghs_new_user_expired

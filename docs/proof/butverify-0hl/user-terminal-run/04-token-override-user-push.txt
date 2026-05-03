@@ -1,0 +1,2 @@
+$ bv --token ghs_example_expired push demo-site
+bv: error UNAUTHENTICATED: token expired

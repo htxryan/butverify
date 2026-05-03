@@ -211,6 +211,16 @@ func resolveGHToken(ctx context.Context, flagVal string) string {
 	if flagVal != "" {
 		return flagVal
 	}
+	if v := resolveAutomaticGHToken(ctx); v != "" {
+		return v
+	}
+	if isStdinTTY() {
+		return promptForGHToken()
+	}
+	return ""
+}
+
+func resolveAutomaticGHToken(ctx context.Context) string {
 	if v := os.Getenv("GH_TOKEN"); v != "" {
 		return v
 	}
@@ -219,9 +229,6 @@ func resolveGHToken(ctx context.Context, flagVal string) string {
 	}
 	if v, err := ghAuthToken(ctx); err == nil && v != "" {
 		return v
-	}
-	if isStdinTTY() {
-		return promptForGHToken()
 	}
 	return ""
 }

@@ -1,0 +1,9 @@
+$ go test -count=1 -v ./cmd/bv -run 'TestPushRefreshesExpiredTokenBeforeCreate|TestPushRefreshesAndRetriesCreateAfter401|TestPushTokenOverrideDoesNotAutoRefresh'
+=== RUN   TestPushRefreshesExpiredTokenBeforeCreate
+--- PASS: TestPushRefreshesExpiredTokenBeforeCreate (0.00s)
+=== RUN   TestPushRefreshesAndRetriesCreateAfter401
+--- PASS: TestPushRefreshesAndRetriesCreateAfter401 (0.00s)
+=== RUN   TestPushTokenOverrideDoesNotAutoRefresh
+--- PASS: TestPushTokenOverrideDoesNotAutoRefresh (0.00s)
+PASS
+ok  	github.com/htxryan/butverify/cmd/bv	0.346s

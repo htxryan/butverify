@@ -1,0 +1,5 @@
+1. POST /v1/sites attempt=1 auth=Bearer ghs_old_user_create upload_id=u-921e224d0792cd93ed75bf2b
+2. POST /v1/auth/login auth=Bearer ghu_refresh
+3. POST /v1/sites attempt=2 auth=Bearer ghs_new_user_create upload_id=u-921e224d0792cd93ed75bf2b
+4. PUT /staging/silver-fox-4m bytes=2048 content_type=application/x-tar
+5. POST /v1/sites/site_silver_fox_4m/finalize attempt=1 auth=Bearer ghs_new_user_create

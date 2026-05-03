@@ -4,12 +4,16 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/htxryan/butverify/internal/api"
 	"github.com/htxryan/butverify/internal/config"
 	"github.com/htxryan/butverify/internal/output"
+	"github.com/htxryan/butverify/pkg/identity"
 )
 
 // loadConfig loads the persisted config and applies any command-line
@@ -52,6 +56,45 @@ func newClient(g globalContext) (*api.Client, *config.Config, error) {
 		return nil, nil, errors.New("no installation token configured; run `bv login` or pass --token")
 	}
 	return api.New(c.APIURL, c.InstallationToken, Version), c, nil
+}
+
+func canAutoRefreshToken(g globalContext, c *config.Config) bool {
+	return g.tokenOverride == "" && c != nil && c.InstallationToken != ""
+}
+
+func shouldRefreshToken(c *config.Config, now time.Time) bool {
+	if c.TokenExpiresAt == "" {
+		return false
+	}
+	expiresAt, err := time.Parse(time.RFC3339, c.TokenExpiresAt)
+	if err != nil {
+		return false
+	}
+	return identity.ShouldRefresh(identity.InstallationTokenClaims{ExpiresAt: expiresAt}, now)
+}
+
+func refreshInstallationToken(ctx context.Context, g globalContext, c *config.Config) (*api.Client, error) {
+	ghToken := strings.TrimSpace(resolveAutomaticGHToken(ctx))
+	if ghToken == "" {
+		return nil, errors.New("installation token expired and no GitHub token is available for automatic refresh; run `bv login`")
+	}
+
+	refreshClient := api.New(c.APIURL, ghToken, Version)
+	var resp api.LoginResponse
+	if err := refreshClient.Do(ctx, "POST", "/v1/auth/login", nil, &resp); err != nil {
+		return nil, err
+	}
+
+	c.InstallationToken = resp.Token
+	c.TenantID = resp.TenantID
+	c.AccountLogin = resp.AccountLogin
+	c.InstallationID = resp.InstallationID
+	c.TokenExpiresAt = resp.ExpiresAt
+	if err := config.Save(c); err != nil {
+		return nil, err
+	}
+	g.w.Status("Refreshed auth token for %s", resp.AccountLogin)
+	return api.New(c.APIURL, c.InstallationToken, Version), nil
 }
 
 // toErrorEnvelope wraps a plain error in the structured envelope shape

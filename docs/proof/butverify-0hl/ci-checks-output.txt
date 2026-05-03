@@ -1,0 +1,7 @@
+$ gh pr checks 9
+CodeQL	pass	2s	https://github.com/htxryan/butverify/runs/74076490583
+CodeQL (go)	pass	1m1s	https://github.com/htxryan/butverify/actions/runs/25264315173/job/74076449352
+CodeQL (javascript-typescript)	pass	1m4s	https://github.com/htxryan/butverify/actions/runs/25264315173/job/74076449345
+Go (ubuntu-latest)	pass	16s	https://github.com/htxryan/butverify/actions/runs/25264315170/job/74076449272
+Marketing site (ubuntu-latest)	pass	39s	https://github.com/htxryan/butverify/actions/runs/25264315170/job/74076449274
+Secret scan	pass	6s	https://github.com/htxryan/butverify/actions/runs/25264315170/job/74076449278
