@@ -14,6 +14,8 @@ import (
 
 const DefaultMaxPixels = 40_000_000
 
+const DefaultMaxInputBytes int64 = 25 * 1024 * 1024
+
 type Options struct {
 	Quality   int
 	MaxPixels int

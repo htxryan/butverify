@@ -76,8 +76,6 @@ type BundleInfo struct {
 // regular files (after filtering).
 var ErrEmpty = errors.New("tarbundle: directory contains no regular files")
 
-const maxImageOptimizeInputBytes int64 = 25 * 1024 * 1024
-
 // BundleDir walks srcDir and writes a USTAR archive of its regular files to
 // w. Returns a summary on success or an error describing the failure (with
 // the offending path inline so an agent can react).
@@ -164,7 +162,7 @@ func BundleDir(srcDir string, w io.Writer, opts Options) (BundleInfo, error) {
 		if opts.ImageQuality == 0 || !imageopt.CanOptimizePath(entries[i].rel) {
 			continue
 		}
-		if entries[i].size > maxImageOptimizeInputBytes {
+		if entries[i].size > imageopt.DefaultMaxInputBytes {
 			continue
 		}
 		data, err := os.ReadFile(entries[i].full)

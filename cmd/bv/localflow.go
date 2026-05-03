@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/tar"
 	"context"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/htxryan/butverify/internal/config"
+	"github.com/htxryan/butverify/pkg/imageopt"
 	"github.com/htxryan/butverify/pkg/tarbundle"
 )
 
@@ -101,84 +101,70 @@ func runLocalPushFlow(ctx context.Context, g globalContext, opts pushOptions) in
 }
 
 func stageLocalSite(src string, includeHidden bool, imageQuality int) (string, tarbundle.BundleInfo, func(), error) {
-	bundle, err := os.CreateTemp("", "bv-local-site-*.tar")
-	if err != nil {
-		return "", tarbundle.BundleInfo{}, func() {}, fmt.Errorf("stage local site temp bundle: %w", err)
-	}
-	defer func() { _ = os.Remove(bundle.Name()) }()
-	defer func() { _ = bundle.Close() }()
-
-	info, err := tarbundle.BundleDir(src, bundle, tarbundle.Options{IncludeHidden: includeHidden, ImageQuality: imageQuality})
+	info, err := tarbundle.BundleDir(src, io.Discard, tarbundle.Options{IncludeHidden: includeHidden, ImageQuality: imageQuality})
 	if err != nil {
 		return "", tarbundle.BundleInfo{}, func() {}, err
-	}
-	if _, err := bundle.Seek(0, io.SeekStart); err != nil {
-		return "", tarbundle.BundleInfo{}, func() {}, fmt.Errorf("stage local site seek bundle: %w", err)
 	}
 	dir, err := os.MkdirTemp("", "bv-local-site-")
 	if err != nil {
 		return "", tarbundle.BundleInfo{}, func() {}, err
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
-	if err := extractLocalSiteTar(bundle, dir); err != nil {
-		cleanup()
-		return "", tarbundle.BundleInfo{}, func() {}, err
+	for _, rel := range info.Files {
+		if err := copyLocalSiteFile(src, dir, rel, imageQuality); err != nil {
+			cleanup()
+			return "", tarbundle.BundleInfo{}, func() {}, err
+		}
 	}
 	return dir, info, cleanup, nil
 }
 
-func extractLocalSiteTar(bundle io.Reader, dstRoot string) error {
-	r := tar.NewReader(bundle)
-	for {
-		h, err := r.Next()
-		if err == io.EOF {
-			break
-		}
+func copyLocalSiteFile(srcRoot, dstRoot, rel string, imageQuality int) error {
+	src := filepath.Join(srcRoot, filepath.FromSlash(rel))
+	dst := filepath.Join(dstRoot, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return fmt.Errorf("stage local site mkdir %s: %w", rel, err)
+	}
+	if imageQuality != 0 && imageopt.CanOptimizePath(rel) {
+		info, err := os.Stat(src)
 		if err != nil {
-			return fmt.Errorf("stage local site read tar: %w", err)
+			return fmt.Errorf("stage local site stat %s: %w", rel, err)
 		}
-		if h.Typeflag != tar.TypeReg {
-			continue
+		if info.Size() <= imageopt.DefaultMaxInputBytes {
+			data, err := os.ReadFile(src)
+			if err != nil {
+				return fmt.Errorf("stage local site read %s: %w", rel, err)
+			}
+			optimized, changed, err := imageopt.OptimizePath(rel, data, imageopt.Options{Quality: imageQuality})
+			if err != nil {
+				return fmt.Errorf("stage local site optimize %s: %w", rel, err)
+			}
+			if changed {
+				if err := os.WriteFile(dst, optimized, 0o644); err != nil {
+					return fmt.Errorf("stage local site write %s: %w", rel, err)
+				}
+				return nil
+			}
 		}
-		dst, err := localSiteOutputPath(dstRoot, h.Name)
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return fmt.Errorf("stage local site mkdir %s: %w", h.Name, err)
-		}
-		out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-		if err != nil {
-			return fmt.Errorf("stage local site create %s: %w", h.Name, err)
-		}
-		_, copyErr := io.Copy(out, r)
-		closeErr := out.Close()
-		if copyErr != nil {
-			return fmt.Errorf("stage local site copy %s: %w", h.Name, copyErr)
-		}
-		if closeErr != nil {
-			return fmt.Errorf("stage local site close %s: %w", h.Name, closeErr)
-		}
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("stage local site open %s: %w", rel, err)
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("stage local site create %s: %w", rel, err)
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return fmt.Errorf("stage local site copy %s: %w", rel, copyErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("stage local site close %s: %w", rel, closeErr)
 	}
 	return nil
-}
-
-func localSiteOutputPath(dstRoot, name string) (string, error) {
-	if err := tarbundle.ValidatePath(name); err != nil {
-		return "", fmt.Errorf("stage local site path %s: %w", name, err)
-	}
-	root, err := filepath.Abs(dstRoot)
-	if err != nil {
-		return "", fmt.Errorf("stage local site root: %w", err)
-	}
-	dst, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(name)))
-	if err != nil {
-		return "", fmt.Errorf("stage local site path %s: %w", name, err)
-	}
-	if dst != root && !strings.HasPrefix(dst, root+string(os.PathSeparator)) {
-		return "", fmt.Errorf("stage local site path escapes root: %s", name)
-	}
-	return dst, nil
 }
 
 func writeLocalHumanResult(g globalContext, res pushResult, opts pushOptions) {
