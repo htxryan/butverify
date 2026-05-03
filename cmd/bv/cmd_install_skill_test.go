@@ -29,8 +29,8 @@ func setupTempHome(t *testing.T) string {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	// Plant a logged-in config — most tests want the login probe to
-	// succeed so they can exercise the actual install logic. The
-	// "not logged in" test overrides this by clearing BV_CONFIG_PATH.
+	// succeed so they can exercise remote-mode-adjacent logic. Local-first
+	// install also works without this config.
 	cfgPath := filepath.Join(home, "bv-config.json")
 	t.Setenv("BV_CONFIG_PATH", cfgPath)
 	if err := config.Save(&config.Config{
@@ -38,6 +38,7 @@ func setupTempHome(t *testing.T) string {
 		InstallationToken: "ghs_test",
 		TenantID:          "t_test",
 		AccountLogin:      "tester",
+		Mode:              config.ModeRemote,
 	}); err != nil {
 		t.Fatalf("setup config: %v", err)
 	}
@@ -506,21 +507,17 @@ func TestUnsupportedAgent(t *testing.T) {
 	}
 }
 
-// ---- BVS-E-6: not logged in ----
+// ---- BVS-E-6: login-free local-first install ----
 
-func TestNotLoggedIn(t *testing.T) {
+func TestInstallSkillDoesNotRequireLogin(t *testing.T) {
 	home := setupTempHomeUnconfigured(t)
 	rc, stdout, _ := runInstall(t, "claude")
-	if rc == 0 {
-		t.Errorf("BVS-E-6: not-logged-in should exit non-zero")
+	if rc != 0 {
+		t.Fatalf("install-skill should work without login in local-first mode, rc=%d stdout=%s", rc, stdout)
 	}
-	if !strings.Contains(stdout, "bv login") {
-		t.Errorf("BVS-E-6: error envelope should reference bv login: %s", stdout)
-	}
-	// NO files should have been written.
 	skillPath := claudeSkillPath(home)
-	if _, err := os.Stat(skillPath); !os.IsNotExist(err) {
-		t.Errorf("BVS-E-6: no files should be written when not logged in: err=%v", err)
+	if _, err := os.Stat(skillPath); err != nil {
+		t.Errorf("skill should be written without login: %v", err)
 	}
 }
 
@@ -737,16 +734,16 @@ func TestRunInstallSkill_LogEvents(t *testing.T) {
 		)
 	})
 
-	t.Run("not_logged_in", func(t *testing.T) {
-		_ = setupTempHomeUnconfigured(t)
+	t.Run("unconfigured_install", func(t *testing.T) {
+		home := setupTempHomeUnconfigured(t)
 		rc, _, stderr := runInstallHuman(t, "claude")
-		if rc == 0 {
-			t.Fatalf("not-logged-in should be non-zero; got 0  stderr=%s", stderr)
+		if rc != 0 {
+			t.Fatalf("unconfigured install should succeed; rc=%d stderr=%s", rc, stderr)
 		}
-		// Pre-filesystem error: no path field.
-		assertLogContains(t, stderr,
+		skillPath := claudeSkillPath(home)
+		assertLogOrder(t, stderr,
 			"install-skill.started{agent=claude}",
-			"install-skill.error{agent=claude, code=NOT_LOGGED_IN}",
+			"install-skill.completed{agent=claude, path="+skillPath+"}",
 		)
 	})
 }
