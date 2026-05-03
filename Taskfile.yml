@@ -98,16 +98,41 @@ tasks:
   # -- generated docs ------------------------------------------------------
 
   docs:generate:
+    desc: Generate reference docs
+    deps: ["docs:generate:cli", "docs:generate:api"]
+
+  docs:generate:cli:
     desc: Generate CLI reference docs from the bv CLI reference source
     cmd: go run ./cmd/generate-cli-docs
 
+  docs:generate:api:
+    desc: Generate public API reference docs from the sanitized service manifest
+    cmd: go run ./cmd/generate-api-docs
+
   docs:check:
-    desc: Check generated docs are fresh
+    desc: Check generated reference docs are fresh
+    deps: ["docs:check:cli", "docs:check:api"]
+
+  docs:check:cli:
+    desc: Check generated CLI docs are fresh
     cmds:
       - |
         doc_path="marketing-site/src/content/docs/docs/reference/cli.md"
         before="$(git hash-object "$doc_path" 2>/dev/null || true)"
-        task docs:generate
+        task docs:generate:cli
+        after="$(git hash-object "$doc_path" 2>/dev/null || true)"
+        if [ "$before" != "$after" ]; then
+          git diff -- "$doc_path"
+          exit 1
+        fi
+
+  docs:check:api:
+    desc: Check generated API docs are fresh
+    cmds:
+      - |
+        doc_path="marketing-site/src/content/docs/docs/reference/api.md"
+        before="$(git hash-object "$doc_path" 2>/dev/null || true)"
+        task docs:generate:api
         after="$(git hash-object "$doc_path" 2>/dev/null || true)"
         if [ "$before" != "$after" ]; then
           git diff -- "$doc_path"

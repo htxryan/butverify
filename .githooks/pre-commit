@@ -1,12 +1,12 @@
 #!/bin/sh
 set -eu
 
-doc_path="marketing-site/src/content/docs/docs/reference/cli.md"
+doc_paths="marketing-site/src/content/docs/docs/reference/cli.md marketing-site/src/content/docs/docs/reference/api.md"
 
 task docs:generate
 
-if ! git diff --quiet -- "$doc_path"; then
-	git add "$doc_path"
-	printf '%s\n' "Generated CLI docs changed and were staged. Review them, then rerun commit."
+if ! git diff --quiet -- $doc_paths; then
+	git add $doc_paths
+	printf '%s\n' "Generated reference docs changed and were staged. Review them, then rerun commit."
 	exit 1
 fi
