@@ -133,6 +133,12 @@ func newJSONWriter(t *testing.T) (*output.Writer, *bytes.Buffer, *bytes.Buffer) 
 	return output.NewWith(output.ModeJSON, &stdout, &stderr), &stdout, &stderr
 }
 
+func newTTYHumanWriter(t *testing.T) (*output.Writer, *bytes.Buffer, *bytes.Buffer) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	return output.NewWithTTY(output.ModeHuman, &stdout, &stderr), &stdout, &stderr
+}
+
 func TestWhoami(t *testing.T) {
 	srv := newFakeServer(t)
 	srv.whoami = func(w http.ResponseWriter, r *http.Request) {
@@ -444,6 +450,69 @@ func TestPushHumanOutputShowsProgressAndStructuredResult(t *testing.T) {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("human stderr missing %q:\n%s", want, errOut)
 		}
+	}
+}
+
+func TestPushHumanOutputTTYRedrawsProgressInPlace(t *testing.T) {
+	srv := newFakeServer(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>hello</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stagingURL := ""
+	srv.create = func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":               "abcd1234",
+			"url":                   "https://abcd1234.butverify.dev",
+			"expires_at":            "2026-05-04T10:00:00Z",
+			"upload_token":          "use_installation_token",
+			"manifest_url":          "x",
+			"status":                "creating",
+			"idempotent":            false,
+			"upload_url":            stagingURL,
+			"upload_max_bytes":      100 * 1024 * 1024,
+			"upload_url_expires_at": "2026-04-27T10:15:00Z",
+		})
+	}
+	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":        siteID,
+			"status":         "active",
+			"url":            "https://abcd1234.butverify.dev",
+			"manifest_url":   "x",
+			"expires_at":     "2026-05-04T10:00:00Z",
+			"manifest_sha":   strings.Repeat("a", 64),
+			"last_pushed_at": "2026-04-27T10:00:00Z",
+			"idempotent":     false,
+		})
+	}
+	srv.put = func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	stagingURL = server.URL + "/staging-put"
+	setupConfig(t, server.URL)
+
+	w, stdout, stderr := newTTYHumanWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{dir})
+	if rc != 0 {
+		t.Fatalf("push rc: %d, stdout=%s stderr=%s", rc, stdout.String(), stderr.String())
+	}
+
+	errOut := stderr.String()
+	if strings.Count(errOut, "\r\033[2K") != 5 {
+		t.Fatalf("stderr should redraw in place and clear before result: %q", errOut)
+	}
+	if strings.Contains(errOut, "\n[2/4]") || strings.Contains(errOut, "\n[3/4]") || strings.Contains(errOut, "\n[4/4]") {
+		t.Fatalf("stderr should not contain snapshot progress lines: %q", errOut)
+	}
+	if !strings.HasSuffix(errOut, "\r\033[2K\n") {
+		t.Fatalf("stderr should terminate the active progress line before human output: %q", errOut)
+	}
+	if !strings.Contains(stdout.String(), "Published site") {
+		t.Fatalf("stdout: %s", stdout.String())
 	}
 }
 

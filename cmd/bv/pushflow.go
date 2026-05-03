@@ -160,10 +160,10 @@ func pushProgress(g globalContext, step int, label, detail string) {
 	filled := step * barWidth / pushProgressSteps
 	bar := strings.Repeat("#", filled) + strings.Repeat("-", barWidth-filled)
 	if detail == "" {
-		g.w.Status("[%d/%d] [%s] %s", step, pushProgressSteps, bar, label)
+		g.w.Progress("[%d/%d] [%s] %s", step, pushProgressSteps, bar, label)
 		return
 	}
-	g.w.Status("[%d/%d] [%s] %s: %s", step, pushProgressSteps, bar, label, detail)
+	g.w.Progress("[%d/%d] [%s] %s: %s", step, pushProgressSteps, bar, label, detail)
 }
 
 func writePushHumanResult(g globalContext, res pushResult) {
