@@ -65,6 +65,7 @@ func TestReport_RejectsMissingFlag(t *testing.T) {
 func TestReport_PushSendsTemplateField(t *testing.T) {
 	// End-to-end: render → push, server sees template=report on POST /v1/sites.
 	srv := newFakeServer(t)
+	withClientHostname(t, "cli-host.test")
 	dir := t.TempDir()
 	jsonPath := filepath.Join(dir, "out.json")
 	_ = os.WriteFile(jsonPath, []byte(`{
@@ -72,12 +73,15 @@ func TestReport_PushSendsTemplateField(t *testing.T) {
 	  "sections": [{"type":"text","body":"hi"}]
 	}`), 0o644)
 
-	var seenTemplate string
+	var (
+		seenTemplate string
+		createBody   map[string]any
+		finalizeBody map[string]any
+	)
 	stagingURL := ""
 	srv.create = func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		if v, ok := body["template"].(string); ok {
+		_ = json.NewDecoder(r.Body).Decode(&createBody)
+		if v, ok := createBody["template"].(string); ok {
 			seenTemplate = v
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -94,6 +98,7 @@ func TestReport_PushSendsTemplateField(t *testing.T) {
 		})
 	}
 	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
+		_ = json.NewDecoder(r.Body).Decode(&finalizeBody)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"site_id":        siteID,
 			"status":         "active",
@@ -125,6 +130,11 @@ func TestReport_PushSendsTemplateField(t *testing.T) {
 	}
 	if seenTemplate != "report" {
 		t.Errorf("expected template=report on POST /v1/sites, got %q", seenTemplate)
+	}
+	assertPublishMetadata(t, createBody, publishSourcePath(jsonPath), "cli-host.test")
+	assertPublishMetadata(t, finalizeBody, publishSourcePath(jsonPath), "cli-host.test")
+	if got := finalizeBody["upload_id"]; got != createBody["upload_id"] {
+		t.Errorf("finalize upload_id=%v, want create upload_id %v", got, createBody["upload_id"])
 	}
 	if !strings.Contains(stdout.String(), `"template": "report"`) {
 		t.Errorf("response body should echo template: %s", stdout.String())
