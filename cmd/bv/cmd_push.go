@@ -46,13 +46,14 @@ func runPush(ctx context.Context, g globalContext, args []string) int {
 	uploadIDFlag := fs.String("upload-id", "", "explicit upload_id for idempotent retry (default: auto-generated)")
 	ttlFlag := fs.Int64("ttl-seconds", 0, "site TTL in seconds (paid plan; 0 = use server default)")
 	includeHidden := fs.Bool("include-hidden", false, "include dot-files in the bundle")
+	modeFlag := fs.String("mode", "", "publish mode: local or remote (default: configured mode)")
 	if err := fs.Parse(args); err != nil {
 		g.w.Error(toErrorEnvelope(err))
 		return 2
 	}
 	pos := fs.Args()
 	if len(pos) < 1 {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv push [--upload-id ID] [--ttl-seconds N] <dir>")))
+		g.w.Error(toErrorEnvelope(errors.New("usage: bv push [--mode local|remote] [--upload-id ID] [--ttl-seconds N] <dir>")))
 		return 2
 	}
 	dir := pos[0]
@@ -67,12 +68,13 @@ func runPush(ctx context.Context, g globalContext, args []string) int {
 			return reportError(g.w, fmt.Errorf("generate upload_id: %w", err))
 		}
 	}
-	return runPushFlow(ctx, g, pushOptions{
+	return runPushFlowForMode(ctx, g, pushOptions{
 		dir:           dir,
 		sourcePath:    publishSourcePath(dir),
 		uploadID:      uploadID,
 		ttlSeconds:    *ttlFlag,
 		includeHidden: *includeHidden,
+		modeOverride:  *modeFlag,
 	})
 }
 

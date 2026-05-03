@@ -121,6 +121,7 @@ func setupConfig(t *testing.T, apiURL string) string {
 		InstallationToken: "ghs_test",
 		TenantID:          "t_u42",
 		AccountLogin:      "alice",
+		Mode:              config.ModeRemote,
 	}); err != nil {
 		t.Fatalf("setup config: %v", err)
 	}
@@ -628,6 +629,58 @@ func TestPushJSONOutputStaysMachineOnly(t *testing.T) {
 	}
 }
 
+func TestPushDefaultsToLocalWithoutConfig(t *testing.T) {
+	localServer := withFakeLocalServer(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>local</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	isolatedConfigPath(t)
+	w, stdout, _ := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{dir})
+	if rc != 0 {
+		t.Fatalf("push rc=%d stdout=%s", rc, stdout.String())
+	}
+	if localServer.Root == "" || localServer.Root == dir {
+		t.Fatalf("served root should be filtered staging dir, got %q from source %q", localServer.Root, dir)
+	}
+	if !strings.Contains(localServer.IndexHTML, "local") {
+		t.Fatalf("staged local index missing source content: %s", localServer.IndexHTML)
+	}
+	if !strings.Contains(stdout.String(), `"mode": "local"`) || !strings.Contains(stdout.String(), `"url": "http://127.0.0.1:12345/"`) {
+		t.Fatalf("stdout missing local result: %s", stdout.String())
+	}
+}
+
+func TestPushModeRemoteWithoutConfigRequiresLogin(t *testing.T) {
+	localServer := withFakeLocalServer(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>remote</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	isolatedConfigPath(t)
+	w, _, _ := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{"--mode", "remote", dir})
+	if rc != 3 {
+		t.Fatalf("push rc=%d, want 3", rc)
+	}
+	if localServer.Root != "" {
+		t.Fatalf("local server should not start in remote mode, root=%q", localServer.Root)
+	}
+}
+
+func TestPushInvalidModeExit2(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>bad mode</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w, _, _ := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{"--mode", "bogus", dir})
+	if rc != 2 {
+		t.Fatalf("push rc=%d, want 2", rc)
+	}
+}
+
 func TestPushRefreshesExpiredTokenBeforeCreate(t *testing.T) {
 	withCleanGHEnv(t)
 	t.Setenv("GH_TOKEN", "ghu_refresh")
@@ -701,6 +754,7 @@ func TestPushRefreshesExpiredTokenBeforeCreate(t *testing.T) {
 		AccountLogin:      "alice",
 		InstallationID:    42,
 		TokenExpiresAt:    time.Now().Add(-time.Hour).UTC().Format(time.RFC3339),
+		Mode:              config.ModeRemote,
 	}); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
@@ -801,6 +855,7 @@ func TestPushRefreshesAndRetriesCreateAfter401(t *testing.T) {
 		AccountLogin:      "alice",
 		InstallationID:    42,
 		TokenExpiresAt:    time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+		Mode:              config.ModeRemote,
 	}); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
