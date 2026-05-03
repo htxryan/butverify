@@ -36,6 +36,7 @@ func runReport(ctx context.Context, g globalContext, args []string) int {
 	push := fs.Bool("push", false, "after rendering, push the directory as a new site")
 	uploadIDFlag := fs.String("upload-id", "", "explicit upload_id for idempotent --push retry")
 	ttlFlag := fs.Int64("ttl-seconds", 0, "site TTL in seconds (paid plan; 0 = use server default)")
+	modeFlag := fs.String("mode", "", "publish mode for --push: local or remote (default: configured mode)")
 	if err := fs.Parse(args); err != nil {
 		g.w.Error(toErrorEnvelope(err))
 		return 2
@@ -88,12 +89,13 @@ func runReport(ctx context.Context, g globalContext, args []string) int {
 			return reportError(g.w, fmt.Errorf("generate upload_id: %w", err))
 		}
 	}
-	return runPushFlow(ctx, g, pushOptions{
-		dir:        outDir,
-		sourcePath: publishSourcePath(*from),
-		uploadID:   uploadID,
-		ttlSeconds: *ttlFlag,
-		template:   "report",
+	return runPushFlowForMode(ctx, g, pushOptions{
+		dir:          outDir,
+		sourcePath:   publishSourcePath(*from),
+		uploadID:     uploadID,
+		ttlSeconds:   *ttlFlag,
+		template:     "report",
+		modeOverride: *modeFlag,
 	})
 }
 
