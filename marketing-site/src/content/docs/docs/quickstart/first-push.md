@@ -27,8 +27,11 @@ The CLI:
 2. Asks the API for a presigned R2 upload URL.
 3. Streams the tarball.
 4. Calls `finalize`, which expands the tarball and publishes the site.
-5. Shows progress on stderr while it works, then prints the published URL
-   and metadata on stdout.
+5. Redraws progress in place on stderr while it works, then prints the
+   published URL and metadata on stdout.
+
+If stderr is redirected or captured, `bv` writes the same progress as stable
+status lines so logs stay readable:
 
 ```text
 [1/4] [#####---------------] Provisioned: kind-otter-7q ready for upload

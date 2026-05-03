@@ -33,9 +33,10 @@ Flags:
 
 ## `bv push <dir>`
 
-Tarballs `<dir>` and uploads it as a new site. In human mode, progress-bar
-style status lines are written to stderr and the final stdout highlights the
-open URL plus structured site metadata. Each invocation provisions a fresh
+Tarballs `<dir>` and uploads it as a new site. In an interactive terminal, the
+human progress bar redraws in place on stderr; when stderr is redirected, the
+same progress is emitted as deterministic status lines. Final stdout highlights
+the open URL plus structured site metadata. Each invocation provisions a fresh
 `site_id`; pass `--upload-id` to retry the same logical upload idempotently.
 
 Flags:
