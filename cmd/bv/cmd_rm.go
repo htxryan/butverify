@@ -4,14 +4,13 @@ package main
 
 import (
 	"context"
-	"errors"
 
 	"github.com/htxryan/butverify/internal/api"
 )
 
 func runRemove(ctx context.Context, g globalContext, args []string) int {
 	if len(args) < 1 {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv rm <site-id>")))
+		g.w.Error(toErrorEnvelope(usageError("rm")))
 		return 2
 	}
 	siteID := args[0]
