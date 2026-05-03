@@ -369,6 +369,21 @@ func TestEvidence_PushHappyPath(t *testing.T) {
 	}
 }
 
+func TestEvidence_PushModeLocalServesRenderedOutput(t *testing.T) {
+	localServer := withFakeLocalServer(t)
+	dir := t.TempDir()
+	jsonPath := stageEvidenceFixture(t, dir)
+	isolatedConfigPath(t)
+	w, stdout, _ := newJSONWriter(t)
+	rc := runEvidence(context.Background(), globalContext{w: w}, []string{"--from", jsonPath, "--push", "--mode", "local"})
+	if rc != 0 {
+		t.Fatalf("rc=%d stdout=%s", rc, stdout.String())
+	}
+	if !strings.Contains(localServer.IndexHTML, "Evidence test") {
+		t.Fatalf("local server did not receive rendered evidence: %s", localServer.IndexHTML[:min(200, len(localServer.IndexHTML))])
+	}
+}
+
 // TestEvidence_NonRolloutBadRequestPassesThrough makes sure the EV-E-8
 // classifier doesn't rewrite OTHER 400 conditions (like a malformed
 // upload_id). Spec: "Do NOT rewrite the message for ANY other 400

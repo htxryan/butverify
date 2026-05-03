@@ -63,6 +63,7 @@ type evidenceFlags struct {
 	layout   *string
 	uploadID *string
 	ttl      *int64
+	mode     *string
 }
 
 // newEvidenceFlagSet constructs the canonical `bv evidence` flag set.
@@ -79,6 +80,7 @@ func newEvidenceFlagSet() (*flag.FlagSet, evidenceFlags) {
 		layout:   fs.String("layout", "stacked", "gallery layout: stacked (default) or carousel"),
 		uploadID: fs.String("upload-id", "", "explicit upload_id for idempotent --push retry"),
 		ttl:      fs.Int64("ttl-seconds", 0, "site TTL in seconds (paid plan; 0 = use server default)"),
+		mode:     fs.String("mode", "", "publish mode for --push: local or remote (default: configured mode)"),
 	}
 	return fs, f
 }
@@ -92,6 +94,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	layout := f.layout
 	uploadIDFlag := f.uploadID
 	ttlFlag := f.ttl
+	modeFlag := f.mode
 	if err := fs.Parse(args); err != nil {
 		g.w.Error(toErrorEnvelope(err))
 		return 2
@@ -210,12 +213,13 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 			return reportError(g.w, fmt.Errorf("generate upload_id: %w", err))
 		}
 	}
-	return runPushFlow(ctx, g, pushOptions{
+	return runPushFlowForMode(ctx, g, pushOptions{
 		dir:                bundleDir,
 		sourcePath:         publishSourcePath(*from),
 		uploadID:           uploadID,
 		ttlSeconds:         *ttlFlag,
 		template:           "evidence",
+		modeOverride:       *modeFlag,
 		createErrTransform: classifyTemplateRolloutErr,
 	})
 }
