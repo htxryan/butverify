@@ -10,32 +10,27 @@ package main
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
-	"io"
 
 	"github.com/htxryan/butverify/pkg/templates"
 )
 
 func runDashboard(ctx context.Context, g globalContext, args []string) int {
-	fs := flag.NewFlagSet("dashboard", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	from := fs.String("from", "", "input CSV file (use - for stdin)")
-	out := fs.String("out", "", "output directory (defaults to ./bv-dashboard when --push not set)")
-	push := fs.Bool("push", false, "after rendering, push the directory as a new site")
-	title := fs.String("title", "", "page title (defaults to 'Dashboard')")
-	subtitle := fs.String("subtitle", "", "page subtitle")
-	maxRows := fs.Int("max-table-rows", 200, "cap rows shown in the HTML table (0 = no cap; data.csv always carries the full set)")
-	uploadIDFlag := fs.String("upload-id", "", "explicit upload_id for idempotent --push retry")
-	ttlFlag := fs.Int64("ttl-seconds", 0, "site TTL in seconds (paid plan; 0 = use server default)")
-	modeFlag := fs.String("mode", "", "publish mode for --push: local or remote (default: configured mode)")
+	fs, flags := newCLIFlagSet("dashboard")
+	from := flags.String("from")
+	out := flags.String("out")
+	push := flags.Bool("push")
+	title := flags.String("title")
+	subtitle := flags.String("subtitle")
+	maxRows := flags.Int("max-table-rows")
+	uploadIDFlag := flags.String("upload-id")
+	ttlFlag := flags.Int64("ttl-seconds")
+	modeFlag := flags.String("mode")
 	if err := fs.Parse(args); err != nil {
-		g.w.Error(toErrorEnvelope(err))
-		return 2
+		return handleFlagParseError(g, "dashboard", err)
 	}
 	if *from == "" {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv dashboard --from <data.csv|-> [--out DIR] [--title T] [--push] [--ttl-seconds N]")))
+		g.w.Error(toErrorEnvelope(usageError("dashboard")))
 		return 2
 	}
 	input, err := readInput(*from)

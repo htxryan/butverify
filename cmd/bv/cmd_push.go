@@ -32,8 +32,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,19 +39,17 @@ import (
 )
 
 func runPush(ctx context.Context, g globalContext, args []string) int {
-	fs := flag.NewFlagSet("push", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	uploadIDFlag := fs.String("upload-id", "", "explicit upload_id for idempotent retry (default: auto-generated)")
-	ttlFlag := fs.Int64("ttl-seconds", 0, "site TTL in seconds (paid plan; 0 = use server default)")
-	includeHidden := fs.Bool("include-hidden", false, "include dot-files in the bundle")
-	modeFlag := fs.String("mode", "", "publish mode: local or remote (default: configured mode)")
+	fs, flags := newCLIFlagSet("push")
+	uploadIDFlag := flags.String("upload-id")
+	ttlFlag := flags.Int64("ttl-seconds")
+	includeHidden := flags.Bool("include-hidden")
+	modeFlag := flags.String("mode")
 	if err := fs.Parse(args); err != nil {
-		g.w.Error(toErrorEnvelope(err))
-		return 2
+		return handleFlagParseError(g, "push", err)
 	}
 	pos := fs.Args()
 	if len(pos) < 1 {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv push [--mode local|remote] [--upload-id ID] [--ttl-seconds N] <dir>")))
+		g.w.Error(toErrorEnvelope(usageError("push")))
 		return 2
 	}
 	dir := pos[0]
