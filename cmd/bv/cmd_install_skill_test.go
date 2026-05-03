@@ -765,17 +765,6 @@ func assertLogOrder(t *testing.T, out string, wants ...string) {
 	}
 }
 
-// assertLogContains asserts each substring appears in the output (no
-// ordering constraint). Use when the spec doesn't pin order.
-func assertLogContains(t *testing.T, out string, wants ...string) {
-	t.Helper()
-	for _, w := range wants {
-		if !strings.Contains(out, w) {
-			t.Errorf("missing log line %q in stderr.\nstderr=%q", w, out)
-		}
-	}
-}
-
 // ---- helpers ----
 
 func mustReadFile(t *testing.T, path string) []byte {
