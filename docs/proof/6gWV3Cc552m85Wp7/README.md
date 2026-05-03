@@ -8,6 +8,8 @@ This proof exercises the built `bv` binary through the same CLI surface a user r
 
 - `human-push-terminal.png` — screenshot of `bv push ./demo-site` showing progress-bar status lines, the clear published URL, and structured metadata.
 - `human-push.transcript.txt` — raw transcript used to render the screenshot.
+- `marketing-warning-free-terminal.png` — screenshot showing the marketing docs validation path passes without the Starlight duplicate docs ID warning.
+- `marketing-warning-free.transcript.txt` — raw transcript used to render the warning-free validation screenshot.
 
 ## Backing Evidence
 
@@ -21,7 +23,7 @@ This proof exercises the built `bv` binary through the same CLI surface a user r
 Run from `/Users/redhale/src/butverify` unless noted:
 
 ```text
-gofmt -l cmd/bv/pushflow.go cmd/bv/main_test.go
+gofmt -l cmd/bv/cmd_push.go cmd/bv/pushflow.go cmd/bv/main_test.go
 go test -count=1 ./cmd/bv -run 'TestPush'
 go test -count=1 ./cmd/bv -run 'TestReport_Push|TestDashboard_Push|TestEvidence_Push'
 go test -count=1 ./internal/output ./cmd/bv
@@ -33,9 +35,11 @@ go build -o /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/opencode/bv-push-ou
 Run from `/Users/redhale/src/butverify/marketing-site`:
 
 ```text
-pnpm typecheck
 pnpm test
+pnpm typecheck
 pnpm build && pnpm link-check
 ```
+
+`pnpm typecheck` and `pnpm build` were run serially for Starlight content sync and emitted no duplicate docs ID warning. `pnpm test` includes a regression assertion that the source docs tree has unique Starlight content IDs.
 
 All commands passed locally on 2026-05-02.
