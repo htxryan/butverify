@@ -6,7 +6,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,7 +17,7 @@ import (
 
 func runGet(ctx context.Context, g globalContext, args []string) int {
 	if len(args) < 2 {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv get <site-id> <dest>")))
+		g.w.Error(toErrorEnvelope(usageError("get")))
 		return 2
 	}
 	siteID := args[0]

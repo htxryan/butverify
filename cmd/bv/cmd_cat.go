@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/url"
 	"os"
@@ -27,7 +26,7 @@ func escapePath(p string) string {
 
 func runCat(ctx context.Context, g globalContext, args []string) int {
 	if len(args) < 2 {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv cat <site-id> <path>")))
+		g.w.Error(toErrorEnvelope(usageError("cat")))
 		return 2
 	}
 	siteID := args[0]

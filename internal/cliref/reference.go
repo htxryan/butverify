@@ -1,0 +1,378 @@
+// Package cliref defines shared bv CLI command metadata for help and docs.
+package cliref
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
+)
+
+const DocsPath = "marketing-site/src/content/docs/docs/reference/cli.md"
+
+type FlagType string
+
+const (
+	FlagString FlagType = "string"
+	FlagBool   FlagType = "bool"
+	FlagInt    FlagType = "int"
+	FlagInt64  FlagType = "int64"
+)
+
+type Flag struct {
+	Name        string
+	Value       string
+	Description string
+	Type        FlagType
+	Default     string
+	RuntimeHelp string
+}
+
+type Command struct {
+	Name        string
+	Summary     string
+	Usage       string
+	Description string
+	Details     []string
+	Flags       []Flag
+	Examples    []string
+	Hidden      bool
+	Deprecated  bool
+}
+
+type ExitCode struct {
+	Code    string
+	Meaning string
+}
+
+type Reference struct {
+	Commands    []Command
+	GlobalFlags []Flag
+	ExitCodes   []ExitCode
+}
+
+type FlagValues struct {
+	strings map[string]*string
+	bools   map[string]*bool
+	ints    map[string]*int
+	int64s  map[string]*int64
+}
+
+func (v FlagValues) String(name string) *string { return v.strings[name] }
+func (v FlagValues) Bool(name string) *bool     { return v.bools[name] }
+func (v FlagValues) Int(name string) *int       { return v.ints[name] }
+func (v FlagValues) Int64(name string) *int64   { return v.int64s[name] }
+
+func DefaultReference() Reference {
+	return Reference{
+		GlobalFlags: []Flag{
+			{Name: "--json", Description: "emit a single JSON document on stdout instead of human-readable text", Type: FlagBool},
+			{Name: "--api-url", Value: "URL", Description: "override the control-plane endpoint", Type: FlagString},
+			{Name: "--token", Value: "TOK", Description: "override the bearer token", Type: FlagString},
+			{Name: "--help, -h", Description: "show usage", Type: FlagBool},
+			{Name: "--version, -v", Description: "print the CLI version", Type: FlagBool},
+		},
+		Commands: []Command{
+			{
+				Name:        "login",
+				Summary:     "login",
+				Usage:       "bv login [--api-url URL] [--gh-token TOK] [--token TOK]",
+				Description: "Resolve and persist a butverify installation token.",
+				Details: []string{
+					"Default flow: exchange a GitHub user token via POST /v1/auth/login. Token sources are --gh-token, GH_TOKEN, GITHUB_TOKEN, the gh CLI, or a TTY prompt.",
+					"Direct flow: pass an installation token via --token, BV_TOKEN, the global --token flag, or piped stdin to skip the exchange.",
+				},
+				Flags: []Flag{
+					{Name: "--api-url", Value: "URL", Description: "control-plane base URL", Type: FlagString, RuntimeHelp: "control-plane base URL (defaults to https://api.butverify.dev)"},
+					{Name: "--gh-token", Value: "TOK", Description: "GitHub user token for the exchange flow", Type: FlagString, RuntimeHelp: "GitHub user token (otherwise read from GH_TOKEN/GITHUB_TOKEN, gh CLI, or TTY prompt)"},
+					{Name: "--token", Value: "TOK", Description: "butverify installation token for the direct-token flow", Type: FlagString, RuntimeHelp: "butverify installation token (skip GH exchange; otherwise read from BV_TOKEN env or piped stdin)"},
+				},
+			},
+			{Name: "logout", Summary: "logout", Usage: "bv logout", Description: "Clear saved authentication and switch default mode to local."},
+			{
+				Name:        "mode",
+				Summary:     "mode [local|remote]",
+				Usage:       "bv mode [local|remote]",
+				Description: "Print or set the default publish mode.",
+				Details:     []string{"Fresh installs default to local. A successful bv login switches the default to remote."},
+			},
+			{
+				Name:        "push",
+				Summary:     "push <dir>",
+				Usage:       "bv push [--mode local|remote] [--upload-id ID] [--ttl-seconds N] [--include-hidden] <dir>",
+				Description: "Bundle a directory and publish it in local or remote mode.",
+				Details: []string{
+					"Local mode serves the filtered publish bundle on 127.0.0.1 until interrupted.",
+					"Remote mode uploads a tar bundle as a new private site. Pass --upload-id to retry the same logical upload idempotently.",
+				},
+				Flags: []Flag{
+					{Name: "--mode", Value: "local|remote", Description: "override the configured publish mode", Type: FlagString, RuntimeHelp: "publish mode: local or remote (default: configured mode)"},
+					{Name: "--upload-id", Value: "ID", Description: "explicit upload_id for idempotent retry", Type: FlagString, RuntimeHelp: "explicit upload_id for idempotent retry (default: auto-generated)"},
+					{Name: "--ttl-seconds", Value: "N", Description: "site TTL in seconds; 0 uses the server default", Type: FlagInt64, Default: "0", RuntimeHelp: "site TTL in seconds (paid plan; 0 = use server default)"},
+					{Name: "--include-hidden", Description: "include dot-files in the bundle", Type: FlagBool, RuntimeHelp: "include dot-files in the bundle"},
+				},
+			},
+			{Name: "ls", Summary: "ls", Usage: "bv ls", Description: "List sites for the authenticated tenant."},
+			{Name: "rm", Summary: "rm <site-id>", Usage: "bv rm <site-id>", Description: "Soft-delete a site."},
+			{Name: "cat", Summary: "cat <site-id> <path>", Usage: "bv cat <site-id> <path>", Description: "Print a single file from a site to stdout."},
+			{Name: "get", Summary: "get <site-id> <dest>", Usage: "bv get <site-id> <dest>", Description: "Download a site's files into a destination directory."},
+			{Name: "manifest", Summary: "manifest <site-id>", Usage: "bv manifest <site-id>", Description: "Print the site's manifest.json."},
+			{Name: "pin", Summary: "pin <site-id>", Usage: "bv pin <site-id>", Description: "Pin a site to disable TTL-based expiry."},
+			{Name: "unpin", Summary: "unpin <site-id>", Usage: "bv unpin <site-id>", Description: "Unpin a site and re-stamp the default TTL."},
+			{
+				Name:        "report",
+				Summary:     "report --from <out.json> [--out DIR] [--push]",
+				Usage:       "bv report --from <out.json|-> [--out DIR] [--push] [--upload-id ID] [--ttl-seconds N] [--mode local|remote]",
+				Description: "Render a static report site from JSON.",
+				Details:     []string{"Without --push, the rendered site is written to --out or ./bv-report-out. With --push, the rendered directory is published through the standard push flow."},
+				Flags: []Flag{
+					{Name: "--from", Value: "PATH|-", Description: "input JSON file or stdin", Type: FlagString, RuntimeHelp: "input JSON file (use - for stdin)"},
+					{Name: "--out", Value: "DIR", Description: "output directory", Type: FlagString, RuntimeHelp: "output directory (defaults to ./bv-report when --push not set)"},
+					{Name: "--push", Description: "after rendering, push the directory as a new site", Type: FlagBool, RuntimeHelp: "after rendering, push the directory as a new site"},
+					{Name: "--upload-id", Value: "ID", Description: "explicit upload_id for idempotent --push retry", Type: FlagString, RuntimeHelp: "explicit upload_id for idempotent --push retry"},
+					{Name: "--ttl-seconds", Value: "N", Description: "site TTL in seconds; 0 uses the server default", Type: FlagInt64, Default: "0", RuntimeHelp: "site TTL in seconds (paid plan; 0 = use server default)"},
+					{Name: "--mode", Value: "local|remote", Description: "publish mode for --push", Type: FlagString, RuntimeHelp: "publish mode for --push: local or remote (default: configured mode)"},
+				},
+			},
+			{
+				Name:        "dashboard",
+				Summary:     "dashboard --from <data.csv> [--out DIR] [--push]",
+				Usage:       "bv dashboard --from <data.csv|-> [--out DIR] [--title T] [--subtitle T] [--max-table-rows N] [--push] [--upload-id ID] [--ttl-seconds N] [--mode local|remote]",
+				Description: "Render a static dashboard site from CSV.",
+				Flags: []Flag{
+					{Name: "--from", Value: "PATH|-", Description: "input CSV file or stdin", Type: FlagString, RuntimeHelp: "input CSV file (use - for stdin)"},
+					{Name: "--out", Value: "DIR", Description: "output directory", Type: FlagString, RuntimeHelp: "output directory (defaults to ./bv-dashboard when --push not set)"},
+					{Name: "--title", Value: "T", Description: "page title", Type: FlagString, RuntimeHelp: "page title (defaults to 'Dashboard')"},
+					{Name: "--subtitle", Value: "T", Description: "page subtitle", Type: FlagString, RuntimeHelp: "page subtitle"},
+					{Name: "--max-table-rows", Value: "N", Description: "cap rows shown in the HTML table; 0 means no cap", Type: FlagInt, Default: "200", RuntimeHelp: "cap rows shown in the HTML table (0 = no cap; data.csv always carries the full set)"},
+					{Name: "--push", Description: "after rendering, push the directory as a new site", Type: FlagBool, RuntimeHelp: "after rendering, push the directory as a new site"},
+					{Name: "--upload-id", Value: "ID", Description: "explicit upload_id for idempotent --push retry", Type: FlagString, RuntimeHelp: "explicit upload_id for idempotent --push retry"},
+					{Name: "--ttl-seconds", Value: "N", Description: "site TTL in seconds; 0 uses the server default", Type: FlagInt64, Default: "0", RuntimeHelp: "site TTL in seconds (paid plan; 0 = use server default)"},
+					{Name: "--mode", Value: "local|remote", Description: "publish mode for --push", Type: FlagString, RuntimeHelp: "publish mode for --push: local or remote (default: configured mode)"},
+				},
+			},
+			{
+				Name:        "evidence",
+				Summary:     "evidence --from <evidence.json> [--out DIR] [--push] [--layout stacked|carousel]",
+				Usage:       "bv evidence (--schema | --from <evidence.json|-> [--out DIR] [--push] [--layout stacked|carousel] [--upload-id ID] [--ttl-seconds N] [--mode local|remote])",
+				Description: "Render a static evidence/gallery site from JSON.",
+				Details:     []string{"Use --schema to print the JSON Schema for the input without rendering."},
+				Flags: []Flag{
+					{Name: "--from", Value: "PATH|-", Description: "input JSON file or stdin", Type: FlagString, RuntimeHelp: "input JSON file (use - for stdin)"},
+					{Name: "--out", Value: "DIR", Description: "output directory", Type: FlagString, RuntimeHelp: "output directory (omit when only --push is set)"},
+					{Name: "--push", Description: "after rendering, push the directory as a new site", Type: FlagBool, RuntimeHelp: "after rendering, push the directory as a new site"},
+					{Name: "--schema", Description: "print the JSON Schema for the evidence input and exit", Type: FlagBool, RuntimeHelp: "print the JSON Schema for the evidence input and exit"},
+					{Name: "--layout", Value: "stacked|carousel", Description: "gallery layout", Type: FlagString, Default: "stacked", RuntimeHelp: "gallery layout: stacked (default) or carousel"},
+					{Name: "--upload-id", Value: "ID", Description: "explicit upload_id for idempotent --push retry", Type: FlagString, RuntimeHelp: "explicit upload_id for idempotent --push retry"},
+					{Name: "--ttl-seconds", Value: "N", Description: "site TTL in seconds; 0 uses the server default", Type: FlagInt64, Default: "0", RuntimeHelp: "site TTL in seconds (paid plan; 0 = use server default)"},
+					{Name: "--mode", Value: "local|remote", Description: "publish mode for --push", Type: FlagString, RuntimeHelp: "publish mode for --push: local or remote (default: configured mode)"},
+				},
+			},
+			{
+				Name:        "install-skill",
+				Summary:     "install-skill <agent> [--force|--uninstall] [--project]",
+				Usage:       "bv install-skill [--project] [--force] [--uninstall] <agent>",
+				Description: "Install the /butverify agent skill.",
+				Details:     []string{"Supported agent in v1: claude."},
+				Flags: []Flag{
+					{Name: "--project", Description: "install into ./.claude/skills/<agent>/ instead of $HOME/.claude/skills/<agent>/", Type: FlagBool, RuntimeHelp: "install into ./.claude/... instead of $HOME/.claude/..."},
+					{Name: "--force", Description: "overwrite an existing install", Type: FlagBool, RuntimeHelp: "overwrite an existing SKILL.md (writes a .bak)"},
+					{Name: "--uninstall", Description: "remove the deterministic install file set", Type: FlagBool, RuntimeHelp: "remove an installed SKILL.md and its sibling artifacts"},
+				},
+				Examples: []string{
+					"bv install-skill claude",
+					"bv install-skill claude --project",
+				},
+			},
+			{Name: "whoami", Summary: "whoami", Usage: "bv whoami", Description: "Print the resolved tenant for the configured token."},
+			{Name: "version", Summary: "version", Usage: "bv version", Description: "Print the CLI version."},
+			{Name: "init", Summary: "init", Usage: "bv init", Description: "Deprecated alias replaced by bv login.", Hidden: true, Deprecated: true},
+		},
+		ExitCodes: []ExitCode{
+			{Code: "0", Meaning: "success"},
+			{Code: "1", Meaning: "API or runtime error"},
+			{Code: "2", Meaning: "invalid arguments"},
+		},
+	}
+}
+
+func Lookup(name string) (Command, bool) {
+	for _, command := range DefaultReference().Commands {
+		if command.Name == name {
+			return command, true
+		}
+	}
+	return Command{}, false
+}
+
+func UsageError(name string) string {
+	command, ok := Lookup(name)
+	if !ok {
+		return "usage: bv " + name
+	}
+	return "usage: " + command.Usage
+}
+
+func NewFlagSet(name string, output io.Writer) (*flag.FlagSet, FlagValues, bool) {
+	command, ok := Lookup(name)
+	if !ok {
+		return nil, FlagValues{}, false
+	}
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(output)
+	fs.Usage = func() { _, _ = io.WriteString(output, CommandHelp(name)) }
+	values := FlagValues{
+		strings: map[string]*string{},
+		bools:   map[string]*bool{},
+		ints:    map[string]*int{},
+		int64s:  map[string]*int64{},
+	}
+	for _, f := range command.Flags {
+		key := flagKey(f.Name)
+		help := f.RuntimeHelp
+		if help == "" {
+			help = f.Description
+		}
+		switch f.Type {
+		case FlagBool:
+			values.bools[key] = fs.Bool(key, f.Default == "true", help)
+		case FlagInt:
+			values.ints[key] = fs.Int(key, mustAtoi(f.Default), help)
+		case FlagInt64:
+			values.int64s[key] = fs.Int64(key, mustAtoi64(f.Default), help)
+		default:
+			values.strings[key] = fs.String(key, f.Default, help)
+		}
+	}
+	return fs, values, true
+}
+
+func UsageText() string {
+	ref := DefaultReference()
+	var b strings.Builder
+	b.WriteString("bv — the butverify.dev agent CLI\n\n")
+	b.WriteString("Usage:\n")
+	b.WriteString("  bv [--json] [--api-url URL] [--token TOK] <command> [args]\n\n")
+	b.WriteString("Commands:\n")
+	for _, command := range ref.Commands {
+		if command.Hidden {
+			continue
+		}
+		if len(command.Summary) > 26 {
+			fmt.Fprintf(&b, "  %s\n", command.Summary)
+			fmt.Fprintf(&b, "  %-26s %s\n", "", command.Description)
+			continue
+		}
+		fmt.Fprintf(&b, "  %-26s %s\n", command.Summary, command.Description)
+	}
+	b.WriteString("\nRun 'bv <command> --help' for command-specific help.\n")
+	return b.String()
+}
+
+func CommandHelp(name string) string {
+	command, ok := Lookup(name)
+	if !ok || command.Hidden {
+		return UsageText()
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Usage: %s\n\n", command.Usage)
+	b.WriteString(command.Description)
+	b.WriteString("\n")
+	for _, detail := range command.Details {
+		b.WriteString("\n")
+		b.WriteString(detail)
+		b.WriteString("\n")
+	}
+	if len(command.Flags) > 0 {
+		b.WriteString("\nFlags:\n\n")
+		writeFlagList(&b, command.Flags)
+	}
+	if len(command.Examples) > 0 {
+		b.WriteString("\nExamples:\n\n")
+		for _, example := range command.Examples {
+			fmt.Fprintf(&b, "- `%s`\n", example)
+		}
+	}
+	return b.String()
+}
+
+func Markdown() string {
+	ref := DefaultReference()
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString("title: CLI commands\n")
+	b.WriteString("description: Every bv subcommand, its flags, and what it returns.\n")
+	b.WriteString("---\n\n")
+	b.WriteString("<!-- Code generated by task docs:generate; DO NOT EDIT. -->\n\n")
+	b.WriteString("> This file is generated from the shared `bv` command metadata used by CLI handlers and help. Run `task docs:generate` after changing the CLI surface.\n\n")
+	b.WriteString("The `bv` CLI is a single Go binary. It supports the global flags below and the subcommands that follow.\n\n")
+	b.WriteString("## Global flags\n\n")
+	writeFlagList(&b, ref.GlobalFlags)
+	for _, command := range ref.Commands {
+		if command.Hidden {
+			continue
+		}
+		fmt.Fprintf(&b, "\n## `%s`\n\n", command.Usage)
+		b.WriteString(command.Description)
+		b.WriteString("\n")
+		for _, detail := range command.Details {
+			b.WriteString("\n")
+			b.WriteString(detail)
+			b.WriteString("\n")
+		}
+		if len(command.Flags) > 0 {
+			b.WriteString("\nFlags:\n\n")
+			writeFlagList(&b, command.Flags)
+		}
+		if len(command.Examples) > 0 {
+			b.WriteString("\nExamples:\n\n")
+			for _, example := range command.Examples {
+				fmt.Fprintf(&b, "- `%s`\n", example)
+			}
+		}
+	}
+	b.WriteString("\n## Exit codes\n\n")
+	b.WriteString("| code | meaning |\n")
+	b.WriteString("| ---- | ------- |\n")
+	for _, exitCode := range ref.ExitCodes {
+		fmt.Fprintf(&b, "| %s | %s |\n", exitCode.Code, exitCode.Meaning)
+	}
+	return b.String()
+}
+
+func writeFlagList(b *strings.Builder, flags []Flag) {
+	for _, flag := range flags {
+		name := flag.Name
+		if flag.Value != "" {
+			name += " " + flag.Value
+		}
+		fmt.Fprintf(b, "- `%s` — %s.\n", name, flag.Description)
+	}
+}
+
+func flagKey(name string) string {
+	return strings.TrimLeft(strings.Split(name, ",")[0], "-")
+}
+
+func mustAtoi(raw string) int {
+	if raw == "" {
+		return 0
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
+
+func mustAtoi64(raw string) int64 {
+	if raw == "" {
+		return 0
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return value
+}

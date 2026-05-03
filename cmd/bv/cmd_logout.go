@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 
 	"github.com/htxryan/butverify/internal/config"
 )
 
 func runLogout(_ context.Context, g globalContext, args []string) int {
 	if len(args) != 0 {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv logout")))
+		g.w.Error(toErrorEnvelope(usageError("logout")))
 		return 2
 	}
 	c, err := loadModeConfig()

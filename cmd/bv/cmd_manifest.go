@@ -7,14 +7,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"io"
 	"os"
 )
 
 func runManifest(ctx context.Context, g globalContext, args []string) int {
 	if len(args) < 1 {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv manifest <site-id>")))
+		g.w.Error(toErrorEnvelope(usageError("manifest")))
 		return 2
 	}
 	siteID := args[0]

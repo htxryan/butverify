@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"errors"
 
 	"github.com/htxryan/butverify/internal/api"
 )
@@ -19,7 +18,7 @@ func runUnpin(ctx context.Context, g globalContext, args []string) int {
 
 func runPinUnpin(ctx context.Context, g globalContext, args []string, op string) int {
 	if len(args) < 1 {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv " + op + " <site-id>")))
+		g.w.Error(toErrorEnvelope(usageError(op)))
 		return 2
 	}
 	siteID := args[0]

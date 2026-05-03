@@ -1,0 +1,389 @@
+{
+  "title": "Public API",
+  "description": "CLI-facing butverify control-plane endpoints.",
+  "generated_from": "docs/openapi.yaml",
+  "generated_by": "pnpm docs:generate:public-api",
+  "source_note": "Generated from the service OpenAPI contract. Only operations marked x-bv-audience: cli are included.",
+  "base_url": "https://api.butverify.dev",
+  "auth": "Most endpoints use Authorization: Bearer <butverify installation token>. POST /v1/auth/login uses a GitHub user token and returns the butverify token.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/v1/auth/login",
+      "summary": "Exchange a GitHub user token for a butverify installation token.",
+      "stability": "stable",
+      "auth": "Bearer GitHub user token",
+      "parameters": [],
+      "request_body": null,
+      "responses": [
+        {
+          "status": "200",
+          "description": "Login succeeded.",
+          "schema": "LoginResponse"
+        },
+        {
+          "status": "401",
+          "description": "GitHub token missing, invalid, or no matching butverify installation exists.",
+          "schema": "ErrorEnvelope"
+        },
+        {
+          "status": "429",
+          "description": "Login rate limit exceeded.",
+          "schema": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/auth/whoami",
+      "summary": "Resolve the caller's tenant from the bearer token.",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [],
+      "request_body": null,
+      "responses": [
+        {
+          "status": "200",
+          "description": "Resolved tenant.",
+          "schema": "WhoamiResponse"
+        },
+        {
+          "status": "401",
+          "description": "Token missing or invalid.",
+          "schema": "ErrorEnvelope"
+        },
+        {
+          "status": "426",
+          "description": "",
+          "schema": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sites",
+      "summary": "List sites for the authenticated tenant.",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [],
+      "request_body": null,
+      "responses": [
+        {
+          "status": "200",
+          "description": "Site list.",
+          "schema": "ListSitesResponse"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sites",
+      "summary": "Provision a new site (or idempotent retry).",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [],
+      "request_body": {
+        "required": true,
+        "schema": "CreateSiteRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "description": "Idempotent retry — existing site returned.",
+          "schema": "CreateSiteResponse"
+        },
+        {
+          "status": "201",
+          "description": "New site created.",
+          "schema": "CreateSiteResponse"
+        },
+        {
+          "status": "402",
+          "description": "Quota exceeded or unpaid invoice.",
+          "schema": "ErrorEnvelope"
+        },
+        {
+          "status": "429",
+          "description": "Rate limit exceeded; carries Retry-After header.",
+          "schema": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sites/{site_id}",
+      "summary": "Get a single site's metadata.",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [
+        {
+          "name": "site_id",
+          "in": "path",
+          "required": true,
+          "description": "",
+          "schema": "string"
+        }
+      ],
+      "request_body": null,
+      "responses": [
+        {
+          "status": "200",
+          "description": "Site found.",
+          "schema": "Site"
+        },
+        {
+          "status": "404",
+          "description": "No site with that ID owned by the authenticated tenant.",
+          "schema": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/sites/{site_id}",
+      "summary": "Soft-delete a site (status → expired).",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [
+        {
+          "name": "site_id",
+          "in": "path",
+          "required": true,
+          "description": "",
+          "schema": "string"
+        }
+      ],
+      "request_body": null,
+      "responses": [
+        {
+          "status": "200",
+          "description": "Site soft-deleted (idempotent on already-expired).",
+          "schema": "DeleteSiteResponse"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sites/{site_id}/files",
+      "summary": "List files in the site (parsed from the manifest).",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [
+        {
+          "name": "site_id",
+          "in": "path",
+          "required": true,
+          "description": "",
+          "schema": "string"
+        }
+      ],
+      "request_body": null,
+      "responses": [
+        {
+          "status": "200",
+          "description": "File list.",
+          "schema": "FilesListResponse"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sites/{site_id}/files/{file_path}",
+      "summary": "Stream a single file from the site.",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [
+        {
+          "name": "site_id",
+          "in": "path",
+          "required": true,
+          "description": "",
+          "schema": "string"
+        },
+        {
+          "name": "file_path",
+          "in": "path",
+          "required": true,
+          "description": "Slash-separated path within the site (no ../, no leading slash).",
+          "schema": "string"
+        },
+        {
+          "name": "Range",
+          "in": "header",
+          "required": false,
+          "description": "RFC 7233 single byte-range (e.g. `bytes=0-1023`). Server returns 206 on hit.",
+          "schema": "string"
+        }
+      ],
+      "request_body": null,
+      "responses": [
+        {
+          "status": "200",
+          "description": "Full body.",
+          "schema": ""
+        },
+        {
+          "status": "206",
+          "description": "Partial body (Range hit).",
+          "schema": ""
+        },
+        {
+          "status": "404",
+          "description": "File not found in this site.",
+          "schema": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sites/{site_id}/finalize",
+      "summary": "Finalize a push — server untars staging, computes manifest, transitions to active.",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [
+        {
+          "name": "site_id",
+          "in": "path",
+          "required": true,
+          "description": "",
+          "schema": "string"
+        }
+      ],
+      "request_body": {
+        "required": true,
+        "schema": "FinalizeRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "description": "Finalize succeeded (or idempotent ack on already-active site).",
+          "schema": "FinalizeResponse"
+        },
+        {
+          "status": "409",
+          "description": "Conflicting upload_id or manifest_sha.",
+          "schema": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sites/{site_id}/heartbeat",
+      "summary": "Heartbeat from a long-running CLI push (E7 / S-6).",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [
+        {
+          "name": "site_id",
+          "in": "path",
+          "required": true,
+          "description": "",
+          "schema": "string"
+        }
+      ],
+      "request_body": {
+        "required": true,
+        "schema": "HeartbeatRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "description": "Heartbeat recorded.",
+          "schema": "HeartbeatResponse"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sites/{site_id}/manifest",
+      "summary": "Stream the site's manifest.json.",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [
+        {
+          "name": "site_id",
+          "in": "path",
+          "required": true,
+          "description": "",
+          "schema": "string"
+        }
+      ],
+      "request_body": null,
+      "responses": [
+        {
+          "status": "200",
+          "description": "Manifest body (application/json).",
+          "schema": "SiteManifest"
+        },
+        {
+          "status": "409",
+          "description": "Site has no manifest yet (still creating/uploading).",
+          "schema": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sites/{site_id}/pin",
+      "summary": "Pin an active site (paid plan only; clears expires_at).",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [
+        {
+          "name": "site_id",
+          "in": "path",
+          "required": true,
+          "description": "",
+          "schema": "string"
+        }
+      ],
+      "request_body": null,
+      "responses": [
+        {
+          "status": "200",
+          "description": "Pinned (idempotent on already-pinned).",
+          "schema": "PinResponse"
+        },
+        {
+          "status": "402",
+          "description": "Free tier — pinning requires upgrade.",
+          "schema": ""
+        },
+        {
+          "status": "409",
+          "description": "Site is not in `active` state.",
+          "schema": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sites/{site_id}/unpin",
+      "summary": "Unpin a site (re-stamps default TTL).",
+      "stability": "stable",
+      "auth": "Bearer installation token",
+      "parameters": [
+        {
+          "name": "site_id",
+          "in": "path",
+          "required": true,
+          "description": "",
+          "schema": "string"
+        }
+      ],
+      "request_body": null,
+      "responses": [
+        {
+          "status": "200",
+          "description": "Unpinned (idempotent on already-active).",
+          "schema": "PinResponse"
+        },
+        {
+          "status": "409",
+          "description": "Site is not in `pinned` state, or state changed under us.",
+          "schema": ""
+        }
+      ]
+    }
+  ]
+}

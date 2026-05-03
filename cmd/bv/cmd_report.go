@@ -19,8 +19,6 @@ package main
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -29,20 +27,18 @@ import (
 )
 
 func runReport(ctx context.Context, g globalContext, args []string) int {
-	fs := flag.NewFlagSet("report", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	from := fs.String("from", "", "input JSON file (use - for stdin)")
-	out := fs.String("out", "", "output directory (defaults to ./bv-report when --push not set)")
-	push := fs.Bool("push", false, "after rendering, push the directory as a new site")
-	uploadIDFlag := fs.String("upload-id", "", "explicit upload_id for idempotent --push retry")
-	ttlFlag := fs.Int64("ttl-seconds", 0, "site TTL in seconds (paid plan; 0 = use server default)")
-	modeFlag := fs.String("mode", "", "publish mode for --push: local or remote (default: configured mode)")
+	fs, flags := newCLIFlagSet("report")
+	from := flags.String("from")
+	out := flags.String("out")
+	push := flags.Bool("push")
+	uploadIDFlag := flags.String("upload-id")
+	ttlFlag := flags.Int64("ttl-seconds")
+	modeFlag := flags.String("mode")
 	if err := fs.Parse(args); err != nil {
-		g.w.Error(toErrorEnvelope(err))
-		return 2
+		return handleFlagParseError(g, "report", err)
 	}
 	if *from == "" {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv report --from <out.json|-> [--out DIR] [--push] [--ttl-seconds N]")))
+		g.w.Error(toErrorEnvelope(usageError("report")))
 		return 2
 	}
 

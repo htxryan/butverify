@@ -70,17 +70,16 @@ type evidenceFlags struct {
 // flag.ContinueOnError + io.Discard so callers (runEvidence, tests)
 // own how parse errors are surfaced.
 func newEvidenceFlagSet() (*flag.FlagSet, evidenceFlags) {
-	fs := flag.NewFlagSet("evidence", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs, values := newCLIFlagSet("evidence")
 	f := evidenceFlags{
-		from:     fs.String("from", "", "input JSON file (use - for stdin)"),
-		out:      fs.String("out", "", "output directory (omit when only --push is set)"),
-		push:     fs.Bool("push", false, "after rendering, push the directory as a new site"),
-		schema:   fs.Bool("schema", false, "print the JSON Schema for the evidence input and exit"),
-		layout:   fs.String("layout", "stacked", "gallery layout: stacked (default) or carousel"),
-		uploadID: fs.String("upload-id", "", "explicit upload_id for idempotent --push retry"),
-		ttl:      fs.Int64("ttl-seconds", 0, "site TTL in seconds (paid plan; 0 = use server default)"),
-		mode:     fs.String("mode", "", "publish mode for --push: local or remote (default: configured mode)"),
+		from:     values.String("from"),
+		out:      values.String("out"),
+		push:     values.Bool("push"),
+		schema:   values.Bool("schema"),
+		layout:   values.String("layout"),
+		uploadID: values.String("upload-id"),
+		ttl:      values.Int64("ttl-seconds"),
+		mode:     values.String("mode"),
 	}
 	return fs, f
 }
@@ -96,8 +95,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	ttlFlag := f.ttl
 	modeFlag := f.mode
 	if err := fs.Parse(args); err != nil {
-		g.w.Error(toErrorEnvelope(err))
-		return 2
+		return handleFlagParseError(g, "evidence", err)
 	}
 
 	// EV-E-1: --schema short-circuits everything else.
@@ -111,7 +109,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 
 	// EV-E-4: --from required when --schema is not set.
 	if *from == "" {
-		g.w.Error(toErrorEnvelope(errors.New("usage: bv evidence (--schema | --from <evidence.json|-> [--out DIR] [--push] [--layout stacked|carousel] [--ttl-seconds N])")))
+		g.w.Error(toErrorEnvelope(usageError("evidence")))
 		return 2
 	}
 
