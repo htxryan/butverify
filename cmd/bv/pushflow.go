@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/htxryan/butverify/internal/api"
+	"github.com/htxryan/butverify/internal/config"
 	"github.com/htxryan/butverify/pkg/tarbundle"
 )
 
@@ -43,6 +44,7 @@ type pushOptions struct {
 	ttlSeconds    int64 // 0 = use server default
 	template      string
 	includeHidden bool
+	imageQuality  int
 	modeOverride  string
 	// createErrTransform optionally rewrites the error returned from
 	// POST /v1/sites BEFORE reportError formats it. Used by `bv
@@ -85,6 +87,10 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 			return reportError(g.w, err)
 		}
 	}
+	if err := config.ValidateImageQuality(opts.imageQuality); err != nil {
+		g.w.Error(toErrorEnvelope(err))
+		return 2
+	}
 	clientHostname, _ := collectClientHostname()
 	publishCommand, publishCWD := collectPublishInvocationMetadata()
 	createReq := api.CreateSiteRequest{
@@ -118,11 +124,17 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 		}
 	}
 	pushProgress(g, 1, "Provisioned", fmt.Sprintf("%s ready for upload", created.SiteID))
+	imageQuality, err := config.ResolveImageQuality(cfg, opts.imageQuality, 0)
+	if err != nil {
+		g.w.Error(toErrorEnvelope(err))
+		return 2
+	}
 
 	var buf bytes.Buffer
 	info, err := tarbundle.BundleDir(opts.dir, &buf, tarbundle.Options{
 		MaxBytes:      created.UploadMaxBytes,
 		IncludeHidden: opts.includeHidden,
+		ImageQuality:  imageQuality,
 	})
 	if err != nil {
 		return reportError(g.w, fmt.Errorf("bundle %s: %w", opts.dir, err))

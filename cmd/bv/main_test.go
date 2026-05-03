@@ -6,10 +6,14 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -171,6 +175,49 @@ func assertPublishMetadata(t *testing.T, body map[string]any, wantSourcePath, wa
 	if got := body["publish_cwd"]; got != "/workspace/project" {
 		t.Errorf("publish_cwd=%v, want %q", got, "/workspace/project")
 	}
+}
+
+func writeCLIJPEGFixture(t *testing.T, path string, quality int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	for y := 0; y < 64; y++ {
+		for x := 0; x < 64; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 3), G: uint8(y * 3), B: uint8((x + y) * 2), A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+		t.Fatalf("encode jpeg: %v", err)
+	}
+	data := buf.Bytes()
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write jpeg: %v", err)
+	}
+	return data
+}
+
+func tarEntryBytes(t *testing.T, bundle []byte, name string) []byte {
+	t.Helper()
+	r := tar.NewReader(bytes.NewReader(bundle))
+	for {
+		h, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("read tar: %v", err)
+		}
+		if h.Name != name {
+			continue
+		}
+		body, err := io.ReadAll(r)
+		if err != nil {
+			t.Fatalf("read tar entry %s: %v", name, err)
+		}
+		return body
+	}
+	t.Fatalf("tar entry %s not found", name)
+	return nil
 }
 
 func TestPublishInvocationMetadataShellQuotesArgs(t *testing.T) {
@@ -419,6 +466,65 @@ func TestPushHappyPath(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"manifest_sha"`) {
 		t.Errorf("stdout missing manifest_sha: %s", stdout.String())
+	}
+}
+
+func TestPushOptimizesImagesBeforeUpload(t *testing.T) {
+	srv := newFakeServer(t)
+	dir := t.TempDir()
+	original := writeCLIJPEGFixture(t, filepath.Join(dir, "photo.jpg"), 100)
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<img src=photo.jpg>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var uploaded []byte
+	stagingURL := ""
+	srv.create = func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":               "abcd1234",
+			"url":                   "https://abcd1234.butverify.dev",
+			"expires_at":            "2026-05-04T10:00:00Z",
+			"upload_token":          "use_installation_token",
+			"manifest_url":          "x",
+			"status":                "creating",
+			"idempotent":            false,
+			"upload_url":            stagingURL,
+			"upload_max_bytes":      100 * 1024 * 1024,
+			"upload_url_expires_at": "2026-04-27T10:15:00Z",
+		})
+	}
+	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":        siteID,
+			"status":         "active",
+			"url":            "https://abcd1234.butverify.dev",
+			"manifest_url":   "x",
+			"expires_at":     "2026-05-04T10:00:00Z",
+			"manifest_sha":   strings.Repeat("a", 64),
+			"last_pushed_at": "2026-04-27T10:00:00Z",
+			"idempotent":     false,
+		})
+	}
+	srv.put = func(w http.ResponseWriter, r *http.Request) {
+		uploaded, _ = io.ReadAll(r.Body)
+		w.WriteHeader(200)
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	stagingURL = server.URL + "/staging-put"
+	setupConfig(t, server.URL)
+
+	w, stdout, _ := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{"--image-quality", "40", dir})
+	if rc != 0 {
+		t.Fatalf("push rc: %d, stdout=%s", rc, stdout.String())
+	}
+	optimized := tarEntryBytes(t, uploaded, "photo.jpg")
+	if len(optimized) >= len(original) {
+		t.Fatalf("uploaded photo.jpg was not optimized: got %d original %d", len(optimized), len(original))
+	}
+	if _, err := jpeg.Decode(bytes.NewReader(optimized)); err != nil {
+		t.Fatalf("optimized upload should decode as jpeg: %v", err)
 	}
 }
 
