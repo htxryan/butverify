@@ -1,20 +1,20 @@
 ---
 title: bv evidence
-description: Render and publish a private gallery of screenshot/video proof to butverify.dev
+description: Render screenshot/video proof locally or publish it as a private gallery on butverify.dev
 ---
 
 `bv evidence` is the CLI subcommand that turns a small `evidence.json`
-manifest plus local screenshot/video files into a published,
-identity-gated microsite. Agents run it after finishing a piece of work
-to surface clickable proof — captioned, ordered, and signed in with
-GitHub — instead of dumping a wall of screenshots into chat.
+manifest plus local screenshot/video files into a static gallery. Agents run
+it after finishing a piece of work to surface clickable proof — captioned,
+ordered, and either served locally or published as an identity-gated remote
+microsite — instead of dumping a wall of screenshots into chat.
 
 ```bash
-bv evidence --from evidence.json --push
+bv evidence --from evidence.json --push                 # configured mode
+bv evidence --from evidence.json --push --mode remote   # private remote URL
 ```
 
-On success, `bv` prints a JSON line with the published URL and its
-expiry:
+In remote mode, `bv` prints JSON with the published URL and its expiry:
 
 ```json
 { "url": "https://<site>.butverify.dev", "expires_at": "2026-05-04T17:31:02Z" }
@@ -108,8 +108,9 @@ written and never `rm -rf`'d.
 
 ### `--push`
 
-Renders into a CLI-owned temp directory, runs the standard push
-pipeline, and returns the published URL:
+Renders into a CLI-owned temp directory and runs the standard push pipeline.
+In local mode, `bv` serves the rendered gallery on `127.0.0.1` until
+interrupted. In remote mode, it returns the published private URL:
 
 ```json
 { "url": "https://<site>.butverify.dev", "expires_at": "2026-05-04T17:31:02Z" }
@@ -118,6 +119,11 @@ pipeline, and returns the published URL:
 The temp directory is cleaned up whether the push succeeds or fails.
 `--push` and `--out` are mutually exclusive in spirit — pick whichever
 end you want.
+
+### `--mode local|remote`
+
+Overrides the configured publish mode for this invocation. Fresh installs
+default to `local`; `bv login` switches the default to `remote`.
 
 ### `--schema`
 

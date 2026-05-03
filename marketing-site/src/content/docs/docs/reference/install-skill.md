@@ -24,7 +24,7 @@ directory:
 ```
 
 That's everything. The skill content is embedded in the `bv` binary, so
-the install is offline once you're logged in.
+the install is offline and does not require login.
 
 ### `--project` (per-repo install)
 
@@ -41,14 +41,10 @@ repo) gets the same skill.
 
 ## Prerequisites
 
-You must be logged in first:
-
-```bash
-bv login
-```
-
-If `bv` is not logged in when you run `install-skill`, the CLI exits
-non-zero with a usage error pointing at `bv login` and writes nothing.
+The CLI must be installed. Login is optional for installation, but the
+installed skill publishes remote proof with `--mode remote`; run `bv login`
+before using `/butverify` if you want the skill to return a private
+butverify.dev URL.
 
 ## Re-installing (drift detection)
 
@@ -117,13 +113,14 @@ follow-on epics once the v1 abstraction is validated against Claude Code.
 
 The flow looks like this once the skill is installed:
 
-1. Run `bv login` and `bv install-skill claude` once on your machine.
+1. Run `bv install-skill claude` once on your machine. Run `bv login` too if
+   you want the skill to publish private remote galleries.
 2. In any project, start a Claude Code session and ask it to do real
    work ("build feature X").
 3. After the agent says it's done, type `/butverify`.
 4. The skill drives the agent through the workflow: exercise the app
    end-to-end, capture proof, write `evidence.json`, run
-   `bv evidence --from evidence.json --push`, and surface the returned
+   `bv evidence --from evidence.json --push --mode remote`, and surface the returned
    URL to you.
 5. Open the URL — you see exactly what the agent built, signed in with
    GitHub.

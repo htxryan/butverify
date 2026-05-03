@@ -3,7 +3,7 @@ title: Error codes
 description: Every structured error the CLI / API can return, what triggered it, and how to recover.
 ---
 
-Every error from `bv ... --json` and from the HTTP API is shaped:
+Every error from `bv --json ...` and from the HTTP API is shaped:
 
 ```json
 {
@@ -24,7 +24,7 @@ Codes are stable across versions; messages may be tweaked.
 
 The CLI has no token, or the token has expired.
 **Recover**: grab a fresh installation token from
-[app.butverify.dev](https://app.butverify.dev) and re-run `bv init`.
+[app.butverify.dev](https://app.butverify.dev) and re-run `bv login`.
 
 ### `auth_refused`
 
@@ -60,7 +60,7 @@ which.
 ### `site_not_found`
 
 The `site_id` doesn't resolve to a site in this tenant.
-**Recover**: `bv ls --json` to see the real `site_id`s.
+**Recover**: `bv --json ls` to see the real `site_id`s.
 
 ## Transport
 

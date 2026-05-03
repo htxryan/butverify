@@ -7,20 +7,20 @@ If you hit something that isn't here, email
 [support@butverify.dev](mailto:support@butverify.dev) with the request ID
 the CLI printed (the API echoes a `request_id` in error envelopes).
 
-## `bv init` fails with `auth_required` or 401
+## `bv login` fails with `auth_required` or 401
 
 **Cause**: the installation token you supplied is invalid, expired, or
 belongs to a GitHub App installation that no longer exists.
 
 **Fix**: open [app.butverify.dev](https://app.butverify.dev), copy a fresh
-installation token from the dashboard, and re-run `bv init --token <token>`.
+installation token from the dashboard, and re-run `bv login --token <token>`.
 
 ## `bv push` fails with `auth_required`
 
 **Cause**: the installation token in `~/.config/butverify/config.json`
 expired between runs (installation tokens are short-lived).
 
-**Fix**: grab a fresh token from the dashboard and re-run `bv init`.
+**Fix**: grab a fresh token from the dashboard and re-run `bv login`.
 
 ## `bv push` fails with `quota_exceeded`
 
