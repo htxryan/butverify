@@ -1,4 +1,4 @@
-$ bv --json --api-url http://127.0.0.1:54632 --token ghs_test push ./demo-site
+$ bv --json --api-url http://127.0.0.1:56829 --token ghs_test push ./demo-site
 {
   "site_id": "proof-push-7q",
   "url": "https://proof-push-7q.butverify.dev",
