@@ -32,7 +32,7 @@ The cross-repo deploy-order runbook (which side ships first when a CLI feature d
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs three jobs on every push to `main` and every PR:
 
-- **Go (ubuntu-latest)** — `gofmt` format check → `go vet` → `golangci-lint` → `go test -count=1 ./...` → `go build ./cmd/bv`.
+- **Go (ubuntu-latest)** — generated CLI docs freshness (`task docs:check`) → `gofmt` format check → `go vet` → `golangci-lint` → `go test -count=1 ./...` → `go build ./cmd/bv`.
 - **Marketing site (ubuntu-latest)** — `pnpm install --frozen-lockfile` → `pnpm typecheck` (`astro check`) → `pnpm test` (vitest, ~145 tests) → `pnpm build` (Astro) → `pnpm link-check` (no broken internal links in `dist/`).
 - **Secret scan** — `gitleaks` across full git history.
 - **CodeQL** — static security + quality analysis on Go and JS/TS using the `security-extended` query suite. Runs on every push/PR + weekly schedule. Severity ≥ high blocks merge via the ruleset's `code_scanning` rule.
@@ -74,6 +74,16 @@ pnpm link-check   # static internal-link check against dist/
 ```
 
 The deployed CF Pages project is `butverify-marketing`. Project name and build command are pinned in [`.github/workflows/marketing-deploy.yaml`](.github/workflows/marketing-deploy.yaml); custom domains (apex `butverify.dev` and `docs.butverify.dev`) are bound to the project in the Cloudflare Dashboard.
+
+## Generated CLI docs
+
+The CLI reference at `marketing-site/src/content/docs/docs/reference/cli.md` is generated from the shared `bv` command metadata used by CLI handlers and help.
+
+```bash
+task docs:generate  # regenerate cli.md
+task docs:check     # fail if generation changes cli.md
+task hooks:install  # configure .githooks/pre-commit for local freshness checks
+```
 
 ## Branch policy
 

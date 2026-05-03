@@ -28,6 +28,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Generated docs freshness
+        run: task docs:check
       - name: Format check (gofmt)
         run: task format:check
       - name: Lint (golangci-lint)
