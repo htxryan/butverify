@@ -29,12 +29,12 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/htxryan/butverify/internal/cliref"
 )
 
 // embeddedSkillBytes carries the canonical /butverify skill markdown
@@ -163,11 +163,10 @@ type installSkillOptions struct {
 }
 
 func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
-	fs := flag.NewFlagSet("install-skill", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	force := fs.Bool("force", false, "overwrite an existing SKILL.md (writes a .bak)")
-	uninstall := fs.Bool("uninstall", false, "remove an installed SKILL.md and its sibling artifacts")
-	project := fs.Bool("project", false, "install into ./.claude/... instead of $HOME/.claude/...")
+	fs, flags := newCLIFlagSet("install-skill")
+	force := flags.Bool("force")
+	uninstall := flags.Bool("uninstall")
+	project := flags.Bool("project")
 
 	// Allow `bv install-skill claude --force` (positional before
 	// flags) the same as `bv install-skill --force claude`. The
@@ -175,16 +174,7 @@ func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
 	// the first non-flag arg up front and parse the remainder.
 	flagsOnly, agent := splitAgentFromFlags(args)
 	if err := fs.Parse(flagsOnly); err != nil {
-		// `--help` / `-h` surfaces as flag.ErrHelp because the stdlib
-		// flag package treats it as a parse "error" under
-		// ContinueOnError. We treat it as a successful help-text
-		// request instead of a BAD_REQUEST envelope.
-		if errors.Is(err, flag.ErrHelp) {
-			printInstallSkillHelp(g)
-			return 0
-		}
-		g.w.Error(toErrorEnvelope(err))
-		return 2
+		return handleFlagParseError(g, "install-skill", err)
 	}
 	// Detect any extra positional args after the agent. Two shapes:
 	//
@@ -226,7 +216,7 @@ func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
 			g.w.Error(toErrorEnvelope(fmt.Errorf("unexpected extra arguments after agent: %v", extras)))
 		} else {
 			g.w.Status("bv install-skill: unexpected extra arguments after agent: %v", extras)
-			g.w.Status("%s", installSkillUsageBlock)
+			g.w.Status("%s", cliref.CommandHelp("install-skill"))
 		}
 		return 2
 	}
@@ -605,41 +595,6 @@ func scopeLabel(opts installSkillOptions) string {
 	return "user ($HOME/.claude/...)"
 }
 
-// installSkillUsageBlock is the canonical help text for `bv install-
-// skill`. It serves both `--help` (printed to stdout, exit 0) and the
-// usage error path (printed to stderr, exit 2). DRY: one body, two
-// callers.
-const installSkillUsageBlock = `Usage: bv install-skill [flags] <agent>
-
-Install the /butverify skill into a coding agent's canonical skill directory.
-
-  <agent>      One of: claude (v1; codex/copilot/opencode are follow-on epics)
-  --project    Install into ./.claude/skills/<agent>/ instead of $HOME/.claude/skills/<agent>/.
-               Use this to check the skill into a repo so every contributor (and
-               every agent running in the repo) gets the same version.
-  --force      Overwrite an existing install (a .bak is written first).
-  --uninstall  Remove the deterministic install file set.
-
-Examples:
-  bv install-skill claude              # install into your home directory
-  bv install-skill claude --project    # install into the current repo
-`
-
-// printInstallSkillHelp writes the help block on the success path
-// (--help). Stdout in human mode (this is not an error); a structured
-// payload in JSON mode so machine consumers still get something
-// useful.
-func printInstallSkillHelp(g globalContext) {
-	if g.w.IsJSON() {
-		_ = g.w.JSON(struct {
-			OK    bool   `json:"ok"`
-			Usage string `json:"usage"`
-		}{true, installSkillUsageBlock})
-		return
-	}
-	g.w.Human("%s", installSkillUsageBlock)
-}
-
 // printInstallSkillUsageError writes the help block on the error path
 // (no agent supplied). Stderr in human mode + a short structured
 // error envelope in JSON mode so a piped consumer can branch on the
@@ -651,7 +606,7 @@ func printInstallSkillUsageError(g globalContext) {
 	}
 	// Status writes to stderr (human mode), which is the right sink
 	// for a usage error printed alongside an exit-2.
-	g.w.Status("%s", installSkillUsageBlock)
+	g.w.Status("%s", cliref.CommandHelp("install-skill"))
 }
 
 // atomicWrite writes data to dstPath via a same-directory tmp sibling

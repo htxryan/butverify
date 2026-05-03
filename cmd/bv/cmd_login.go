@@ -42,9 +42,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -55,14 +53,12 @@ import (
 )
 
 func runLogin(ctx context.Context, g globalContext, args []string) int {
-	fs := flag.NewFlagSet("login", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	apiURL := fs.String("api-url", "", "control-plane base URL (defaults to https://api.butverify.dev)")
-	ghTokenFlag := fs.String("gh-token", "", "GitHub user token (otherwise read from GH_TOKEN/GITHUB_TOKEN, gh CLI, or TTY prompt)")
-	installTokenFlag := fs.String("token", "", "butverify installation token (skip GH exchange; otherwise read from BV_TOKEN env or piped stdin)")
+	fs, flags := newCLIFlagSet("login")
+	apiURL := flags.String("api-url")
+	ghTokenFlag := flags.String("gh-token")
+	installTokenFlag := flags.String("token")
 	if err := fs.Parse(args); err != nil {
-		g.w.Status("bv login: %v", err)
-		return 2
+		return handleFlagParseError(g, "login", err)
 	}
 
 	url := *apiURL
