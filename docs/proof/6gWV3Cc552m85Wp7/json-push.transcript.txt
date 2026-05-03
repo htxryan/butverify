@@ -1,0 +1,11 @@
+$ bv --json --api-url http://127.0.0.1:54632 --token ghs_test push ./demo-site
+{
+  "site_id": "proof-push-7q",
+  "url": "https://proof-push-7q.butverify.dev",
+  "status": "live",
+  "manifest_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "expires_at": "2026-05-27T00:00:00Z",
+  "idempotent": false,
+  "file_count": 1,
+  "total_bytes": 136
+}
