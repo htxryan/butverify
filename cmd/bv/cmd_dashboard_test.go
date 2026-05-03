@@ -54,6 +54,7 @@ func TestDashboard_RejectsEmpty(t *testing.T) {
 func TestDashboard_PushSendsTemplateField(t *testing.T) {
 	srv := newFakeServer(t)
 	withClientHostname(t, "cli-host.test")
+	withPublishInvocationMetadata(t, "bv push ./dist", "/workspace/project")
 	dir := t.TempDir()
 	csvPath := filepath.Join(dir, "data.csv")
 	_ = os.WriteFile(csvPath, []byte("date,n\n2026-04-01,1\n2026-04-02,2\n"), 0o644)

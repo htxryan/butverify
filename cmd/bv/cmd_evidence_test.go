@@ -278,6 +278,7 @@ func TestEvidence_PushEVE8DistinctiveError(t *testing.T) {
 func TestEvidence_PushHappyPath(t *testing.T) {
 	srv := newFakeServer(t)
 	withClientHostname(t, "cli-host.test")
+	withPublishInvocationMetadata(t, "bv push ./dist", "/workspace/project")
 	dir := t.TempDir()
 	jsonPath := stageEvidenceFixture(t, dir)
 

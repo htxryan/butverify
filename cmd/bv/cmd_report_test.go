@@ -66,6 +66,7 @@ func TestReport_PushSendsTemplateField(t *testing.T) {
 	// End-to-end: render → push, server sees template=report on POST /v1/sites.
 	srv := newFakeServer(t)
 	withClientHostname(t, "cli-host.test")
+	withPublishInvocationMetadata(t, "bv push ./dist", "/workspace/project")
 	dir := t.TempDir()
 	jsonPath := filepath.Join(dir, "out.json")
 	_ = os.WriteFile(jsonPath, []byte(`{
