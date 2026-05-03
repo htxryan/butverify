@@ -1,0 +1,12 @@
+Rendered evidence (1 items, layout=stacked) to /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/.evidence-034663f1
+Serving local site
+  Open URL:   http://127.0.0.1:55040/
+
+Metadata
+  Site ID:    local-7e59500bb388
+  Status:     local
+  Files:      3
+  Size:       138663 bytes
+  Template:   evidence
+  Source:     /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/opencode/bv-local-screenshot-proof/evidence/evidence.json
+Serving /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/.evidence-034663f1 locally until interrupted

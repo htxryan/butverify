@@ -104,6 +104,7 @@ func runLogin(ctx context.Context, g globalContext, args []string) int {
 		AccountLogin:      resp.AccountLogin,
 		InstallationID:    resp.InstallationID,
 		TokenExpiresAt:    resp.ExpiresAt,
+		Mode:              config.ModeRemote,
 	}
 	if err := config.Save(cfg); err != nil {
 		return reportError(g.w, err)
@@ -121,6 +122,7 @@ func runLogin(ctx context.Context, g globalContext, args []string) int {
 	}
 	path, _ := config.Path()
 	g.w.Human("Logged in as %s (tenant=%s)", resp.AccountLogin, resp.TenantID)
+	g.w.Human("Default mode is now remote. Use \"bv mode local\" to switch back.")
 	g.w.Status("Config written to %s", path)
 	return 0
 }
@@ -145,6 +147,7 @@ func runLoginWithInstallationToken(ctx context.Context, g globalContext, url, to
 		AccountLogin:      who.AccountLogin,
 		InstallationID:    who.InstallationID,
 		TokenExpiresAt:    who.ExpiresAt,
+		Mode:              config.ModeRemote,
 	}
 	if err := config.Save(cfg); err != nil {
 		return reportError(g.w, err)
@@ -162,6 +165,7 @@ func runLoginWithInstallationToken(ctx context.Context, g globalContext, url, to
 	}
 	path, _ := config.Path()
 	g.w.Human("Logged in as %s (tenant=%s)", who.AccountLogin, who.TenantID)
+	g.w.Human("Default mode is now remote. Use \"bv mode local\" to switch back.")
 	g.w.Status("Config written to %s", path)
 	return 0
 }

@@ -125,8 +125,8 @@ func TestBVSU8b_HelpListsBothSubcommands(t *testing.T) {
 // supported because `[^\x60]*` in Go's RE2 spans newlines.
 //
 // The returned slice contains the args portion only — e.g. for the
-// span “ `bv evidence --from evidence.json --push` “ the result is
-// `--from evidence.json --push`.
+// span “ `bv evidence --from evidence.json --push --mode remote` “ the result is
+// `--from evidence.json --push --mode remote`.
 //
 // Whitespace inside a span is normalized to single spaces so a span
 // that wraps a line break ("bv evidence\n--push") tokenizes the same
@@ -305,7 +305,7 @@ func TestEmbeddedSkillContent_AC2_MultipleCaptureTools(t *testing.T) {
 
 // TestEmbeddedSkillContent_AC4_WorkflowStepsCovered pins BVS-U-4: the
 // skill's workflow covers (a) end-to-end exercise, (b) capture, (c)
-// evidence.json, (d) `bv evidence --from evidence.json --push`, (e)
+// evidence.json, (d) `bv evidence --from evidence.json --push --mode remote`, (e)
 // surface URL to the human.
 //
 // Spec §4.2 BVS-U-4; Acceptance Criteria AC-4.
@@ -338,8 +338,8 @@ func TestEmbeddedSkillContent_AC4_WorkflowStepsCovered(t *testing.T) {
 		},
 		{
 			name: "step_d_bv_evidence_push",
-			step: "(d) bv evidence --from evidence.json --push",
-			subs: []string{"bv evidence --from evidence.json --push"},
+			step: "(d) bv evidence --from evidence.json --push --mode remote",
+			subs: []string{"bv evidence --from evidence.json --push --mode remote"},
 		},
 		{
 			name:    "step_e_surface_url",
@@ -413,7 +413,7 @@ func TestEmbeddedSkillContent_AC5_NonPrescriptiveLanguage(t *testing.T) {
 // cmd/bv/embedded_skills/claude_butverify.md) that affects the
 // canonical hash domain MUST fail this test.
 func TestBVSU9_HashDeterminism(t *testing.T) {
-	const wantHash = "b6e43c892fdb"
+	const wantHash = "3298e3720982"
 
 	hash := skillVersionHash(embeddedSkillBytes)
 	if hash == "" {

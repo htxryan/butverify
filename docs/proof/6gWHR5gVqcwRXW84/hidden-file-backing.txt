@@ -1,0 +1,4 @@
+$ curl -fsS http://127.0.0.1:53162/
+<h1>Local mode proof</h1>
+$ curl -s -o hidden-body -w %{http_code} http://127.0.0.1:53162/.secret
+404

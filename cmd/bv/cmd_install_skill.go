@@ -35,8 +35,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/htxryan/butverify/internal/config"
 )
 
 // embeddedSkillBytes carries the canonical /butverify skill markdown
@@ -248,28 +246,6 @@ func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
 	}
 
 	logInstallSkill(g, "started", opts.Agent, "")
-
-	// BVS-E-6: login check. Reuse the same E1 token-store probe every
-	// other authenticated subcommand uses (loadConfig). We DO NOT make
-	// a network call — install-skill is local-only — so we accept any
-	// configured token. The check is "is `bv` initialized," not "is
-	// the token currently valid against the API." Spec §9.2 calls
-	// this read-only.
-	cfg, err := loadConfig(g)
-	if err != nil {
-		if errors.Is(err, config.ErrNotInitialized) {
-			g.w.Error(toErrorEnvelope(errors.New("not logged in; run `bv login` first")))
-			logInstallSkillError(g, opts.Agent, "NOT_LOGGED_IN", "")
-			return 2
-		}
-		logInstallSkillError(g, opts.Agent, "CONFIG_LOAD", "")
-		return reportError(g.w, err)
-	}
-	if cfg.InstallationToken == "" {
-		g.w.Error(toErrorEnvelope(errors.New("not logged in; run `bv login` first")))
-		logInstallSkillError(g, opts.Agent, "NOT_LOGGED_IN", "")
-		return 2
-	}
 
 	root, err := installRoot(opts)
 	if err != nil {
@@ -606,7 +582,7 @@ func emitInstallSuccess(g globalContext, opts installSkillOptions, skillPath, ve
 	g.w.Human("Next steps:")
 	g.w.Human("  1. Open Claude Code in your project.")
 	g.w.Human("  2. After delivering a piece of work, run /butverify in chat.")
-	g.w.Human("  3. The agent will capture proof and publish it via `bv evidence --push`.")
+	g.w.Human("  3. The agent will capture proof and publish it via `bv evidence --push --mode remote`.")
 	g.w.Human("")
 	// Surface the alternate-scope hint so a user who picked one scope
 	// knows the other is one flag away. Mirrors the --help output.

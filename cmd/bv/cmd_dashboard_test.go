@@ -152,3 +152,19 @@ func TestDashboard_TemplateQuotaExceeded(t *testing.T) {
 		t.Errorf("402 should map to exit 5, got %d", rc)
 	}
 }
+
+func TestDashboard_PushModeLocalServesRenderedOutput(t *testing.T) {
+	localServer := withFakeLocalServer(t)
+	dir := t.TempDir()
+	csvPath := filepath.Join(dir, "data.csv")
+	_ = os.WriteFile(csvPath, []byte("date,n\n2026-04-01,1\n"), 0o644)
+	isolatedConfigPath(t)
+	w, stdout, _ := newJSONWriter(t)
+	rc := runDashboard(context.Background(), globalContext{w: w}, []string{"--from", csvPath, "--push", "--mode", "local", "--title", "Local Dashboard"})
+	if rc != 0 {
+		t.Fatalf("rc=%d stdout=%s", rc, stdout.String())
+	}
+	if !strings.Contains(localServer.IndexHTML, "Local Dashboard") {
+		t.Fatalf("local server did not receive rendered dashboard: %s", localServer.IndexHTML[:min(200, len(localServer.IndexHTML))])
+	}
+}

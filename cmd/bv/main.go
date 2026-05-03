@@ -67,6 +67,9 @@ Commands:
                     Direct flow: pass an installation token via
                     --token, BV_TOKEN env, or piped stdin to skip
                     the exchange (CI / scripted setups).
+  logout            Clear saved authentication and switch default mode to local.
+  mode [local|remote]
+                    Print or set the default publish mode.
   push <dir>        Bundle <dir> and upload it as a new site.
   ls                List sites for the authenticated tenant.
   rm <site-id>      Soft-delete a site.
@@ -185,6 +188,10 @@ func main() {
 		exitCode = 2
 	case "login":
 		exitCode = runLogin(ctx, gctx, cmdArgs)
+	case "logout":
+		exitCode = runLogout(ctx, gctx, cmdArgs)
+	case "mode":
+		exitCode = runMode(ctx, gctx, cmdArgs)
 	case "whoami":
 		exitCode = runWhoami(ctx, gctx, cmdArgs)
 	case "push":

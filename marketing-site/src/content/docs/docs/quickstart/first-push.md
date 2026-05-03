@@ -1,6 +1,6 @@
 ---
 title: Push your first site
-description: Go from a directory of files to a private URL in under a minute.
+description: Go from a directory of files to a local preview or private URL in under a minute.
 ---
 
 You need a directory containing an `index.html` (or any other static asset
@@ -8,15 +8,18 @@ your viewer will load first). Anything that runs in a static-site generator
 works — Vite output, an MkDocs build, a hand-written `index.html`, the
 output of an agent run.
 
-## Authenticate (one-time)
+## Choose Local Or Remote
 
-If you haven't already, run `bv init` to capture an installation token. See
-[Install the CLI → Authenticate](/docs/quickstart/install/#authenticate).
+Fresh installs default to local mode. Local mode serves the filtered publish
+bundle on `127.0.0.1` until you interrupt the command. To publish a private
+butverify.dev URL instead, run `bv login` once or pass `--mode remote` after
+authenticating. See [Install the CLI → Authenticate](/docs/quickstart/install/#authenticate-for-remote-publishing).
 
 ## Push
 
 ```bash
-bv push .
+bv push .                 # local by default on a fresh install
+bv push --mode remote .   # remote private URL after bv login
 ```
 
 The CLI:
@@ -24,11 +27,9 @@ The CLI:
 1. Bundles the directory into a tarball (`.git/`, `node_modules/`, and
    dot-files are skipped by default; pass `--include-hidden` to include
    them).
-2. Asks the API for a presigned R2 upload URL.
-3. Streams the tarball.
-4. Calls `finalize`, which expands the tarball and publishes the site.
-5. Redraws progress in place on stderr while it works, then prints the
-   published URL and metadata on stdout.
+2. In local mode, serves the filtered bundle on `127.0.0.1` until interrupted.
+3. In remote mode, asks the API for a presigned R2 upload URL, streams the
+   tarball, calls `finalize`, and prints the private URL plus metadata.
 
 If stderr is redirected or captured, `bv` writes the same progress as stable
 status lines so logs stay readable:
@@ -50,8 +51,9 @@ Metadata
   Expires:    2026-05-27T00:00:00Z
 ```
 
-The URL is private by default — only you and any GitHub users granted
-access via the [dashboard](https://app.butverify.dev) can open it.
+Remote URLs are private by default — only you and any GitHub users granted
+access via the [dashboard](https://app.butverify.dev) can open them. Local
+URLs are only available on your machine while the `bv` process is running.
 
 ## Each push is a new site
 

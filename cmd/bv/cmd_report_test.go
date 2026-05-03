@@ -141,3 +141,22 @@ func TestReport_PushSendsTemplateField(t *testing.T) {
 		t.Errorf("response body should echo template: %s", stdout.String())
 	}
 }
+
+func TestReport_PushModeLocalServesRenderedOutput(t *testing.T) {
+	localServer := withFakeLocalServer(t)
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "out.json")
+	_ = os.WriteFile(jsonPath, []byte(`{
+	  "title": "Local report",
+	  "sections": [{"type":"text","body":"hi"}]
+	}`), 0o644)
+	isolatedConfigPath(t)
+	w, stdout, _ := newJSONWriter(t)
+	rc := runReport(context.Background(), globalContext{w: w}, []string{"--from", jsonPath, "--push", "--mode", "local"})
+	if rc != 0 {
+		t.Fatalf("rc=%d stdout=%s", rc, stdout.String())
+	}
+	if !strings.Contains(localServer.IndexHTML, "Local report") {
+		t.Fatalf("local server did not receive rendered report: %s", localServer.IndexHTML[:min(200, len(localServer.IndexHTML))])
+	}
+}

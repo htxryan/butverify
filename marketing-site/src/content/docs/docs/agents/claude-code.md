@@ -9,8 +9,8 @@ hand the human a viewable URL after every meaningful change.
 ## Prerequisites
 
 - The CLI is installed: `bv --version` works.
-- You've run `bv init --token <token>` once (see
-  [Authenticate](/docs/quickstart/install/#authenticate)).
+- For remote/private URLs, you've run `bv login --token <token>` once (see
+  [Authenticate](/docs/quickstart/install/#authenticate-for-remote-publishing)).
 - The project produces output to a known directory (e.g. `dist/`,
   `out/`, `public/`, etc.).
 
@@ -41,7 +41,7 @@ done
 if [[ -z "$BV_DIR" ]]; then exit 0; fi
 
 # Push and emit a one-line preview URL Claude will see.
-RESULT="$(bv push --json "$BV_DIR")"
+RESULT="$(bv --json push --mode remote "$BV_DIR")"
 URL="$(jq -r '.url' <<< "$RESULT")"
 echo "[butverify] Preview live: $URL"
 ```
@@ -74,7 +74,7 @@ on demand:
 {
   "name": "preview",
   "description": "Publish dist/ to butverify and print the URL",
-  "prompt": "Run `bv push --json dist` and report the URL field.",
+  "prompt": "Run `bv --json push --mode remote dist` and report the URL field.",
 }
 ```
 

@@ -237,9 +237,9 @@ describe('docs default to dark theme', () => {
 describe('agent recipes mention the CLI commands they rely on', () => {
   const recipes = readdirSync(join(ROOT, 'src/content/docs/docs/agents'));
   for (const file of recipes) {
-    it(`${file} references bv push --json`, () => {
+    it(`${file} references bv --json push`, () => {
       const body = readFileSync(join(ROOT, 'src/content/docs/docs/agents', file), 'utf8');
-      expect(body).toMatch(/bv push.*--json/);
+      expect(body).toMatch(/bv --json push/);
     });
   }
 });

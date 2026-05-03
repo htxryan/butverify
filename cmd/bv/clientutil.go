@@ -26,7 +26,7 @@ func loadConfig(g globalContext) (*config.Config, error) {
 			// If both override flags are present, synthesize a config so the
 			// command can still run (e.g. in CI without `bv login`).
 			if g.apiURLOverride != "" && g.tokenOverride != "" {
-				return &config.Config{APIURL: g.apiURLOverride, InstallationToken: g.tokenOverride}, nil
+				return &config.Config{APIURL: g.apiURLOverride, InstallationToken: g.tokenOverride, Mode: config.ModeRemote}, nil
 			}
 			return nil, err
 		}

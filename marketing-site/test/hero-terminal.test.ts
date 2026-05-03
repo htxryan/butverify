@@ -1,7 +1,7 @@
 /**
  * Source-level checks for the landing-page hero visual.
  * The text-only hero read as pre-MVP; we now ship an animated terminal
- * mock that demonstrates `bv push` and a browser opening the URL.
+ * mock that demonstrates local-first `bv push` and a browser opening the URL.
  *
  * These tests guard the acceptance criteria from the epic:
  *  - Hero shows a product visual on desktop (2-col layout)
@@ -46,12 +46,12 @@ describe('HeroTerminal contents reinforce the CLI demo', () => {
     expect(html).toMatch(/bv push/);
   });
 
-  it('shows a published butverify.dev URL in the demo', () => {
-    expect(html).toMatch(/butverify\.dev/);
+  it('shows a localhost preview URL in the demo', () => {
+    expect(html).toMatch(/127\.0\.0\.1/);
   });
 
-  it('shows a "live" status — the value prop the hero is selling', () => {
-    expect(html).toMatch(/\blive\b/);
+  it('shows a local status — the default preview mode the hero is selling', () => {
+    expect(html).toMatch(/\blocal\b/);
   });
 
   it('renders a terminal window and a browser frame mock', () => {

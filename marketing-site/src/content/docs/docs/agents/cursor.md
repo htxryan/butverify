@@ -10,8 +10,8 @@ publishes the current build and prints the URL.
 ## Prerequisites
 
 - The CLI is installed: `bv --version` works.
-- You've run `bv init --token <token>` once (see
-  [Authenticate](/docs/quickstart/install/#authenticate)).
+- For remote/private URLs, you've run `bv login --token <token>` once (see
+  [Authenticate](/docs/quickstart/install/#authenticate-for-remote-publishing)).
 - Your project has a build script that emits to a known directory.
 
 ## Recipe: Cursor rule + script
@@ -29,7 +29,7 @@ if [[ ! -d "$DIR" ]]; then
   exit 1
 fi
 
-bv push --json "$DIR"
+bv --json push --mode remote "$DIR"
 ```
 
 Make it executable:

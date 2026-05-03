@@ -40,7 +40,17 @@ bv --version
 
 You should see something like `bv 0.1.0 (rev abcdef0, signed)`.
 
-## Authenticate
+## Publish Mode
+
+Fresh installs default to local mode: `bv push <dir>` serves a filtered
+static bundle on `127.0.0.1` until you interrupt the command. Use this for
+same-machine previews without signing in.
+
+Run `bv mode` to inspect the current default, `bv mode local` to switch back
+to local previews, or `bv mode remote` to make push-style commands publish to
+butverify.dev.
+
+## Authenticate For Remote Publishing
 
 butverify authenticates the CLI with a GitHub App installation token. After
 [installing the GitHub App](https://app.butverify.dev) on your account or
@@ -49,14 +59,15 @@ the CLI:
 
 ```bash
 # Paste the token when prompted:
-bv init --token <token>
+bv login --token <token>
 
 # Or pipe it from a script:
-echo "$BV_TOKEN" | bv init
+echo "$BV_TOKEN" | bv login
 ```
 
-`bv init` calls `/v1/auth/whoami`, captures your tenant + account, and writes
-the token to `~/.config/butverify/config.json` with mode `0600`.
+`bv login` calls `/v1/auth/whoami`, captures your tenant + account, writes
+the token to `~/.config/butverify/config.json` with mode `0600`, and switches
+the default publish mode to `remote`.
 
 If you haven't installed the GitHub App yet, visit
 [app.butverify.dev](https://app.butverify.dev) — the dashboard walks you

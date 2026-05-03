@@ -43,6 +43,7 @@ type pushOptions struct {
 	ttlSeconds    int64 // 0 = use server default
 	template      string
 	includeHidden bool
+	modeOverride  string
 	// createErrTransform optionally rewrites the error returned from
 	// POST /v1/sites BEFORE reportError formats it. Used by `bv
 	// evidence` to surface the EV-E-8 distinctive 400 envelope when
@@ -67,6 +68,7 @@ type pushResult struct {
 	FileCount   int    `json:"file_count"`
 	TotalBytes  int64  `json:"total_bytes"`
 	Template    string `json:"template,omitempty"`
+	Mode        string `json:"mode,omitempty"`
 }
 
 // runPushFlow drives the full POST /v1/sites → PUT → finalize sequence and

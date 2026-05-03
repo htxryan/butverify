@@ -2,7 +2,7 @@
 /**
  * Animated terminal mock for the landing-page hero. Pure CSS so it costs
  * ~zero on LCP (no video, no images). The animation loops a `bv push`
- * session and a browser frame opening the resulting URL.
+ * session and a browser frame opening the resulting local URL.
  *
  * Reduced motion: animations are disabled and the final frame is shown.
  */
@@ -11,7 +11,7 @@
 <figure
   class="hero-terminal"
   role="img"
-  aria-label="Animated demo: running bv push and opening the published butverify URL in a browser"
+  aria-label="Animated demo: running bv push and opening the local preview URL in a browser"
 >
   <div class="window terminal" aria-hidden="true">
     <div class="chrome">
@@ -21,13 +21,13 @@
       <span class="title">~/my-site</span>
     </div>
     <pre class="screen"><span class="line"><span class="prompt">$</span> <span class="cmd">bv push .</span></span>
-<span class="line out l1">[1/4] [#####---------------] Provisioned</span>
-<span class="line out l2">[2/4] [##########----------] Bundled 142 files</span>
-<span class="line out l3">[3/4] [###############-----] Uploaded</span>
-<span class="line out l4">[4/4] [####################] Published</span>
-<span class="line out l5">Published site</span>
-<span class="line out l6">  Open URL: <span class="link">https://kind-otter-7q.butverify.dev</span></span>
-<span class="line out l7">  Status:   <span class="ok">live</span></span></pre>
+<span class="line out l1">Bundled 142 files</span>
+<span class="line out l2">Serving local site</span>
+<span class="line out l3">  Open URL: <span class="link">http://127.0.0.1:53162/</span></span>
+<span class="line out l4">  Status:   <span class="ok">local</span></span>
+<span class="line out l5">Serving locally until interrupted</span>
+<span class="line out l6">Tip: use --mode remote for a private URL</span>
+<span class="line out l7">Ready for same-machine review</span></pre>
   </div>
 
   <div class="window browser" aria-hidden="true">
@@ -35,7 +35,7 @@
       <span class="dot dot-r"></span>
       <span class="dot dot-y"></span>
       <span class="dot dot-g"></span>
-      <span class="addr">https://kind-otter-7q.butverify.dev</span>
+      <span class="addr">http://127.0.0.1:53162/</span>
     </div>
     <div class="page">
       <div class="page-h"></div>
@@ -48,8 +48,8 @@
   </div>
 
   <figcaption class="sr-only">
-    A terminal runs `bv push` and prints a private URL; a browser opens
-    the same URL showing the published site.
+    A terminal runs `bv push` and prints a local preview URL; a browser opens
+    the same URL showing the locally served site.
   </figcaption>
 </figure>
 
@@ -203,7 +203,7 @@
 
   @keyframes typeCmd {
     0%, 5% { width: 0; }
-    /* Type "bv push ." (10 chars) over ~0.9s */
+    /* Type "bv push ." over ~0.9s */
     16% { width: 10ch; border-right-color: var(--bv-text); }
     /* Hold the typed command, then the loop ends and resets */
     92% { width: 10ch; border-right-color: transparent; }

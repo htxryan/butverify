@@ -11,8 +11,8 @@ back to the agent transcript.
 ## Prerequisites
 
 - The CLI is installed: `bv --version` works.
-- You've run `bv init --token <token>` once (see
-  [Authenticate](/docs/quickstart/install/#authenticate)).
+- For remote/private URLs, you've run `bv login --token <token>` once (see
+  [Authenticate](/docs/quickstart/install/#authenticate-for-remote-publishing)).
 - Your Codex tasks emit a directory (`out/`, `dist/`, `public/`).
 
 ## Recipe: post-task script
@@ -37,7 +37,7 @@ if [[ -z "$TARGET" ]]; then
   exit 0
 fi
 
-bv push --json "$TARGET"
+bv --json push --mode remote "$TARGET"
 ```
 
 Make it executable: `chmod +x ~/.codex/post-task.sh`.
@@ -61,7 +61,7 @@ can invoke directly:
 [[tools]]
 name = "publish_preview"
 description = "Publish ./out as a private butverify site and return its URL."
-command = ["bv", "push", "--json", "out"]
+command = ["bv", "--json", "push", "--mode", "remote", "out"]
 ```
 
 The agent can call it explicitly and use the URL from the JSON response.

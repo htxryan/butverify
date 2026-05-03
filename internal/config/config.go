@@ -9,6 +9,7 @@
 //   - account_login      — captured from /v1/auth/whoami
 //   - token_expires_at   — RFC 3339 timestamp; CLI refreshes when within
 //     TokenRefreshThreshold of expiry (E-2a).
+//   - mode               — default publish mode: local or remote.
 //
 // File mode is 0600 because the installation token is a credential. We do
 // NOT store it in OS keychains at v1 — that's a future hardening pass; v1
@@ -32,10 +33,16 @@ type Config struct {
 	AccountLogin      string `json:"account_login,omitempty"`
 	InstallationID    int64  `json:"installation_id,omitempty"`
 	TokenExpiresAt    string `json:"token_expires_at,omitempty"`
+	Mode              string `json:"mode,omitempty"`
 }
 
 // DefaultAPIURL is the public control-plane endpoint.
 const DefaultAPIURL = "https://api.butverify.dev"
+
+const (
+	ModeLocal  = "local"
+	ModeRemote = "remote"
+)
 
 // ErrNotInitialized is returned by Load when no config exists. Callers
 // surface this as "run `bv login` first."
@@ -79,7 +86,42 @@ func Load() (*Config, error) {
 	if c.APIURL == "" {
 		c.APIURL = DefaultAPIURL
 	}
+	if c.Mode == "" {
+		if c.InstallationToken != "" {
+			c.Mode = ModeRemote
+		} else {
+			c.Mode = ModeLocal
+		}
+	}
+	if err := ValidateMode(c.Mode); err != nil {
+		return nil, fmt.Errorf("config: parse %s: %w", path, err)
+	}
 	return &c, nil
+}
+
+func ValidateMode(mode string) error {
+	switch mode {
+	case ModeLocal, ModeRemote:
+		return nil
+	default:
+		return fmt.Errorf("mode must be %q or %q", ModeLocal, ModeRemote)
+	}
+}
+
+func ResolveMode(c *Config, override string) (string, error) {
+	if override != "" {
+		if err := ValidateMode(override); err != nil {
+			return "", err
+		}
+		return override, nil
+	}
+	if c == nil || c.Mode == "" {
+		return ModeLocal, nil
+	}
+	if err := ValidateMode(c.Mode); err != nil {
+		return "", err
+	}
+	return c.Mode, nil
 }
 
 // Save writes the config atomically (write to a temp file, then rename).

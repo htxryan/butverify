@@ -1,0 +1,35 @@
+$ BV_CONFIG_PATH=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.tfi5EcF5C3 /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/opencode/bv-local-mode-proof mode
+local
+
+$ BV_CONFIG_PATH=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.tfi5EcF5C3 /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/opencode/bv-local-mode-proof mode remote
+Default mode set to remote
+
+$ BV_CONFIG_PATH=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.tfi5EcF5C3 /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/opencode/bv-local-mode-proof logout
+Logged out
+Default mode is now local.
+
+$ BV_CONFIG_PATH=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.tfi5EcF5C3 /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/opencode/bv-local-mode-proof push --mode local /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.03OoytjKSy
+Serving local site
+  Open URL:   http://127.0.0.1:53162/
+
+Metadata
+  Site ID:    local-557593e936f1
+  Status:     local
+  Files:      1
+  Size:       25 bytes
+  Source:     /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.03OoytjKSy
+Serving /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.03OoytjKSy locally until interrupted
+
+$ BV_CONFIG_PATH=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.D9GEP8Ydcl/missing-config.json HOME=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.D9GEP8Ydcl /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/opencode/bv-local-mode-proof install-skill claude
+install-skill.started{agent=claude}
+Installed /butverify skill for claude.
+  Path:    /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.D9GEP8Ydcl/.claude/skills/butverify/SKILL.md
+  Version: 3298e3720982
+  Scope:   user ($HOME/.claude/...)
+Next steps:
+  1. Open Claude Code in your project.
+  2. After delivering a piece of work, run /butverify in chat.
+  3. The agent will capture proof and publish it via `bv evidence --push --mode remote`.
+(To install only into a specific project instead, use 'bv install-skill claude --project'.)
+Docs: https://butverify.dev/docs/reference/install-skill/
+install-skill.completed{agent=claude, path=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.D9GEP8Ydcl/.claude/skills/butverify/SKILL.md}

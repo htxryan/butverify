@@ -10,7 +10,7 @@ parse stdout without filtering terminal text.
 ## Push
 
 ```bash
-bv push --json .
+bv --json push --mode remote .
 ```
 
 ```json
@@ -40,13 +40,18 @@ On failure, stdout emits an error envelope:
 }
 ```
 
+For local mode, `bv --json push --mode local .` prints the same shape with
+`"mode": "local"` and a `127.0.0.1` URL, then keeps serving until the
+process is interrupted. Use `--mode remote` in command substitutions that
+must return promptly with an expiring butverify.dev URL.
+
 The exit code is non-zero on any error so agent harnesses can branch on
 `$?` without parsing JSON.
 
 ## List sites
 
 ```bash
-bv ls --json
+bv --json ls
 ```
 
 ```json
@@ -74,10 +79,10 @@ asset metadata you'd otherwise see in the human-readable output.
 
 | code                | meaning                 | suggested agent action                                             |
 | ------------------- | ----------------------- | ------------------------------------------------------------------ |
-| `auth_required`     | No / expired token      | Surface to human; re-run `bv init` with a fresh installation token |
+| `auth_required`     | No / expired token      | Surface to human; re-run `bv login` with a fresh installation token |
 | `quota_exceeded`    | Hit a tier limit        | Surface `upgrade_url` to human                                     |
 | `payload_too_large` | Tarball >1 GB           | Trim assets; surface to human                                      |
-| `site_not_found`    | Wrong site_id           | Check `bv ls --json`                                               |
+| `site_not_found`    | Wrong site_id           | Check `bv --json ls`                                               |
 | `rate_limited`      | Too many requests       | Sleep `retry_after` seconds                                        |
 | `network`           | Transport-level failure | Retry up to 3× with backoff                                        |
 | `internal`          | Server-side failure     | Retry once; surface to human                                       |

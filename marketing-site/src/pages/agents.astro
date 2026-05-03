@@ -52,10 +52,10 @@ import { AGENTS } from "../lib/site";
       <h2 class="text-lg font-semibold">Don't see your agent?</h2>
       <p class="mt-2 text-sm text-gray-300">
         Anything that can shell out and parse JSON works.
-        <code class="rounded bg-bv-surface px-1.5 py-0.5">bv push --json</code>
+        <code class="rounded bg-bv-surface px-1.5 py-0.5">bv --json push --mode remote</code>
         prints
         <code class="rounded bg-bv-surface px-1.5 py-0.5">{`{"site_id":"...","url":"..."}`}</code>
-        on success and a structured error on failure. Pipe it through
+        on success when you need a shareable URL, and a structured error on failure. Pipe it through
         <code class="rounded bg-bv-surface px-1.5 py-0.5">jq</code> or read it
         in your agent's tool harness.
       </p>
