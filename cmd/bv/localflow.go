@@ -140,7 +140,10 @@ func extractLocalSiteTar(bundle io.Reader, dstRoot string) error {
 		if h.Typeflag != tar.TypeReg {
 			continue
 		}
-		dst := filepath.Join(dstRoot, filepath.FromSlash(h.Name))
+		dst, err := localSiteOutputPath(dstRoot, h.Name)
+		if err != nil {
+			return err
+		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return fmt.Errorf("stage local site mkdir %s: %w", h.Name, err)
 		}
@@ -158,6 +161,24 @@ func extractLocalSiteTar(bundle io.Reader, dstRoot string) error {
 		}
 	}
 	return nil
+}
+
+func localSiteOutputPath(dstRoot, name string) (string, error) {
+	if err := tarbundle.ValidatePath(name); err != nil {
+		return "", fmt.Errorf("stage local site path %s: %w", name, err)
+	}
+	root, err := filepath.Abs(dstRoot)
+	if err != nil {
+		return "", fmt.Errorf("stage local site root: %w", err)
+	}
+	dst, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(name)))
+	if err != nil {
+		return "", fmt.Errorf("stage local site path %s: %w", name, err)
+	}
+	if dst != root && !strings.HasPrefix(dst, root+string(os.PathSeparator)) {
+		return "", fmt.Errorf("stage local site path escapes root: %s", name)
+	}
+	return dst, nil
 }
 
 func writeLocalHumanResult(g globalContext, res pushResult, opts pushOptions) {

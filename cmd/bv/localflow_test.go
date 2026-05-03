@@ -131,6 +131,12 @@ func TestPushModeLocalUsesConfiguredImageQuality(t *testing.T) {
 	}
 }
 
+func TestLocalSiteOutputPathRejectsTraversal(t *testing.T) {
+	if _, err := localSiteOutputPath(t.TempDir(), "../escape.html"); err == nil {
+		t.Fatal("expected traversal path to be rejected")
+	}
+}
+
 type fakeLocalServerCapture struct {
 	Root      string
 	IndexHTML string
