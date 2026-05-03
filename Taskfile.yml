@@ -1,0 +1,109 @@
+version: "3"
+
+set: [pipefail]
+
+tasks:
+  default:
+    desc: List available tasks
+    silent: true
+    cmd: task --list
+
+  install:
+    desc: Install marketing-site dependencies
+    dir: marketing-site
+    cmd: pnpm install
+
+  # -- build ---------------------------------------------------------------
+
+  build:go:
+    desc: Build the bv CLI
+    cmd: go build ./cmd/bv
+
+  build:site:
+    desc: Build the marketing site
+    dir: marketing-site
+    cmd: pnpm build
+
+  build:
+    desc: Build everything
+    deps: ["build:go", "build:site"]
+
+  # -- format --------------------------------------------------------------
+
+  format:check:
+    desc: Check Go formatting (no writes)
+    cmd: test -z "$(gofmt -l .)"
+
+  # -- lint ----------------------------------------------------------------
+
+  lint:go:
+    desc: Lint Go code (vet + golangci-lint)
+    cmds:
+      - go vet ./...
+      - golangci-lint run
+
+  lint:site:
+    desc: Lint marketing site (ESLint)
+    dir: marketing-site
+    cmd: pnpm lint
+
+  lint:
+    desc: Lint everything
+    deps: ["lint:go", "lint:site"]
+
+  # -- typecheck -----------------------------------------------------------
+
+  typecheck:go:
+    desc: Go vet (type-level checks)
+    cmd: go vet ./...
+
+  typecheck:site:
+    desc: Type-check marketing site
+    dir: marketing-site
+    cmd: pnpm typecheck
+
+  typecheck:
+    desc: Type-check everything
+    deps: ["typecheck:go", "typecheck:site"]
+
+  # -- test ----------------------------------------------------------------
+
+  test:go:
+    desc: Run Go tests
+    cmd: go test -count=1 ./...
+
+  test:site:
+    desc: Run marketing site unit tests
+    dir: marketing-site
+    cmd: pnpm test
+
+  test:
+    desc: Run all tests
+    deps: ["test:go", "test:site"]
+
+  # -- audit ---------------------------------------------------------------
+
+  audit:
+    desc: Dependency security audit (marketing site)
+    dir: marketing-site
+    cmd: pnpm audit --audit-level=high
+
+  # -- links ---------------------------------------------------------------
+
+  link:check:
+    desc: Check internal links in built marketing site
+    dir: marketing-site
+    cmd: pnpm link-check
+
+  # -- ci ------------------------------------------------------------------
+
+  ci:
+    desc: Run full CI suite locally (mirrors GitHub Actions)
+    cmds:
+      - task: "format:check"
+      - task: lint
+      - task: typecheck
+      - task: build
+      - task: test
+      - task: audit
+      - task: "link:check"

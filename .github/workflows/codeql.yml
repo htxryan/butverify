@@ -1,32 +1,21 @@
 name: CodeQL
 
-# Static security + quality analysis on Go (CLI) and JavaScript/TypeScript
-# (marketing-site). Free on public repos.
-#
-# Triggers:
-#   - push/PR to main: gates merges via the `main` branch ruleset
-#   - weekly schedule: catches new advisories that affect already-merged code
-#
-# The matrix runs each language as its own job so a TS-only failure can't
-# mask a Go finding (and vice versa). Both must pass for the
-# "CodeQL" status check to be green at the workflow level.
-
 on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   schedule:
-    # Mondays at 13:17 UTC — off the top of the hour to avoid GH runner contention.
-    - cron: "17 13 * * 1"
+    - cron: "0 8 * * 0"
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
   security-events: write
   actions: read
-
-concurrency:
-  group: codeql-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   analyze:
@@ -48,10 +37,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # `security-extended` adds the higher-recall security queries beyond
-          # the default set; we accept the runtime cost for stronger coverage
-          # on a public-facing CLI + site.
-          queries: security-extended
+          queries: security-and-quality
 
       - name: Setup Go
         if: matrix.language == 'go'
@@ -60,7 +46,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Perform CodeQL Analysis
+      - name: Autobuild
+        if: matrix.build-mode == 'autobuild'
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:${{ matrix.language }}"
+          category: /language:${{ matrix.language }}

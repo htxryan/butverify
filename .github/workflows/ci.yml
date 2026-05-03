@@ -12,38 +12,46 @@ jobs:
   go:
     name: Go (ubuntu-latest)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
       - name: Format check (gofmt)
-        run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then
-            echo "::error::gofmt found unformatted files:"
-            echo "$out"
-            exit 1
-          fi
-      - name: Vet
-        run: go vet ./...
+        run: task format:check
       - name: Lint (golangci-lint)
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
       - name: Test
-        run: go test -count=1 ./...
+        run: task test:go
       - name: Build CLI
-        run: go build ./cmd/bv
+        run: task build:go
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   marketing:
     name: Marketing site (ubuntu-latest)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: marketing-site
     steps:
       - uses: actions/checkout@v4
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
@@ -52,24 +60,18 @@ jobs:
           node-version: "22.11.0"
           cache: pnpm
           cache-dependency-path: marketing-site/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
-      - run: pnpm build
-      - run: pnpm link-check
-
-  gitleaks:
-    name: Secret scan
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: marketing-site
+      - name: Audit dependencies
+        run: task audit
+      - name: Type-check site
+        run: task typecheck:site
+      - name: Lint site
+        run: task lint:site
+      - name: Test site
+        run: task test:site
+      - name: Build site
+        run: task build:site
+      - name: Check links
+        run: task link:check
