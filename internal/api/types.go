@@ -32,6 +32,9 @@ type CreateSiteRequest struct {
 	TTLSeconds     *int64 `json:"ttl_seconds,omitempty"`
 	SourcePath     string `json:"source_path,omitempty"`
 	ClientHostname string `json:"client_hostname,omitempty"`
+	CLIVersion     string `json:"cli_version,omitempty"`
+	PublishCommand string `json:"publish_command,omitempty"`
+	PublishCWD     string `json:"publish_cwd,omitempty"`
 	// Template is set when the CLI is invoking a templated artifact path; empty for a regular `bv push`. Server uses
 	// this to bill the request against the templated-site fairness counter
 	// (closes O-3) and stamp the sites row's `template` column for analytics.
@@ -83,6 +86,9 @@ type FinalizeRequest struct {
 	ManifestSHA    string `json:"manifest_sha,omitempty"`
 	SourcePath     string `json:"source_path,omitempty"`
 	ClientHostname string `json:"client_hostname,omitempty"`
+	CLIVersion     string `json:"cli_version,omitempty"`
+	PublishCommand string `json:"publish_command,omitempty"`
+	PublishCWD     string `json:"publish_cwd,omitempty"`
 }
 
 // FinalizeResponse is the POST /v1/sites/{id}/finalize payload.
