@@ -52,6 +52,7 @@ type pushOptions struct {
 }
 
 var collectClientHostname = os.Hostname
+var collectPublishInvocationMetadata = publishInvocationMetadata
 
 // pushResult mirrors the JSON shape `bv push` emits on success. Templated
 // commands surface the same shape so a caller piping `--json` sees a stable
@@ -83,11 +84,15 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 		}
 	}
 	clientHostname, _ := collectClientHostname()
+	publishCommand, publishCWD := collectPublishInvocationMetadata()
 	createReq := api.CreateSiteRequest{
 		UploadID:       opts.uploadID,
 		Template:       opts.template,
 		SourcePath:     opts.sourcePath,
 		ClientHostname: clientHostname,
+		CLIVersion:     Version,
+		PublishCommand: publishCommand,
+		PublishCWD:     publishCWD,
 	}
 	if opts.ttlSeconds > 0 {
 		ttl := opts.ttlSeconds
@@ -132,6 +137,9 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 		UploadID:       opts.uploadID,
 		SourcePath:     opts.sourcePath,
 		ClientHostname: clientHostname,
+		CLIVersion:     Version,
+		PublishCommand: publishCommand,
+		PublishCWD:     publishCWD,
 	}
 	if err := client.Do(ctx, "POST", "/v1/sites/"+created.SiteID+"/finalize",
 		finalizeReq, &fin); err != nil {
@@ -167,6 +175,47 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 	pushProgress(g, 4, "Published", res.URL)
 	writePushHumanResult(g, res)
 	return 0
+}
+
+func publishInvocationMetadata() (string, string) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = ""
+	}
+	return publishShellJoin(os.Args), cwd
+}
+
+func publishShellJoin(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	quoted := make([]string, 0, len(args))
+	for _, arg := range args {
+		quoted = append(quoted, publishShellQuote(arg))
+	}
+	return strings.Join(quoted, " ")
+}
+
+func publishShellQuote(arg string) string {
+	if arg == "" {
+		return "''"
+	}
+	safe := true
+	for _, r := range arg {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			continue
+		}
+		switch r {
+		case '@', '%', '_', '+', '=', ':', ',', '.', '/', '-':
+			continue
+		}
+		safe = false
+		break
+	}
+	if safe {
+		return arg
+	}
+	return "'" + strings.ReplaceAll(arg, "'", "'\\''") + "'"
 }
 
 func publishSourcePath(source string) string {

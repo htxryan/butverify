@@ -146,6 +146,13 @@ func withClientHostname(t *testing.T, hostname string) {
 	t.Cleanup(func() { collectClientHostname = old })
 }
 
+func withPublishInvocationMetadata(t *testing.T, command, cwd string) {
+	t.Helper()
+	old := collectPublishInvocationMetadata
+	collectPublishInvocationMetadata = func() (string, string) { return command, cwd }
+	t.Cleanup(func() { collectPublishInvocationMetadata = old })
+}
+
 func assertPublishMetadata(t *testing.T, body map[string]any, wantSourcePath, wantHostname string) {
 	t.Helper()
 	if got := body["source_path"]; got != wantSourcePath {
@@ -153,6 +160,23 @@ func assertPublishMetadata(t *testing.T, body map[string]any, wantSourcePath, wa
 	}
 	if got := body["client_hostname"]; got != wantHostname {
 		t.Errorf("client_hostname=%v, want %q", got, wantHostname)
+	}
+	if got := body["cli_version"]; got != Version {
+		t.Errorf("cli_version=%v, want %q", got, Version)
+	}
+	if got := body["publish_command"]; got != "bv push ./dist" {
+		t.Errorf("publish_command=%v, want %q", got, "bv push ./dist")
+	}
+	if got := body["publish_cwd"]; got != "/workspace/project" {
+		t.Errorf("publish_cwd=%v, want %q", got, "/workspace/project")
+	}
+}
+
+func TestPublishInvocationMetadataShellQuotesArgs(t *testing.T) {
+	got := publishShellJoin([]string{"bv", "push", "my dir", "--title", "Bob's report"})
+	want := `bv push 'my dir' --title 'Bob'\''s report'`
+	if got != want {
+		t.Fatalf("shellJoin=%q, want %q", got, want)
 	}
 }
 
@@ -312,6 +336,7 @@ func TestRemoveErrorMapsToExitCode(t *testing.T) {
 func TestPushHappyPath(t *testing.T) {
 	srv := newFakeServer(t)
 	withClientHostname(t, "cli-host.test")
+	withPublishInvocationMetadata(t, "bv push ./dist", "/workspace/project")
 	// Stage a temp dir with one file to bundle.
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>hello</h1>"), 0o644); err != nil {
