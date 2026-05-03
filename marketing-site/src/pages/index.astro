@@ -26,8 +26,8 @@ const installUrl = resolveInstallUrl("{{INSTALL_URL}}");
           <span class="text-accent-300">You see it instantly.</span>
         </h1>
         <p class="mt-6 max-w-copy text-lg text-gray-300">
-          {SITE.description} One CLI command, one private URL — no DNS, no
-          buckets, no IAM.
+          {SITE.description} One CLI command for local preview, one flag for a
+          private URL — no DNS, no buckets, no IAM.
         </p>
 
         <div class="mt-10 max-w-xl">
@@ -77,12 +77,15 @@ const installUrl = resolveInstallUrl("{{INSTALL_URL}}");
         >
           <TerminalIcon size={22} />
         </div>
-        <h2 class="mt-4 text-xl font-semibold">One command publishes</h2>
+        <h2 class="mt-4 text-xl font-semibold">Local first, remote when needed</h2>
         <p class="mt-3 text-gray-300">
           <code class="rounded bg-bv-surface px-1.5 py-0.5 text-sm">bv push</code>
           {" "}
-          tarballs the directory, uploads it, and prints a private URL the
-          human can open. JSON output is built in for agent loops.
+          serves a filtered local preview by default. Add
+          {" "}
+          <code class="rounded bg-bv-surface px-1.5 py-0.5 text-sm">--mode remote</code>
+          {" "}
+          when an agent needs a private URL.
         </p>
       </div>
       <div>
@@ -94,8 +97,8 @@ const installUrl = resolveInstallUrl("{{INSTALL_URL}}");
         </div>
         <h2 class="mt-4 text-xl font-semibold">Private by default</h2>
         <p class="mt-3 text-gray-300">
-          Sites are gated by GitHub identity through Cloudflare Access. Share
-          with collaborators by GitHub login, no auth code to write.
+          Remote sites are gated by GitHub identity through Cloudflare Access.
+          Share with collaborators by GitHub login, no auth code to write.
         </p>
       </div>
       <div>
@@ -107,8 +110,9 @@ const installUrl = resolveInstallUrl("{{INSTALL_URL}}");
         </div>
         <h2 class="mt-4 text-xl font-semibold">Disposable, on purpose</h2>
         <p class="mt-3 text-gray-300">
-          Every push is a content-addressed snapshot. Free sites expire in 30
-          days; pin the ones you want to keep. Your storage stays small.
+          Every remote push is a content-addressed snapshot. Free sites expire
+          in 30 days; pin the ones you want to keep. Local previews vanish when
+          the process stops.
         </p>
       </div>
     </div>
@@ -155,8 +159,8 @@ const installUrl = resolveInstallUrl("{{INSTALL_URL}}");
         Stop screenshotting deploy logs.
       </h2>
       <p class="mt-4 text-gray-300">
-        Free for 5 sites. No credit card. Install the GitHub App and your
-        next agent run can publish.
+        Free local previews. No credit card. Install the GitHub App when your
+        next agent run needs a shareable remote proof link.
       </p>
       <div class="mt-8 flex flex-wrap justify-center gap-3">
         <a

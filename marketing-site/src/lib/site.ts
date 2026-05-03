@@ -7,7 +7,7 @@ export const SITE = {
   name: 'butverify',
   tagline: 'Static site hosting your AI agents can publish to.',
   description:
-    "An AI agent shouldn't need DevOps to show its work. butverify gives the CLI a one-shot push, gives the human a private link, and disappears.",
+    "An AI agent shouldn't need DevOps to show its work. butverify previews locally by default, publishes private links on demand, and disappears.",
   domain: 'butverify.dev',
   appHost: 'app.butverify.dev',
   apiHost: 'api.butverify.dev',
@@ -101,20 +101,20 @@ export const AGENTS: ReadonlyArray<AgentRecipe> = [
   {
     slug: 'claude-code',
     name: 'Claude Code',
-    blurb: "Add a hook that pushes the project's preview directory after a successful build.",
+    blurb: "Add a hook that publishes the project's preview directory remotely after a successful build.",
     docsHref: '/docs/agents/claude-code',
   },
   {
     slug: 'cursor',
     name: 'Cursor',
-    blurb: 'Wire `bv push` into a Cursor command and surface the URL in the agent transcript.',
+    blurb: 'Wire `bv push --mode remote` into a Cursor command and surface the URL in the agent transcript.',
     docsHref: '/docs/agents/cursor',
   },
   {
     slug: 'codex',
     name: 'OpenAI Codex CLI',
     blurb:
-      'Drop a `~/.codex/post-task.sh` that publishes the workspace and prints the URL as JSON.',
+      'Drop a `~/.codex/post-task.sh` that publishes the workspace remotely and prints the URL as JSON.',
     docsHref: '/docs/agents/codex',
   },
 ];
@@ -191,8 +191,8 @@ export const CHANGELOG: ReadonlyArray<ChangelogEntry> = [
   },
   {
     date: '2026-04-27',
-    title: 'CLI alpha — `bv push`, `bv ls`, `bv get`',
-    body: 'Go binary with charmbracelet/fang. Cosign-signed releases and Homebrew tap planned for v1.0.',
+    title: 'CLI alpha — local previews and remote publishing',
+    body: 'Go binary with local-first `bv push`, remote publishing mode, JSON output, and Homebrew tap support.',
   },
 ];
 

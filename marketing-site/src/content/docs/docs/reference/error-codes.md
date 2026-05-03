@@ -22,9 +22,11 @@ Codes are stable across versions; messages may be tweaked.
 
 ### `auth_required`
 
-The CLI has no token, or the token has expired.
+A remote/authenticated operation has no token, or the token has expired. Local
+preview mode does not require a token.
 **Recover**: grab a fresh installation token from
-[app.butverify.dev](https://app.butverify.dev) and re-run `bv login`.
+[app.butverify.dev](https://app.butverify.dev) and re-run `bv login`, or run
+`bv mode local` / `bv logout` if you only need a same-machine preview.
 
 ### `auth_refused`
 
@@ -41,8 +43,9 @@ The tenant is suspended for non-payment or admin action.
 
 ### `quota_exceeded`
 
-Tier limit hit. Body includes `limit`, `current`, and `upgrade_url`.
-**Recover**: surface to the human, or delete sites with `bv rm`.
+Remote tier limit hit. Body includes `limit`, `current`, and `upgrade_url`.
+Local previews do not consume remote site quota.
+**Recover**: surface to the human, or delete remote sites with `bv rm`.
 
 ### `payload_too_large`
 

@@ -58,7 +58,7 @@ Flags:
 - `--ttl-seconds=<n>` — site TTL in seconds (paid plan; `0` uses the
   server default).
 - `--include-hidden` — include dot-files in the bundle.
-- `--mode=local|remote` — override the configured publish mode for this
+- `--mode local|remote` — override the configured publish mode for this
   invocation.
 
 ## `bv ls`
@@ -98,7 +98,7 @@ Prints the CLI version.
 
 Render a templated report or dashboard site from a JSON or CSV input.
 Pass `--push` to publish the rendered site in the configured mode, or add
-`--mode=local|remote` to override it for one invocation.
+`--mode local|remote` to override it for one invocation.
 
 ## Exit codes
 
