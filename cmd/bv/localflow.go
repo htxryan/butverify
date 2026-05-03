@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/tar"
 	"context"
 	"fmt"
 	"io"
@@ -59,7 +60,16 @@ func runPushFlowForMode(ctx context.Context, g globalContext, opts pushOptions) 
 }
 
 func runLocalPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
-	serveDir, info, cleanup, err := stageLocalSite(opts.dir, opts.includeHidden)
+	c, err := loadModeConfig()
+	if err != nil {
+		return reportError(g.w, err)
+	}
+	imageQuality, err := config.ResolveImageQuality(c, opts.imageQuality, 0)
+	if err != nil {
+		g.w.Error(toErrorEnvelope(err))
+		return 2
+	}
+	serveDir, info, cleanup, err := stageLocalSite(opts.dir, opts.includeHidden, imageQuality)
 	if err != nil {
 		return reportError(g.w, fmt.Errorf("bundle %s: %w", opts.dir, err))
 	}
@@ -90,47 +100,62 @@ func runLocalPushFlow(ctx context.Context, g globalContext, opts pushOptions) in
 	return 0
 }
 
-func stageLocalSite(src string, includeHidden bool) (string, tarbundle.BundleInfo, func(), error) {
-	info, err := tarbundle.BundleDir(src, nilWriter{}, tarbundle.Options{IncludeHidden: includeHidden})
+func stageLocalSite(src string, includeHidden bool, imageQuality int) (string, tarbundle.BundleInfo, func(), error) {
+	bundle, err := os.CreateTemp("", "bv-local-site-*.tar")
+	if err != nil {
+		return "", tarbundle.BundleInfo{}, func() {}, fmt.Errorf("stage local site temp bundle: %w", err)
+	}
+	defer func() { _ = os.Remove(bundle.Name()) }()
+	defer func() { _ = bundle.Close() }()
+
+	info, err := tarbundle.BundleDir(src, bundle, tarbundle.Options{IncludeHidden: includeHidden, ImageQuality: imageQuality})
 	if err != nil {
 		return "", tarbundle.BundleInfo{}, func() {}, err
+	}
+	if _, err := bundle.Seek(0, io.SeekStart); err != nil {
+		return "", tarbundle.BundleInfo{}, func() {}, fmt.Errorf("stage local site seek bundle: %w", err)
 	}
 	dir, err := os.MkdirTemp("", "bv-local-site-")
 	if err != nil {
 		return "", tarbundle.BundleInfo{}, func() {}, err
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
-	for _, rel := range info.Files {
-		if err := copyLocalSiteFile(src, dir, rel); err != nil {
-			cleanup()
-			return "", tarbundle.BundleInfo{}, func() {}, err
-		}
+	if err := extractLocalSiteTar(bundle, dir); err != nil {
+		cleanup()
+		return "", tarbundle.BundleInfo{}, func() {}, err
 	}
 	return dir, info, cleanup, nil
 }
 
-func copyLocalSiteFile(srcRoot, dstRoot, rel string) error {
-	src := filepath.Join(srcRoot, filepath.FromSlash(rel))
-	dst := filepath.Join(dstRoot, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return fmt.Errorf("stage local site mkdir %s: %w", rel, err)
-	}
-	in, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("stage local site open %s: %w", rel, err)
-	}
-	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return fmt.Errorf("stage local site create %s: %w", rel, err)
-	}
-	_, copyErr := io.Copy(out, in)
-	closeErr := out.Close()
-	if copyErr != nil {
-		return fmt.Errorf("stage local site copy %s: %w", rel, copyErr)
-	}
-	if closeErr != nil {
-		return fmt.Errorf("stage local site close %s: %w", rel, closeErr)
+func extractLocalSiteTar(bundle io.Reader, dstRoot string) error {
+	r := tar.NewReader(bundle)
+	for {
+		h, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("stage local site read tar: %w", err)
+		}
+		if h.Typeflag != tar.TypeReg {
+			continue
+		}
+		dst := filepath.Join(dstRoot, filepath.FromSlash(h.Name))
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return fmt.Errorf("stage local site mkdir %s: %w", h.Name, err)
+		}
+		out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		if err != nil {
+			return fmt.Errorf("stage local site create %s: %w", h.Name, err)
+		}
+		_, copyErr := io.Copy(out, r)
+		closeErr := out.Close()
+		if copyErr != nil {
+			return fmt.Errorf("stage local site copy %s: %w", h.Name, copyErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("stage local site close %s: %w", h.Name, closeErr)
+		}
 	}
 	return nil
 }
@@ -167,7 +192,3 @@ func localSiteID(opts pushOptions) string {
 	}
 	return "local-" + base
 }
-
-type nilWriter struct{}
-
-func (nilWriter) Write(p []byte) (int, error) { return len(p), nil }
