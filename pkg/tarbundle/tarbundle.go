@@ -32,6 +32,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/htxryan/butverify/internal/imageopt"
 )
 
 // Options control how a directory is bundled. The zero value is fine for
@@ -50,6 +52,10 @@ type Options struct {
 	//   * It matches the convention of all major static-site hosts
 	//     (Vercel, Netlify, GitHub Pages all skip dot-files by default).
 	IncludeHidden bool
+
+	// ImageQuality controls JPEG recompression quality for image files in the
+	// upload bundle. Zero disables image optimization.
+	ImageQuality int
 }
 
 // BundleInfo describes the bundle that was written.
@@ -69,6 +75,8 @@ type BundleInfo struct {
 // ErrEmpty is returned by BundleDir when the source directory contains no
 // regular files (after filtering).
 var ErrEmpty = errors.New("tarbundle: directory contains no regular files")
+
+const maxImageOptimizeInputBytes int64 = 25 * 1024 * 1024
 
 // BundleDir walks srcDir and writes a USTAR archive of its regular files to
 // w. Returns a summary on success or an error describing the failure (with
@@ -95,9 +103,10 @@ func BundleDir(srcDir string, w io.Writer, opts Options) (BundleInfo, error) {
 	// hashing; making the archive deterministic too keeps byte-for-byte
 	// equality across CLI invocations a reachable property.
 	type entry struct {
-		rel  string
-		full string
-		size int64
+		rel       string
+		full      string
+		size      int64
+		optimized []byte
 	}
 	var entries []entry
 	walkErr := filepath.WalkDir(abs, func(path string, d fs.DirEntry, walkErr error) error {
@@ -151,7 +160,28 @@ func BundleDir(srcDir string, w io.Writer, opts Options) (BundleInfo, error) {
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].rel < entries[j].rel })
 
-	// Pre-flight cap check — sum of file sizes against the byte budget.
+	for i := range entries {
+		if opts.ImageQuality == 0 || !imageopt.CanOptimizePath(entries[i].rel) {
+			continue
+		}
+		if entries[i].size > maxImageOptimizeInputBytes {
+			continue
+		}
+		data, err := os.ReadFile(entries[i].full)
+		if err != nil {
+			return BundleInfo{}, fmt.Errorf("tarbundle: read %s: %w", entries[i].rel, err)
+		}
+		optimized, changed, err := imageopt.OptimizePath(entries[i].rel, data, imageopt.Options{Quality: opts.ImageQuality})
+		if err != nil {
+			return BundleInfo{}, fmt.Errorf("tarbundle: optimize %s: %w", entries[i].rel, err)
+		}
+		if changed {
+			entries[i].optimized = optimized
+			entries[i].size = int64(len(optimized))
+		}
+	}
+
+	// Pre-flight cap check — sum of optimized file sizes against the byte budget.
 	var total int64
 	for _, e := range entries {
 		total += e.size
@@ -177,12 +207,19 @@ func BundleDir(srcDir string, w io.Writer, opts Options) (BundleInfo, error) {
 		if err := tw.WriteHeader(hdr); err != nil {
 			return BundleInfo{}, fmt.Errorf("tarbundle: write header %s: %w", e.rel, err)
 		}
-		f, err := os.Open(e.full)
-		if err != nil {
-			return BundleInfo{}, fmt.Errorf("tarbundle: open %s: %w", e.rel, err)
+		var n int64
+		var err error
+		if e.optimized != nil {
+			_, err = tw.Write(e.optimized)
+			n = int64(len(e.optimized))
+		} else {
+			f, openErr := os.Open(e.full)
+			if openErr != nil {
+				return BundleInfo{}, fmt.Errorf("tarbundle: open %s: %w", e.rel, openErr)
+			}
+			n, err = io.Copy(tw, f)
+			_ = f.Close()
 		}
-		n, err := io.Copy(tw, f)
-		_ = f.Close()
 		if err != nil {
 			return BundleInfo{}, fmt.Errorf("tarbundle: copy %s: %w", e.rel, err)
 		}
