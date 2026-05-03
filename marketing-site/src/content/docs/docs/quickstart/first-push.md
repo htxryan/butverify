@@ -27,18 +27,24 @@ The CLI:
 2. Asks the API for a presigned R2 upload URL.
 3. Streams the tarball.
 4. Calls `finalize`, which expands the tarball and publishes the site.
-5. Prints the assigned `site_id`, the URL, the manifest SHA, and the
-   expiry timestamp.
+5. Shows progress on stderr while it works, then prints the published URL
+   and metadata on stdout.
 
 ```text
-Provisioned kind-otter-7q (https://kind-otter-7q.butverify.dev)
-Bundled 142 files (3568912 bytes)
-Uploaded tar to staging
-Site:        kind-otter-7q
-URL:         https://kind-otter-7q.butverify.dev
-Status:      live
-Manifest:    sha256:…
-Expires:     2026-05-27T00:00:00Z
+[1/4] [#####---------------] Provisioned: kind-otter-7q ready for upload
+[2/4] [##########----------] Bundled: 142 files (3568912 bytes)
+[3/4] [###############-----] Uploaded: bundle staged
+[4/4] [####################] Published: https://kind-otter-7q.butverify.dev
+Published site
+  Open URL:   https://kind-otter-7q.butverify.dev
+
+Metadata
+  Site ID:    kind-otter-7q
+  Status:     live
+  Manifest:   sha256:…
+  Files:      142
+  Size:       3568912 bytes
+  Expires:    2026-05-27T00:00:00Z
 ```
 
 The URL is private by default — only you and any GitHub users granted

@@ -4,7 +4,8 @@ description: Make every CLI command machine-readable for agent loops.
 ---
 
 Every `bv` subcommand accepts `--json`. With it, stdout is a single JSON
-document and stderr stays human-readable for debugging.
+document and human progress/status output is suppressed so agent loops can
+parse stdout without filtering terminal text.
 
 ## Push
 
