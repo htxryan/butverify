@@ -27,9 +27,39 @@ The CLI:
 1. Bundles the directory into a tarball (`.git/`, `node_modules/`, and
    dot-files are skipped by default; pass `--include-hidden` to include
    them).
-2. In local mode, serves the filtered bundle on `127.0.0.1` until interrupted.
-3. In remote mode, asks the API for a presigned R2 upload URL, streams the
+2. Optimizes supported image assets before publishing: JPEGs are recompressed
+   at the configured quality, and PNGs are recompressed losslessly when doing
+   so makes them smaller.
+3. In local mode, serves the filtered bundle on `127.0.0.1` until interrupted.
+4. In remote mode, asks the API for a presigned R2 upload URL, streams the
    tarball, calls `finalize`, and prints the private URL plus metadata.
+
+## Adjust image optimization
+
+Remote and local pushes use the same image optimization rules, so local preview
+bytes match what remote publishing uploads. The default JPEG quality is `75`.
+Pass `--image-quality` to adjust a single push:
+
+```bash
+bv push --image-quality 60 .
+bv push --mode remote --image-quality 60 .
+```
+
+To make a persistent default, set `image_quality` in the `bv` config JSON at
+`$XDG_CONFIG_HOME/butverify/config.json` (or
+`~/.config/butverify/config.json` when `XDG_CONFIG_HOME` is unset):
+
+```json
+{
+  "mode": "remote",
+  "image_quality": 60
+}
+```
+
+Use a value from `1` to `100`; lower values usually create smaller JPEGs with
+more visible compression. `0` means “use the configured value, or the default
+of `75`.” Very large images are left unchanged instead of being decoded just to
+optimize them.
 
 If stderr is redirected or captured, `bv` writes the same progress as stable
 status lines so logs stay readable:

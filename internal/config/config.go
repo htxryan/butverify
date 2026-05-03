@@ -10,6 +10,7 @@
 //   - token_expires_at   — RFC 3339 timestamp; CLI refreshes when within
 //     TokenRefreshThreshold of expiry (E-2a).
 //   - mode               — default publish mode: local or remote.
+//   - image_quality      — default JPEG quality for image optimization.
 //
 // File mode is 0600 because the installation token is a credential. We do
 // NOT store it in OS keychains at v1 — that's a future hardening pass; v1
