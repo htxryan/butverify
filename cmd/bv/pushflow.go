@@ -26,6 +26,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,6 +38,7 @@ import (
 // pushOptions bundles the parameters of a single push pipeline run.
 type pushOptions struct {
 	dir           string
+	sourcePath    string
 	uploadID      string
 	ttlSeconds    int64 // 0 = use server default
 	template      string
@@ -47,6 +50,8 @@ type pushOptions struct {
 	// callers leave this nil.
 	createErrTransform func(error) error
 }
+
+var collectClientHostname = os.Hostname
 
 // pushResult mirrors the JSON shape `bv push` emits on success. Templated
 // commands surface the same shape so a caller piping `--json` sees a stable
@@ -77,7 +82,13 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 			return reportError(g.w, err)
 		}
 	}
-	createReq := api.CreateSiteRequest{UploadID: opts.uploadID, Template: opts.template}
+	clientHostname, _ := collectClientHostname()
+	createReq := api.CreateSiteRequest{
+		UploadID:       opts.uploadID,
+		Template:       opts.template,
+		SourcePath:     opts.sourcePath,
+		ClientHostname: clientHostname,
+	}
 	if opts.ttlSeconds > 0 {
 		ttl := opts.ttlSeconds
 		createReq.TTLSeconds = &ttl
@@ -117,8 +128,13 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 	pushProgress(g, 3, "Uploaded", "bundle staged")
 
 	var fin api.FinalizeResponse
+	finalizeReq := api.FinalizeRequest{
+		UploadID:       opts.uploadID,
+		SourcePath:     opts.sourcePath,
+		ClientHostname: clientHostname,
+	}
 	if err := client.Do(ctx, "POST", "/v1/sites/"+created.SiteID+"/finalize",
-		api.FinalizeRequest{UploadID: opts.uploadID}, &fin); err != nil {
+		finalizeReq, &fin); err != nil {
 		if api.IsUnauthenticated(err) && canAutoRefreshToken(g, cfg) {
 			refreshedClient, refreshErr := refreshInstallationToken(ctx, g, cfg)
 			if refreshErr != nil {
@@ -126,7 +142,7 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 			}
 			client = refreshedClient
 			err = client.Do(ctx, "POST", "/v1/sites/"+created.SiteID+"/finalize",
-				api.FinalizeRequest{UploadID: opts.uploadID}, &fin)
+				finalizeReq, &fin)
 		}
 		if err != nil {
 			return reportError(g.w, err)
@@ -151,6 +167,17 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 	pushProgress(g, 4, "Published", res.URL)
 	writePushHumanResult(g, res)
 	return 0
+}
+
+func publishSourcePath(source string) string {
+	if source == "" || source == "-" {
+		return source
+	}
+	abs, err := filepath.Abs(source)
+	if err != nil {
+		return filepath.Clean(source)
+	}
+	return filepath.Clean(abs)
 }
 
 const pushProgressSteps = 4

@@ -139,6 +139,23 @@ func newTTYHumanWriter(t *testing.T) (*output.Writer, *bytes.Buffer, *bytes.Buff
 	return output.NewWithTTY(output.ModeHuman, &stdout, &stderr), &stdout, &stderr
 }
 
+func withClientHostname(t *testing.T, hostname string) {
+	t.Helper()
+	old := collectClientHostname
+	collectClientHostname = func() (string, error) { return hostname, nil }
+	t.Cleanup(func() { collectClientHostname = old })
+}
+
+func assertPublishMetadata(t *testing.T, body map[string]any, wantSourcePath, wantHostname string) {
+	t.Helper()
+	if got := body["source_path"]; got != wantSourcePath {
+		t.Errorf("source_path=%v, want %q", got, wantSourcePath)
+	}
+	if got := body["client_hostname"]; got != wantHostname {
+		t.Errorf("client_hostname=%v, want %q", got, wantHostname)
+	}
+}
+
 func TestWhoami(t *testing.T) {
 	srv := newFakeServer(t)
 	srv.whoami = func(w http.ResponseWriter, r *http.Request) {
@@ -294,6 +311,7 @@ func TestRemoveErrorMapsToExitCode(t *testing.T) {
 
 func TestPushHappyPath(t *testing.T) {
 	srv := newFakeServer(t)
+	withClientHostname(t, "cli-host.test")
 	// Stage a temp dir with one file to bundle.
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>hello</h1>"), 0o644); err != nil {
@@ -304,12 +322,13 @@ func TestPushHappyPath(t *testing.T) {
 		gotPut       bool
 		gotFinalize  bool
 		uploadIDSeen string
+		createBody   map[string]any
+		finalizeBody map[string]any
 	)
 	stagingURL := ""
 	srv.create = func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		uploadIDSeen = body["upload_id"].(string)
+		_ = json.NewDecoder(r.Body).Decode(&createBody)
+		uploadIDSeen = createBody["upload_id"].(string)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"site_id":               "abcd1234",
 			"url":                   "https://abcd1234.butverify.dev",
@@ -325,6 +344,7 @@ func TestPushHappyPath(t *testing.T) {
 	}
 	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
 		gotFinalize = true
+		_ = json.NewDecoder(r.Body).Decode(&finalizeBody)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"site_id":        siteID,
 			"status":         "active",
@@ -365,6 +385,11 @@ func TestPushHappyPath(t *testing.T) {
 	}
 	if !strings.HasPrefix(uploadIDSeen, "u-") {
 		t.Errorf("upload_id should start with u-: %s", uploadIDSeen)
+	}
+	assertPublishMetadata(t, createBody, publishSourcePath(dir), "cli-host.test")
+	assertPublishMetadata(t, finalizeBody, publishSourcePath(dir), "cli-host.test")
+	if finalizeBody["upload_id"] != uploadIDSeen {
+		t.Errorf("finalize upload_id=%v, want create upload_id %q", finalizeBody["upload_id"], uploadIDSeen)
 	}
 	if !strings.Contains(stdout.String(), `"manifest_sha"`) {
 		t.Errorf("stdout missing manifest_sha: %s", stdout.String())
