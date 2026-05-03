@@ -1,0 +1,12 @@
+$ bv --api-url http://127.0.0.1:56822 --token ghs_test push ./demo-site
+\r\x1b[2K[1/4] [#####---------------] Provisioned: proof-push-7q ready for upload\r\x1b[2K[2/4] [##########----------] Bundled: 1 files (136 bytes)\r\x1b[2K[3/4] [###############-----] Uploaded: bundle staged\r\x1b[2K[4/4] [####################] Published: https://proof-push-7q.butverify.dev\r\x1b[2K
+Published site
+  Open URL:   https://proof-push-7q.butverify.dev
+
+Metadata
+  Site ID:    proof-push-7q
+  Status:     live
+  Manifest:   aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  Files:      1
+  Size:       136 bytes
+  Expires:    2026-05-27T00:00:00Z

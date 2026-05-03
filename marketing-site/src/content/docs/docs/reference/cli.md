@@ -11,7 +11,7 @@ The `bv` CLI is a single Go binary. It supports a handful of global flags
 These can be passed before any subcommand:
 
 - `--json` — emit a single JSON document on stdout instead of human-
-  readable text. Stderr stays human-readable.
+  readable text. Human progress/status output is suppressed.
 - `--api-url=<url>` — override the control-plane endpoint (defaults to
   `https://api.butverify.dev`, or whatever was captured during `bv init`).
 - `--token=<token>` — override the bearer token (defaults to the value
@@ -33,9 +33,11 @@ Flags:
 
 ## `bv push <dir>`
 
-Tarballs `<dir>` and uploads it as a new site. Each invocation provisions
-a fresh `site_id`; pass `--upload-id` to retry the same logical upload
-idempotently.
+Tarballs `<dir>` and uploads it as a new site. In an interactive terminal, the
+human progress bar redraws in place on stderr; when stderr is redirected, the
+same progress is emitted as deterministic status lines. Final stdout highlights
+the open URL plus structured site metadata. Each invocation provisions a fresh
+`site_id`; pass `--upload-id` to retry the same logical upload idempotently.
 
 Flags:
 

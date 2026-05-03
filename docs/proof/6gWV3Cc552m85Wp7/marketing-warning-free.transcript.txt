@@ -1,0 +1,15 @@
+$ cd marketing-site
+$ pnpm test
+✓ 10 test files passed, 146 tests passed
+✓ includes regression: source layout does not define duplicate Starlight docs content ids
+
+$ pnpm typecheck
+✓ astro check completed: 0 errors, 0 warnings, 0 hints
+✓ no Starlight duplicate docs ID warning emitted
+
+$ pnpm build
+✓ astro build completed: 20 pages built
+✓ no Starlight duplicate docs ID warning emitted
+
+$ pnpm link-check
+✓ link-check: 20 HTML file(s) scanned, no broken internal links

@@ -133,6 +133,12 @@ func newJSONWriter(t *testing.T) (*output.Writer, *bytes.Buffer, *bytes.Buffer) 
 	return output.NewWith(output.ModeJSON, &stdout, &stderr), &stdout, &stderr
 }
 
+func newTTYHumanWriter(t *testing.T) (*output.Writer, *bytes.Buffer, *bytes.Buffer) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	return output.NewWithTTY(output.ModeHuman, &stdout, &stderr), &stdout, &stderr
+}
+
 func TestWhoami(t *testing.T) {
 	srv := newFakeServer(t)
 	srv.whoami = func(w http.ResponseWriter, r *http.Request) {
@@ -343,10 +349,13 @@ func TestPushHappyPath(t *testing.T) {
 	stagingURL = server.URL + "/staging-put"
 	setupConfig(t, server.URL)
 
-	w, stdout, _ := newJSONWriter(t)
+	w, stdout, stderr := newJSONWriter(t)
 	rc := runPush(context.Background(), globalContext{w: w}, []string{dir})
 	if rc != 0 {
 		t.Fatalf("push rc: %d, stdout=%s", rc, stdout.String())
+	}
+	if stderr.String() != "" {
+		t.Fatalf("json push should not write progress to stderr: %s", stderr.String())
 	}
 	if !gotPut {
 		t.Error("PUT not seen")
@@ -359,6 +368,213 @@ func TestPushHappyPath(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"manifest_sha"`) {
 		t.Errorf("stdout missing manifest_sha: %s", stdout.String())
+	}
+}
+
+func TestPushHumanOutputShowsProgressAndStructuredResult(t *testing.T) {
+	srv := newFakeServer(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>hello</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stagingURL := ""
+	srv.create = func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":               "abcd1234",
+			"url":                   "https://abcd1234.butverify.dev",
+			"expires_at":            "2026-05-04T10:00:00Z",
+			"upload_token":          "use_installation_token",
+			"manifest_url":          "https://api.example.test/v1/sites/abcd1234/manifest",
+			"status":                "creating",
+			"idempotent":            false,
+			"upload_url":            stagingURL,
+			"upload_max_bytes":      100 * 1024 * 1024,
+			"upload_url_expires_at": "2026-04-27T10:15:00Z",
+		})
+	}
+	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":        siteID,
+			"status":         "active",
+			"url":            "https://abcd1234.butverify.dev",
+			"manifest_url":   "x",
+			"expires_at":     "2026-05-04T10:00:00Z",
+			"manifest_sha":   strings.Repeat("a", 64),
+			"last_pushed_at": "2026-04-27T10:00:00Z",
+			"idempotent":     false,
+		})
+	}
+	srv.put = func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if len(body) == 0 {
+			t.Error("PUT body empty")
+		}
+		w.WriteHeader(200)
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	stagingURL = server.URL + "/staging-put"
+	setupConfig(t, server.URL)
+
+	w, stdout, stderr := newHumanWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{dir})
+	if rc != 0 {
+		t.Fatalf("push rc: %d, stdout=%s stderr=%s", rc, stdout.String(), stderr.String())
+	}
+
+	out := stdout.String()
+	for _, want := range []string{
+		"Published site",
+		"Open URL:   https://abcd1234.butverify.dev",
+		"Metadata",
+		"Site ID:    abcd1234",
+		"Status:     active",
+		"Manifest:   " + strings.Repeat("a", 64),
+		"Files:      1",
+		"Size:",
+		"Expires:    2026-05-04T10:00:00Z",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("human stdout missing %q:\n%s", want, out)
+		}
+	}
+
+	errOut := stderr.String()
+	for _, want := range []string{
+		"[1/4] [#####---------------] Provisioned: abcd1234 ready for upload",
+		"[2/4] [##########----------] Bundled: 1 files",
+		"[3/4] [###############-----] Uploaded: bundle staged",
+		"[4/4] [####################] Published: https://abcd1234.butverify.dev",
+	} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("human stderr missing %q:\n%s", want, errOut)
+		}
+	}
+}
+
+func TestPushHumanOutputTTYRedrawsProgressInPlace(t *testing.T) {
+	srv := newFakeServer(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>hello</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stagingURL := ""
+	srv.create = func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":               "abcd1234",
+			"url":                   "https://abcd1234.butverify.dev",
+			"expires_at":            "2026-05-04T10:00:00Z",
+			"upload_token":          "use_installation_token",
+			"manifest_url":          "x",
+			"status":                "creating",
+			"idempotent":            false,
+			"upload_url":            stagingURL,
+			"upload_max_bytes":      100 * 1024 * 1024,
+			"upload_url_expires_at": "2026-04-27T10:15:00Z",
+		})
+	}
+	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":        siteID,
+			"status":         "active",
+			"url":            "https://abcd1234.butverify.dev",
+			"manifest_url":   "x",
+			"expires_at":     "2026-05-04T10:00:00Z",
+			"manifest_sha":   strings.Repeat("a", 64),
+			"last_pushed_at": "2026-04-27T10:00:00Z",
+			"idempotent":     false,
+		})
+	}
+	srv.put = func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	stagingURL = server.URL + "/staging-put"
+	setupConfig(t, server.URL)
+
+	w, stdout, stderr := newTTYHumanWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{dir})
+	if rc != 0 {
+		t.Fatalf("push rc: %d, stdout=%s stderr=%s", rc, stdout.String(), stderr.String())
+	}
+
+	errOut := stderr.String()
+	if strings.Count(errOut, "\r\033[2K") != 5 {
+		t.Fatalf("stderr should redraw in place and clear before result: %q", errOut)
+	}
+	if strings.Contains(errOut, "\n[2/4]") || strings.Contains(errOut, "\n[3/4]") || strings.Contains(errOut, "\n[4/4]") {
+		t.Fatalf("stderr should not contain snapshot progress lines: %q", errOut)
+	}
+	if !strings.HasSuffix(errOut, "\r\033[2K\n") {
+		t.Fatalf("stderr should terminate the active progress line before human output: %q", errOut)
+	}
+	if !strings.Contains(stdout.String(), "Published site") {
+		t.Fatalf("stdout: %s", stdout.String())
+	}
+}
+
+func TestPushJSONOutputStaysMachineOnly(t *testing.T) {
+	srv := newFakeServer(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>hello</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stagingURL := ""
+	srv.create = func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":               "abcd1234",
+			"url":                   "https://abcd1234.butverify.dev",
+			"expires_at":            "2026-05-04T10:00:00Z",
+			"upload_token":          "use_installation_token",
+			"manifest_url":          "x",
+			"status":                "creating",
+			"idempotent":            false,
+			"upload_url":            stagingURL,
+			"upload_max_bytes":      100 * 1024 * 1024,
+			"upload_url_expires_at": "2026-04-27T10:15:00Z",
+		})
+	}
+	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":        siteID,
+			"status":         "active",
+			"url":            "https://abcd1234.butverify.dev",
+			"manifest_url":   "x",
+			"expires_at":     "2026-05-04T10:00:00Z",
+			"manifest_sha":   strings.Repeat("a", 64),
+			"last_pushed_at": "2026-04-27T10:00:00Z",
+			"idempotent":     false,
+		})
+	}
+	srv.put = func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	stagingURL = server.URL + "/staging-put"
+	setupConfig(t, server.URL)
+
+	w, stdout, stderr := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{dir})
+	if rc != 0 {
+		t.Fatalf("push rc: %d, stdout=%s stderr=%s", rc, stdout.String(), stderr.String())
+	}
+	if stderr.String() != "" {
+		t.Fatalf("json mode stderr should stay empty, got: %s", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Published site") || strings.Contains(stdout.String(), "[1/4]") {
+		t.Fatalf("json stdout polluted with human output: %s", stdout.String())
+	}
+	var got pushResult
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json stdout is not valid pushResult JSON: %v\n%s", err, stdout.String())
+	}
+	if got.URL != "https://abcd1234.butverify.dev" || got.SiteID != "abcd1234" || got.Status != "active" || got.ManifestSHA != strings.Repeat("a", 64) || got.ExpiresAt != "2026-05-04T10:00:00Z" {
+		t.Fatalf("json push result changed unexpectedly: %+v", got)
 	}
 }
 

@@ -5,7 +5,8 @@
 //  3. Bundle <dir> into a tar in memory (or a temp file for big sites).
 //  4. PUT the tar to the signed URL with Content-Length matching the bundle.
 //  5. POST /v1/sites/{id}/finalize — server untars + computes manifest_sha.
-//  6. Print the result (URL + manifest_sha + status).
+//  6. Emit JSON, or in human mode show progress on stderr and print the
+//     published URL plus structured site metadata on stdout.
 //
 // Idempotency: the upload_id is the binding. A retry with the SAME upload_id
 // re-uses the existing site_id; if the prior call already finalized, the

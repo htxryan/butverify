@@ -3,16 +3,29 @@
  * Run after `pnpm build` to also assert the generated HTML — but the
  * build is heavy, so this test stays at the source layout level.
  */
-import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
 function exists(rel: string): boolean {
   return existsSync(join(ROOT, rel));
+}
+
+function collectDocsContentFiles(dir: string, baseDir = dir): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectDocsContentFiles(path, baseDir));
+    } else if (/\.mdx?$/.test(entry.name)) {
+      files.push(relative(baseDir, path).replace(/\\/g, '/'));
+    }
+  }
+  return files;
 }
 
 describe('source layout', () => {
@@ -29,6 +42,22 @@ describe('source layout', () => {
 
   it('declares the docs content collection (Starlight schema)', () => {
     expect(exists('src/content.config.ts')).toBe(true);
+  });
+
+  it('does not define duplicate Starlight docs content ids', () => {
+    const docsRoot = join(ROOT, 'src/content/docs');
+    const ids = new Map<string, string[]>();
+
+    for (const file of collectDocsContentFiles(docsRoot)) {
+      const id = file.replace(/\.mdx?$/, '');
+      ids.set(id, [...(ids.get(id) ?? []), file]);
+    }
+
+    const duplicates = [...ids.entries()]
+      .filter(([, files]) => files.length > 1)
+      .map(([id, files]) => ({ id, files }));
+
+    expect(duplicates).toEqual([]);
   });
 
   it('includes the four required quickstart pages', () => {

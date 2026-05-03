@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/htxryan/butverify/internal/api"
@@ -98,7 +99,7 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 			return reportError(g.w, err)
 		}
 	}
-	g.w.Status("Provisioned %s (%s)", created.SiteID, created.URL)
+	pushProgress(g, 1, "Provisioned", fmt.Sprintf("%s ready for upload", created.SiteID))
 
 	var buf bytes.Buffer
 	info, err := tarbundle.BundleDir(opts.dir, &buf, tarbundle.Options{
@@ -108,12 +109,12 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 	if err != nil {
 		return reportError(g.w, fmt.Errorf("bundle %s: %w", opts.dir, err))
 	}
-	g.w.Status("Bundled %d files (%d bytes)", info.FileCount, info.TotalBytes)
+	pushProgress(g, 2, "Bundled", fmt.Sprintf("%d files (%d bytes)", info.FileCount, info.TotalBytes))
 
 	if err := putTar(ctx, created.UploadURL, buf.Bytes()); err != nil {
 		return reportError(g.w, fmt.Errorf("upload tar: %w", err))
 	}
-	g.w.Status("Uploaded tar to staging")
+	pushProgress(g, 3, "Uploaded", "bundle staged")
 
 	var fin api.FinalizeResponse
 	if err := client.Do(ctx, "POST", "/v1/sites/"+created.SiteID+"/finalize",
@@ -147,15 +148,42 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 		_ = g.w.JSON(res)
 		return 0
 	}
-	g.w.Human("Site:        %s", res.SiteID)
-	g.w.Human("URL:         %s", res.URL)
-	g.w.Human("Status:      %s", res.Status)
-	g.w.Human("Manifest:    %s", res.ManifestSHA)
+	pushProgress(g, 4, "Published", res.URL)
+	writePushHumanResult(g, res)
+	return 0
+}
+
+const pushProgressSteps = 4
+
+func pushProgress(g globalContext, step int, label, detail string) {
+	barWidth := 20
+	filled := step * barWidth / pushProgressSteps
+	bar := strings.Repeat("#", filled) + strings.Repeat("-", barWidth-filled)
+	if detail == "" {
+		g.w.Progress("[%d/%d] [%s] %s", step, pushProgressSteps, bar, label)
+		return
+	}
+	g.w.Progress("[%d/%d] [%s] %s: %s", step, pushProgressSteps, bar, label, detail)
+}
+
+func writePushHumanResult(g globalContext, res pushResult) {
+	g.w.Human("Published site")
+	g.w.Human("  Open URL:   %s", res.URL)
+	g.w.Human("\n")
+	g.w.Human("Metadata")
+	g.w.Human("  Site ID:    %s", res.SiteID)
+	g.w.Human("  Status:     %s", res.Status)
+	g.w.Human("  Manifest:   %s", res.ManifestSHA)
+	g.w.Human("  Files:      %d", res.FileCount)
+	g.w.Human("  Size:       %d bytes", res.TotalBytes)
+	if res.Template != "" {
+		g.w.Human("  Template:   %s", res.Template)
+	}
 	if res.ExpiresAt != "" {
-		g.w.Human("Expires:     %s", res.ExpiresAt)
+		g.w.Human("  Expires:    %s", res.ExpiresAt)
 	}
 	if res.Idempotent {
-		g.w.Human("(idempotent retry — no bytes re-extracted)")
+		g.w.Human("\n")
+		g.w.Human("Idempotent retry: no bytes re-extracted")
 	}
-	return 0
 }
