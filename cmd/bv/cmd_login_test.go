@@ -194,6 +194,9 @@ func TestRunLogin_HappyPathPersistsConfigAndEmitsJSON(t *testing.T) {
 	if loaded.APIURL != srv.URL {
 		t.Errorf("config api_url=%q, want %q", loaded.APIURL, srv.URL)
 	}
+	if loaded.Mode != config.ModeRemote {
+		t.Errorf("config mode=%q, want %q", loaded.Mode, config.ModeRemote)
+	}
 
 	// File mode must be 0600 (matches bv init; the token is a credential).
 	st, err := os.Stat(cfgPath)
@@ -337,12 +340,30 @@ func TestRunLogin_DirectTokenViaFlag_HitsWhoamiAndPersistsConfig(t *testing.T) {
 	if loaded.TenantID != "t_alice" || loaded.AccountLogin != "alice" || loaded.InstallationID != 42 {
 		t.Errorf("tenant fields wrong after whoami: %+v", loaded)
 	}
+	if loaded.Mode != config.ModeRemote {
+		t.Errorf("config mode=%q, want %q", loaded.Mode, config.ModeRemote)
+	}
 	st, err := os.Stat(cfgPath)
 	if err != nil {
 		t.Fatalf("stat config: %v", err)
 	}
 	if mode := st.Mode().Perm(); mode != 0o600 {
 		t.Errorf("config mode=%o, want 0600", mode)
+	}
+}
+
+func TestRunLogin_HumanOutputMentionsRemoteDefault(t *testing.T) {
+	withCleanGHEnv(t)
+	srv, _ := directTokenServer(t)
+	isolatedConfigPath(t)
+	w, stdout, _ := newHumanWriter(t)
+	g := globalContext{w: w, apiURLOverride: srv.URL}
+	rc := runLogin(context.Background(), g, []string{"--token", "ghs_existing_installation_token"})
+	if rc != 0 {
+		t.Fatalf("rc=%d stdout=%s", rc, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Default mode is now remote") {
+		t.Fatalf("stdout missing mode change callout: %s", stdout.String())
 	}
 }
 
