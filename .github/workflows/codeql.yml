@@ -19,21 +19,38 @@ permissions:
 
 jobs:
   analyze:
-    name: CodeQL
+    name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            build-mode: autobuild
+          - language: javascript-typescript
+            build-mode: none
     steps:
       - uses: actions/checkout@v4
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: javascript-typescript
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
           queries: security-and-quality
 
+      - name: Setup Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Autobuild
+        if: matrix.build-mode == 'autobuild'
         uses: github/codeql-action/autobuild@v3
 
       - name: Analyze
         uses: github/codeql-action/analyze@v3
         with:
-          category: /language:javascript-typescript
+          category: /language:${{ matrix.language }}
