@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/htxryan/butverify/internal/config"
 )
 
 func TestLocalSiteServerServesIndex(t *testing.T) {
@@ -39,7 +41,7 @@ func TestStageLocalSiteExcludesHiddenByDefault(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("TOP-SECRET"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	staged, info, cleanup, err := stageLocalSite(dir, false)
+	staged, info, cleanup, err := stageLocalSite(dir, false, 0)
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
@@ -74,7 +76,7 @@ func TestStageLocalSiteIncludesHiddenWhenRequested(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("TOP-SECRET"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	staged, info, cleanup, err := stageLocalSite(dir, true)
+	staged, info, cleanup, err := stageLocalSite(dir, true, 0)
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
@@ -87,9 +89,52 @@ func TestStageLocalSiteIncludesHiddenWhenRequested(t *testing.T) {
 	}
 }
 
+func TestStageLocalSiteOptimizesImages(t *testing.T) {
+	dir := t.TempDir()
+	original := writeCLIJPEGFixture(t, filepath.Join(dir, "photo.jpg"), 100)
+	staged, _, cleanup, err := stageLocalSite(dir, false, 40)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	defer cleanup()
+	optimized, err := os.ReadFile(filepath.Join(staged, "photo.jpg"))
+	if err != nil {
+		t.Fatalf("read staged photo: %v", err)
+	}
+	if len(optimized) >= len(original) {
+		t.Fatalf("staged photo was not optimized: got %d original %d", len(optimized), len(original))
+	}
+}
+
+func TestPushModeLocalUsesConfiguredImageQuality(t *testing.T) {
+	localServer := withFakeLocalServer(t)
+	dir := t.TempDir()
+	original := writeCLIJPEGFixture(t, filepath.Join(dir, "photo.jpg"), 100)
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<img src=photo.jpg>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	isolatedConfigPath(t)
+	if err := config.Save(&config.Config{Mode: config.ModeLocal, ImageQuality: 40}); err != nil {
+		t.Fatal(err)
+	}
+	w, stdout, _ := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{dir})
+	if rc != 0 {
+		t.Fatalf("push rc=%d stdout=%s", rc, stdout.String())
+	}
+	optimized := localServer.Photo
+	if len(optimized) == 0 {
+		t.Fatal("fake local server did not capture staged photo")
+	}
+	if len(optimized) >= len(original) {
+		t.Fatalf("configured local photo was not optimized: got %d original %d", len(optimized), len(original))
+	}
+}
+
 type fakeLocalServerCapture struct {
 	Root      string
 	IndexHTML string
+	Photo     []byte
 }
 
 func withFakeLocalServer(t *testing.T) *fakeLocalServerCapture {
@@ -101,6 +146,9 @@ func withFakeLocalServer(t *testing.T) *fakeLocalServerCapture {
 		capture.Root = r
 		if data, err := os.ReadFile(filepath.Join(r, "index.html")); err == nil {
 			capture.IndexHTML = string(data)
+		}
+		if data, err := os.ReadFile(filepath.Join(r, "photo.jpg")); err == nil {
+			capture.Photo = data
 		}
 		return &localSiteServer{URL: "http://127.0.0.1:12345/"}, nil
 	}

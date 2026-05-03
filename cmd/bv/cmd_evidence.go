@@ -63,6 +63,7 @@ type evidenceFlags struct {
 	layout   *string
 	uploadID *string
 	ttl      *int64
+	quality  *int
 	mode     *string
 }
 
@@ -79,6 +80,7 @@ func newEvidenceFlagSet() (*flag.FlagSet, evidenceFlags) {
 		layout:   values.String("layout"),
 		uploadID: values.String("upload-id"),
 		ttl:      values.Int64("ttl-seconds"),
+		quality:  values.Int("image-quality"),
 		mode:     values.String("mode"),
 	}
 	return fs, f
@@ -93,6 +95,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	layout := f.layout
 	uploadIDFlag := f.uploadID
 	ttlFlag := f.ttl
+	imageQuality := f.quality
 	modeFlag := f.mode
 	if err := fs.Parse(args); err != nil {
 		return handleFlagParseError(g, "evidence", err)
@@ -217,6 +220,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 		uploadID:           uploadID,
 		ttlSeconds:         *ttlFlag,
 		template:           "evidence",
+		imageQuality:       *imageQuality,
 		modeOverride:       *modeFlag,
 		createErrTransform: classifyTemplateRolloutErr,
 	})

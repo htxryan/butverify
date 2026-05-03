@@ -41,7 +41,7 @@ Print or set the default publish mode.
 
 Fresh installs default to local. A successful bv login switches the default to remote.
 
-## `bv push [--mode local|remote] [--upload-id ID] [--ttl-seconds N] [--include-hidden] <dir>`
+## `bv push [--mode local|remote] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--include-hidden] <dir>`
 
 Bundle a directory and publish it in local or remote mode.
 
@@ -49,11 +49,14 @@ Local mode serves the filtered publish bundle on 127.0.0.1 until interrupted.
 
 Remote mode uploads a tar bundle as a new private site. Pass --upload-id to retry the same logical upload idempotently.
 
+Image optimization recompresses JPEGs with --image-quality and recompresses PNGs losslessly when smaller. Persist a default by setting image_quality in the bv config JSON.
+
 Flags:
 
 - `--mode local|remote` — override the configured publish mode.
 - `--upload-id ID` — explicit upload_id for idempotent retry.
 - `--ttl-seconds N` — site TTL in seconds; 0 uses the server default.
+- `--image-quality N` — image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default.
 - `--include-hidden` — include dot-files in the bundle.
 
 ## `bv ls`
@@ -84,11 +87,13 @@ Pin a site to disable TTL-based expiry.
 
 Unpin a site and re-stamp the default TTL.
 
-## `bv report --from <out.json|-> [--out DIR] [--push] [--upload-id ID] [--ttl-seconds N] [--mode local|remote]`
+## `bv report --from <out.json|-> [--out DIR] [--push] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--mode local|remote]`
 
 Render a static report site from JSON.
 
 Without --push, the rendered site is written to --out or ./bv-report-out. With --push, the rendered directory is published through the standard push flow.
+
+Image optimization recompresses JPEGs with --image-quality and recompresses PNGs losslessly when smaller. Persist a default by setting image_quality in the bv config JSON.
 
 Flags:
 
@@ -97,11 +102,14 @@ Flags:
 - `--push` — after rendering, push the directory as a new site.
 - `--upload-id ID` — explicit upload_id for idempotent --push retry.
 - `--ttl-seconds N` — site TTL in seconds; 0 uses the server default.
+- `--image-quality N` — image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default.
 - `--mode local|remote` — publish mode for --push.
 
-## `bv dashboard --from <data.csv|-> [--out DIR] [--title T] [--subtitle T] [--max-table-rows N] [--push] [--upload-id ID] [--ttl-seconds N] [--mode local|remote]`
+## `bv dashboard --from <data.csv|-> [--out DIR] [--title T] [--subtitle T] [--max-table-rows N] [--push] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--mode local|remote]`
 
 Render a static dashboard site from CSV.
+
+With --push, image optimization recompresses JPEGs with --image-quality and recompresses PNGs losslessly when smaller. Persist a default by setting image_quality in the bv config JSON.
 
 Flags:
 
@@ -113,13 +121,16 @@ Flags:
 - `--push` — after rendering, push the directory as a new site.
 - `--upload-id ID` — explicit upload_id for idempotent --push retry.
 - `--ttl-seconds N` — site TTL in seconds; 0 uses the server default.
+- `--image-quality N` — image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default.
 - `--mode local|remote` — publish mode for --push.
 
-## `bv evidence (--schema | --from <evidence.json|-> [--out DIR] [--push] [--layout stacked|carousel] [--upload-id ID] [--ttl-seconds N] [--mode local|remote])`
+## `bv evidence (--schema | --from <evidence.json|-> [--out DIR] [--push] [--layout stacked|carousel] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--mode local|remote])`
 
 Render a static evidence/gallery site from JSON.
 
 Use --schema to print the JSON Schema for the input without rendering.
+
+With --push, image optimization recompresses JPEGs with --image-quality and recompresses PNGs losslessly when smaller. Persist a default by setting image_quality in the bv config JSON.
 
 Flags:
 
@@ -130,6 +141,7 @@ Flags:
 - `--layout stacked|carousel` — gallery layout.
 - `--upload-id ID` — explicit upload_id for idempotent --push retry.
 - `--ttl-seconds N` — site TTL in seconds; 0 uses the server default.
+- `--image-quality N` — image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default.
 - `--mode local|remote` — publish mode for --push.
 
 ## `bv install-skill [--project] [--force] [--uninstall] <agent>`

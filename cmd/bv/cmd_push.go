@@ -43,6 +43,7 @@ func runPush(ctx context.Context, g globalContext, args []string) int {
 	uploadIDFlag := flags.String("upload-id")
 	ttlFlag := flags.Int64("ttl-seconds")
 	includeHidden := flags.Bool("include-hidden")
+	imageQuality := flags.Int("image-quality")
 	modeFlag := flags.String("mode")
 	if err := fs.Parse(args); err != nil {
 		return handleFlagParseError(g, "push", err)
@@ -70,6 +71,7 @@ func runPush(ctx context.Context, g globalContext, args []string) int {
 		uploadID:      uploadID,
 		ttlSeconds:    *ttlFlag,
 		includeHidden: *includeHidden,
+		imageQuality:  *imageQuality,
 		modeOverride:  *modeFlag,
 	})
 }

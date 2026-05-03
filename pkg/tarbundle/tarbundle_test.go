@@ -4,6 +4,9 @@ import (
 	"archive/tar"
 	"bytes"
 	"errors"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"io"
 	"os"
 	"path/filepath"
@@ -26,6 +29,49 @@ func writeTree(t *testing.T, files map[string]string) string {
 		}
 	}
 	return dir
+}
+
+func readTarBytes(t *testing.T, b []byte) map[string][]byte {
+	t.Helper()
+	r := tar.NewReader(bytes.NewReader(b))
+	out := map[string][]byte{}
+	for {
+		h, err := r.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("tar read: %v", err)
+		}
+		if h.Typeflag != tar.TypeReg {
+			continue
+		}
+		body, err := io.ReadAll(r)
+		if err != nil {
+			t.Fatalf("tar body read: %v", err)
+		}
+		out[h.Name] = body
+	}
+	return out
+}
+
+func writeTestJPEG(t *testing.T, path string, quality int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	for y := 0; y < 64; y++ {
+		for x := 0; x < 64; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 3), G: uint8(y * 3), B: uint8((x + y) * 2), A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+		t.Fatalf("encode jpeg: %v", err)
+	}
+	data := buf.Bytes()
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write jpeg: %v", err)
+	}
+	return data
 }
 
 // readTar parses the tar bytes and returns a map[path]body for assertions.
@@ -185,6 +231,75 @@ func TestBundleDir_MaxBytesEnforced(t *testing.T) {
 	_, err := BundleDir(src, &buf, Options{MaxBytes: 150})
 	if err == nil || !strings.Contains(err.Error(), "max_bytes") {
 		t.Errorf("BundleDir max_bytes err=%v, want max_bytes error", err)
+	}
+}
+
+func TestBundleDir_OptimizesJPEGBeforeWritingTar(t *testing.T) {
+	src := t.TempDir()
+	original := writeTestJPEG(t, filepath.Join(src, "photo.jpg"), 100)
+	if err := os.WriteFile(filepath.Join(src, "index.html"), []byte("<img src=photo.jpg>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	info, err := BundleDir(src, &buf, Options{ImageQuality: 40})
+	if err != nil {
+		t.Fatalf("BundleDir: %v", err)
+	}
+	got := readTarBytes(t, buf.Bytes())
+	optimized := got["photo.jpg"]
+	if len(optimized) == 0 {
+		t.Fatal("photo.jpg missing from tar")
+	}
+	if len(optimized) >= len(original) {
+		t.Fatalf("photo.jpg was not optimized: got %d original %d", len(optimized), len(original))
+	}
+	if string(got["index.html"]) != "<img src=photo.jpg>" {
+		t.Fatalf("non-image changed: %q", got["index.html"])
+	}
+	wantTotal := int64(len(optimized) + len(got["index.html"]))
+	if info.TotalBytes != wantTotal {
+		t.Fatalf("TotalBytes=%d, want optimized total %d", info.TotalBytes, wantTotal)
+	}
+}
+
+func TestBundleDir_MaxBytesUsesOptimizedSize(t *testing.T) {
+	src := t.TempDir()
+	original := writeTestJPEG(t, filepath.Join(src, "photo.jpg"), 100)
+	var optimized bytes.Buffer
+	info, err := BundleDir(src, &optimized, Options{ImageQuality: 40})
+	if err != nil {
+		t.Fatalf("BundleDir optimize: %v", err)
+	}
+	if info.TotalBytes >= int64(len(original)) {
+		t.Fatalf("fixture did not optimize below original: optimized=%d original=%d", info.TotalBytes, len(original))
+	}
+	var capped bytes.Buffer
+	if _, err := BundleDir(src, &capped, Options{ImageQuality: 40, MaxBytes: info.TotalBytes}); err != nil {
+		t.Fatalf("optimized bundle should fit optimized cap: %v", err)
+	}
+	if _, err := BundleDir(src, &capped, Options{MaxBytes: info.TotalBytes}); err == nil {
+		t.Fatal("unoptimized bundle should exceed optimized cap")
+	}
+}
+
+func TestBundleDir_MaxBytesRejectsOversizedNonImageWithoutOptimization(t *testing.T) {
+	src := t.TempDir()
+	video := filepath.Join(src, "video.mp4")
+	f, err := os.Create(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(1024 * 1024); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	_, err = BundleDir(src, &buf, Options{ImageQuality: 40, MaxBytes: 512})
+	if err == nil || !strings.Contains(err.Error(), "max_bytes") {
+		t.Fatalf("BundleDir oversized non-image err=%v, want max_bytes", err)
 	}
 }
 

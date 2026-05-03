@@ -33,6 +33,7 @@ func runReport(ctx context.Context, g globalContext, args []string) int {
 	push := flags.Bool("push")
 	uploadIDFlag := flags.String("upload-id")
 	ttlFlag := flags.Int64("ttl-seconds")
+	imageQuality := flags.Int("image-quality")
 	modeFlag := flags.String("mode")
 	if err := fs.Parse(args); err != nil {
 		return handleFlagParseError(g, "report", err)
@@ -91,6 +92,7 @@ func runReport(ctx context.Context, g globalContext, args []string) int {
 		uploadID:     uploadID,
 		ttlSeconds:   *ttlFlag,
 		template:     "report",
+		imageQuality: *imageQuality,
 		modeOverride: *modeFlag,
 	})
 }

@@ -1,0 +1,18 @@
+$ go build -o /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/opencode/bv-imageopt-manual-3/bv ./cmd/bv
+
+$ BV_MANUAL_TMP=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/opencode/bv-imageopt-manual-3 go run /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/opencode/bv-imageopt-manual-3/manual.go
+REMOTE_RC=0 original_photo_bytes=1678 uploaded_photo_bytes=786 optimized=true
+REMOTE_STDOUT={
+  "site_id": "abcd1234",
+  "url": "https://abcd1234.butverify.dev",
+  "status": "active",
+  "manifest_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "expires_at": "2026-05-04T10:00:00Z",
+  "idempotent": false,
+  "file_count": 2,
+  "total_bytes": 805
+}
+LOCAL_INVALID_RC=2
+LOCAL_INVALID_OUTPUT={"error":{"code":"BAD_REQUEST","message":"image_quality must be between 1 and 100"}}
+
+The harness built a real `bv` binary, generated a static site with `index.html` and `photo.jpg`, served fake `/v1/sites`, signed staging PUT, and finalize endpoints, then inspected the uploaded tar entry to verify the image bytes were optimized before upload.

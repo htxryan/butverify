@@ -10,6 +10,7 @@
 //   - token_expires_at   — RFC 3339 timestamp; CLI refreshes when within
 //     TokenRefreshThreshold of expiry (E-2a).
 //   - mode               — default publish mode: local or remote.
+//   - image_quality      — default JPEG quality for image optimization.
 //
 // File mode is 0600 because the installation token is a credential. We do
 // NOT store it in OS keychains at v1 — that's a future hardening pass; v1
@@ -34,6 +35,7 @@ type Config struct {
 	InstallationID    int64  `json:"installation_id,omitempty"`
 	TokenExpiresAt    string `json:"token_expires_at,omitempty"`
 	Mode              string `json:"mode,omitempty"`
+	ImageQuality      int    `json:"image_quality,omitempty"`
 }
 
 // DefaultAPIURL is the public control-plane endpoint.
@@ -43,6 +45,8 @@ const (
 	ModeLocal  = "local"
 	ModeRemote = "remote"
 )
+
+const DefaultImageQuality = 75
 
 // ErrNotInitialized is returned by Load when no config exists. Callers
 // surface this as "run `bv login` first."
@@ -96,6 +100,9 @@ func Load() (*Config, error) {
 	if err := ValidateMode(c.Mode); err != nil {
 		return nil, fmt.Errorf("config: parse %s: %w", path, err)
 	}
+	if err := ValidateImageQuality(c.ImageQuality); err != nil {
+		return nil, fmt.Errorf("config: parse %s: %w", path, err)
+	}
 	return &c, nil
 }
 
@@ -122,6 +129,39 @@ func ResolveMode(c *Config, override string) (string, error) {
 		return "", err
 	}
 	return c.Mode, nil
+}
+
+func ValidateImageQuality(quality int) error {
+	if quality == 0 {
+		return nil
+	}
+	if quality < 1 || quality > 100 {
+		return fmt.Errorf("image_quality must be between 1 and 100")
+	}
+	return nil
+}
+
+func ResolveImageQuality(c *Config, override int, maxQuality int) (int, error) {
+	if err := ValidateImageQuality(override); err != nil {
+		return 0, err
+	}
+	if err := ValidateImageQuality(maxQuality); err != nil {
+		return 0, err
+	}
+	quality := DefaultImageQuality
+	if c != nil && c.ImageQuality != 0 {
+		if err := ValidateImageQuality(c.ImageQuality); err != nil {
+			return 0, err
+		}
+		quality = c.ImageQuality
+	}
+	if override != 0 {
+		quality = override
+	}
+	if maxQuality != 0 && quality > maxQuality {
+		quality = maxQuality
+	}
+	return quality, nil
 }
 
 // Save writes the config atomically (write to a temp file, then rename).

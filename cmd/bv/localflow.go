@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/htxryan/butverify/internal/config"
+	"github.com/htxryan/butverify/pkg/imageopt"
 	"github.com/htxryan/butverify/pkg/tarbundle"
 )
 
@@ -59,7 +60,16 @@ func runPushFlowForMode(ctx context.Context, g globalContext, opts pushOptions) 
 }
 
 func runLocalPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
-	serveDir, info, cleanup, err := stageLocalSite(opts.dir, opts.includeHidden)
+	c, err := loadModeConfig()
+	if err != nil {
+		return reportError(g.w, err)
+	}
+	imageQuality, err := config.ResolveImageQuality(c, opts.imageQuality, 0)
+	if err != nil {
+		g.w.Error(toErrorEnvelope(err))
+		return 2
+	}
+	serveDir, info, cleanup, err := stageLocalSite(opts.dir, opts.includeHidden, imageQuality)
 	if err != nil {
 		return reportError(g.w, fmt.Errorf("bundle %s: %w", opts.dir, err))
 	}
@@ -90,8 +100,8 @@ func runLocalPushFlow(ctx context.Context, g globalContext, opts pushOptions) in
 	return 0
 }
 
-func stageLocalSite(src string, includeHidden bool) (string, tarbundle.BundleInfo, func(), error) {
-	info, err := tarbundle.BundleDir(src, nilWriter{}, tarbundle.Options{IncludeHidden: includeHidden})
+func stageLocalSite(src string, includeHidden bool, imageQuality int) (string, tarbundle.BundleInfo, func(), error) {
+	info, err := tarbundle.BundleDir(src, io.Discard, tarbundle.Options{IncludeHidden: includeHidden, ImageQuality: imageQuality})
 	if err != nil {
 		return "", tarbundle.BundleInfo{}, func() {}, err
 	}
@@ -101,7 +111,7 @@ func stageLocalSite(src string, includeHidden bool) (string, tarbundle.BundleInf
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
 	for _, rel := range info.Files {
-		if err := copyLocalSiteFile(src, dir, rel); err != nil {
+		if err := copyLocalSiteFile(src, dir, rel, imageQuality); err != nil {
 			cleanup()
 			return "", tarbundle.BundleInfo{}, func() {}, err
 		}
@@ -109,11 +119,33 @@ func stageLocalSite(src string, includeHidden bool) (string, tarbundle.BundleInf
 	return dir, info, cleanup, nil
 }
 
-func copyLocalSiteFile(srcRoot, dstRoot, rel string) error {
+func copyLocalSiteFile(srcRoot, dstRoot, rel string, imageQuality int) error {
 	src := filepath.Join(srcRoot, filepath.FromSlash(rel))
 	dst := filepath.Join(dstRoot, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("stage local site mkdir %s: %w", rel, err)
+	}
+	if imageQuality != 0 && imageopt.CanOptimizePath(rel) {
+		info, err := os.Stat(src)
+		if err != nil {
+			return fmt.Errorf("stage local site stat %s: %w", rel, err)
+		}
+		if info.Size() <= imageopt.DefaultMaxInputBytes {
+			data, err := os.ReadFile(src)
+			if err != nil {
+				return fmt.Errorf("stage local site read %s: %w", rel, err)
+			}
+			optimized, changed, err := imageopt.OptimizePath(rel, data, imageopt.Options{Quality: imageQuality})
+			if err != nil {
+				return fmt.Errorf("stage local site optimize %s: %w", rel, err)
+			}
+			if changed {
+				if err := os.WriteFile(dst, optimized, 0o644); err != nil {
+					return fmt.Errorf("stage local site write %s: %w", rel, err)
+				}
+				return nil
+			}
+		}
 	}
 	in, err := os.Open(src)
 	if err != nil {
@@ -167,7 +199,3 @@ func localSiteID(opts pushOptions) string {
 	}
 	return "local-" + base
 }
-
-type nilWriter struct{}
-
-func (nilWriter) Write(p []byte) (int, error) { return len(p), nil }
