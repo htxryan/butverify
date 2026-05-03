@@ -29,6 +29,7 @@ func runDashboard(ctx context.Context, g globalContext, args []string) int {
 	maxRows := fs.Int("max-table-rows", 200, "cap rows shown in the HTML table (0 = no cap; data.csv always carries the full set)")
 	uploadIDFlag := fs.String("upload-id", "", "explicit upload_id for idempotent --push retry")
 	ttlFlag := fs.Int64("ttl-seconds", 0, "site TTL in seconds (paid plan; 0 = use server default)")
+	modeFlag := fs.String("mode", "", "publish mode for --push: local or remote (default: configured mode)")
 	if err := fs.Parse(args); err != nil {
 		g.w.Error(toErrorEnvelope(err))
 		return 2
@@ -78,11 +79,12 @@ func runDashboard(ctx context.Context, g globalContext, args []string) int {
 			return reportError(g.w, fmt.Errorf("generate upload_id: %w", err))
 		}
 	}
-	return runPushFlow(ctx, g, pushOptions{
-		dir:        outDir,
-		sourcePath: publishSourcePath(*from),
-		uploadID:   uploadID,
-		ttlSeconds: *ttlFlag,
-		template:   "dashboard",
+	return runPushFlowForMode(ctx, g, pushOptions{
+		dir:          outDir,
+		sourcePath:   publishSourcePath(*from),
+		uploadID:     uploadID,
+		ttlSeconds:   *ttlFlag,
+		template:     "dashboard",
+		modeOverride: *modeFlag,
 	})
 }
