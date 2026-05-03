@@ -28,10 +28,11 @@ type LoginResponse struct {
 
 // CreateSiteRequest is the POST /v1/sites body.
 type CreateSiteRequest struct {
-	UploadID   string `json:"upload_id"`
-	TTLSeconds *int64 `json:"ttl_seconds,omitempty"`
-	// Template is "report" or "dashboard" when the CLI is invoking E8's
-	// templated artifact path; empty for a regular `bv push`. Server uses
+	UploadID       string `json:"upload_id"`
+	TTLSeconds     *int64 `json:"ttl_seconds,omitempty"`
+	SourcePath     string `json:"source_path,omitempty"`
+	ClientHostname string `json:"client_hostname,omitempty"`
+	// Template is set when the CLI is invoking a templated artifact path; empty for a regular `bv push`. Server uses
 	// this to bill the request against the templated-site fairness counter
 	// (closes O-3) and stamp the sites row's `template` column for analytics.
 	Template string `json:"template,omitempty"`
@@ -49,7 +50,7 @@ type CreateSiteResponse struct {
 	UploadURL          string `json:"upload_url"`
 	UploadMaxBytes     int64  `json:"upload_max_bytes"`
 	UploadURLExpiresAt string `json:"upload_url_expires_at"`
-	// Template echoes the server-stored value ("report"/"dashboard" or "" for
+	// Template echoes the server-stored value (or "" for
 	// a non-templated push). Surfaces what was actually stamped on the row
 	// so an idempotent retry that passed a different template can detect
 	// the divergence at the boundary rather than inside D1 reads.
@@ -78,8 +79,10 @@ type ListSitesResponse struct {
 
 // FinalizeRequest is the POST /v1/sites/{id}/finalize body.
 type FinalizeRequest struct {
-	UploadID    string `json:"upload_id"`
-	ManifestSHA string `json:"manifest_sha,omitempty"`
+	UploadID       string `json:"upload_id"`
+	ManifestSHA    string `json:"manifest_sha,omitempty"`
+	SourcePath     string `json:"source_path,omitempty"`
+	ClientHostname string `json:"client_hostname,omitempty"`
 }
 
 // FinalizeResponse is the POST /v1/sites/{id}/finalize payload.
