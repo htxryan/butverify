@@ -1,5 +1,5 @@
 ---
-title: bv install-skill claude
+title: bv agent-init
 description: Install the /butverify agent skill into Claude Code so any session can publish proof of finished work.
 ---
 
@@ -11,12 +11,12 @@ private gallery on butverify.dev that you can open and review without
 scrolling through chat. Install it once with:
 
 ```bash
-bv install-skill claude
+bv agent-init
 ```
 
 ## What gets installed
 
-By default, `bv install-skill claude` writes a single file to your home
+By default, `bv agent-init` writes a single file to your home
 directory:
 
 ```
@@ -32,7 +32,7 @@ Pass `--project` to install into the current working directory instead of
 `$HOME`:
 
 ```bash
-bv install-skill claude --project
+bv agent-init --project
 ```
 
 This writes `./.claude/skills/butverify/SKILL.md`, which you can check in
@@ -48,9 +48,10 @@ butverify.dev URL.
 
 ## Re-installing (drift detection)
 
-The installed `SKILL.md` carries a `bv-skill-version` hash in its
-frontmatter. When you run `bv install-skill claude` again, the CLI
-compares the installed hash against the embedded one:
+The installed `SKILL.md` ends with a `<!-- bv-skill: ... -->` metadata
+comment containing the CLI release and original skill-content hash. When you
+run `bv agent-init` again, the CLI compares the installed hash against the
+embedded one:
 
 - **Match** → exits `0` with `already up to date`. The file's mtime is
   not touched.
@@ -64,7 +65,7 @@ The CLI **never** silently overwrites an existing file.
 Overwrite the installed `SKILL.md` with the embedded version:
 
 ```bash
-bv install-skill claude --force
+bv agent-init --force
 ```
 
 Before overwriting, the CLI copies the existing file to
@@ -78,7 +79,7 @@ replace, since that's what you're most likely to want to recover.
 Remove the skill files:
 
 ```bash
-bv install-skill claude --uninstall
+bv agent-init --uninstall
 ```
 
 This deletes the deterministic per-agent file set:
@@ -113,7 +114,7 @@ follow-on epics once the v1 abstraction is validated against Claude Code.
 
 The flow looks like this once the skill is installed:
 
-1. Run `bv install-skill claude` once on your machine. Run `bv login` too if
+1. Run `bv agent-init` once on your machine. Run `bv login` too if
    you want the skill to publish private remote galleries.
 2. In any project, start a Claude Code session and ask it to do real
    work ("build feature X").

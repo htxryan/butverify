@@ -2,7 +2,6 @@
 name: butverify
 description: Publish proof of recent work as a private gallery on butverify.dev
 disable-model-invocation: false
-bv-skill-version: 0000000000ab
 ---
 
 # /butverify

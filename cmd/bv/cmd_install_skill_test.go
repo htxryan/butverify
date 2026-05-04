@@ -80,7 +80,7 @@ func TestSkillVersionHash_Determinism(t *testing.T) {
 	// Round-trip: stamping with the embed's own hash MUST yield bytes
 	// whose canonical-domain hash equals the original. This is the
 	// install-time contract — a re-hash of the installed file matches
-	// what the installer wrote into the frontmatter.
+	// what the installer wrote into the metadata comment.
 	stamped := stampVersion(embeddedSkillBytes, hash)
 	rehash := skillVersionHash(stamped)
 	if rehash != hash {
@@ -89,9 +89,9 @@ func TestSkillVersionHash_Determinism(t *testing.T) {
 }
 
 func TestSkillVersionHash_LFNormalize(t *testing.T) {
-	lf := []byte("---\nname: x\nbv-skill-version: aaaaaaaaaaaa\n---\nbody\n")
-	crlf := []byte("---\r\nname: x\r\nbv-skill-version: aaaaaaaaaaaa\r\n---\r\nbody\r\n")
-	cr := []byte("---\rname: x\rbv-skill-version: aaaaaaaaaaaa\r---\rbody\r")
+	lf := []byte("---\nname: x\n---\nbody\n")
+	crlf := []byte("---\r\nname: x\r\n---\r\nbody\r\n")
+	cr := []byte("---\rname: x\r---\rbody\r")
 	a := skillVersionHash(lf)
 	b := skillVersionHash(crlf)
 	c := skillVersionHash(cr)
@@ -100,43 +100,42 @@ func TestSkillVersionHash_LFNormalize(t *testing.T) {
 	}
 }
 
-func TestSkillVersionHash_SentinelSubstitution(t *testing.T) {
-	// Inputs that differ only in the bv-skill-version value MUST hash
-	// identically — the canonical domain rewrites the line to the
-	// sentinel before hashing.
-	a := []byte("---\nname: x\nbv-skill-version: 0000000000ab\n---\nbody\n")
-	b := []byte("---\nname: x\nbv-skill-version: ffffffffffff\n---\nbody\n")
-	c := []byte("---\nname: x\nbv-skill-version: 000000000000\n---\nbody\n")
+func TestSkillVersionHash_MetadataCommentIgnored(t *testing.T) {
+	// Installed metadata is excluded from the hash domain so the hash
+	// describes the original skill content, not its own comment.
+	a := []byte("---\nname: x\n---\nbody\n")
+	b := []byte("---\nname: x\n---\nbody\n<!-- bv-skill: release=dev sha256=ffffffffffff -->\n")
+	c := []byte("---\nname: x\n---\nbody\n<!-- bv-skill: release=v1 sha256=000000000000 -->\n")
 	ha := skillVersionHash(a)
 	hb := skillVersionHash(b)
 	hc := skillVersionHash(c)
 	if ha != hb || ha != hc {
-		t.Errorf("sentinel substitution broken: a=%s b=%s c=%s", ha, hb, hc)
+		t.Errorf("metadata stripping broken: a=%s b=%s c=%s", ha, hb, hc)
 	}
 }
 
 func TestSkillVersionHash_TrailingLF(t *testing.T) {
 	// With and without trailing LF MUST hash identically.
-	a := []byte("---\nname: x\nbv-skill-version: 000000000000\n---\nbody\n")
-	b := []byte("---\nname: x\nbv-skill-version: 000000000000\n---\nbody")
+	a := []byte("---\nname: x\n---\nbody\n")
+	b := []byte("---\nname: x\n---\nbody")
 	if skillVersionHash(a) != skillVersionHash(b) {
 		t.Errorf("trailing-LF normalization broken: %s vs %s", skillVersionHash(a), skillVersionHash(b))
 	}
 }
 
 func TestStampVersion_Idempotent(t *testing.T) {
-	in := []byte("---\nname: x\nbv-skill-version: 000000000000\n---\nbody\n")
+	in := []byte("---\nname: x\n---\nbody\n")
 	once := stampVersion(in, "abc123abc123")
 	twice := stampVersion(once, "deffeeffadda")
-	// Latest wins; the line is REPLACED, not appended.
-	if !strings.Contains(string(twice), "bv-skill-version: deffeeffadda") {
+	// Latest wins; the metadata comment is REPLACED, not appended.
+	if !strings.Contains(string(twice), "sha256=deffeeffadda") {
 		t.Errorf("twice-stamped should carry latest hash: %s", twice)
 	}
-	if strings.Contains(string(twice), "bv-skill-version: abc123abc123") {
+	if strings.Contains(string(twice), "sha256=abc123abc123") {
 		t.Errorf("twice-stamped should NOT keep prior hash: %s", twice)
 	}
-	if strings.Count(string(twice), versionLinePrefix) != 1 {
-		t.Errorf("expected exactly one bv-skill-version line, got: %s", twice)
+	if strings.Count(string(twice), skillMetadataPrefix) != 1 {
+		t.Errorf("expected exactly one metadata comment, got: %s", twice)
 	}
 }
 
@@ -199,14 +198,14 @@ func TestInstall_FreshHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Frontmatter should carry a 12-hex stamp (NOT zeros).
+	// The last line should carry the release and 12-hex content hash.
 	embeddedHash := skillVersionHash(embeddedSkillBytes)
-	wantLine := "bv-skill-version: " + embeddedHash
+	wantLine := "<!-- bv-skill: release=" + Version + " sha256=" + embeddedHash + " -->"
 	if !strings.Contains(string(contents), wantLine) {
 		t.Errorf("installed file missing stamped hash %q (got: %s)", wantLine, contents[:200])
 	}
-	if strings.Contains(string(contents), "bv-skill-version: 000000000000") {
-		t.Errorf("installed file still has zero sentinel: %s", contents[:200])
+	if !strings.HasSuffix(string(contents), wantLine+"\n") {
+		t.Errorf("metadata comment should be the last line, got: %s", contents)
 	}
 }
 
@@ -249,7 +248,7 @@ func TestInstall_DriftDetected(t *testing.T) {
 		t.Fatalf("first install rc: %d", rc)
 	}
 	skillPath := claudeSkillPath(home)
-	// Manually rewrite the frontmatter to a different version.
+	// Manually rewrite the metadata hash to a different version.
 	cur, err := os.ReadFile(skillPath)
 	if err != nil {
 		t.Fatal(err)
@@ -259,7 +258,7 @@ func TestInstall_DriftDetected(t *testing.T) {
 	if embeddedHash == driftedHash {
 		t.Fatal("hash collision; pick a different drift value")
 	}
-	mutated := strings.Replace(string(cur), "bv-skill-version: "+embeddedHash, "bv-skill-version: "+driftedHash, 1)
+	mutated := strings.Replace(string(cur), "sha256="+embeddedHash, "sha256="+driftedHash, 1)
 	if err := os.WriteFile(skillPath, []byte(mutated), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -279,8 +278,32 @@ func TestInstall_DriftDetected(t *testing.T) {
 	}
 	// File MUST NOT have been overwritten.
 	postCur, _ := os.ReadFile(skillPath)
-	if !strings.Contains(string(postCur), "bv-skill-version: "+driftedHash) {
+	if !strings.Contains(string(postCur), "sha256="+driftedHash) {
 		t.Errorf("BVS-E-2: file should be unchanged on drift refusal; got: %s", postCur[:200])
+	}
+}
+
+func TestInstall_DriftDetectedWhenBodyChangesButMetadataDoesNot(t *testing.T) {
+	home := setupTempHome(t)
+	if rc, _, _ := runInstall(t, "claude"); rc != 0 {
+		t.Fatalf("first install rc: %d", rc)
+	}
+	skillPath := claudeSkillPath(home)
+	cur, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated := strings.Replace(string(cur), "# /butverify", "# /butverify\n\nLocal edit", 1)
+	if err := os.WriteFile(skillPath, []byte(mutated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rc, stdout, _ := runInstall(t, "claude")
+	if rc == 0 {
+		t.Fatalf("expected non-zero rc on body drift; got 0 (stdout=%s)", stdout)
+	}
+	if !strings.Contains(stdout, "current_content=") {
+		t.Errorf("error envelope should identify current content hash drift: %s", stdout)
 	}
 }
 
@@ -294,7 +317,7 @@ func TestInstall_Force(t *testing.T) {
 	skillPath := claudeSkillPath(home)
 	embeddedHash := skillVersionHash(embeddedSkillBytes)
 	cur, _ := os.ReadFile(skillPath)
-	driftedBytes := []byte(strings.Replace(string(cur), "bv-skill-version: "+embeddedHash, "bv-skill-version: cafef00dface", 1))
+	driftedBytes := []byte(strings.Replace(string(cur), "sha256="+embeddedHash, "sha256=cafef00dface", 1))
 	if err := os.WriteFile(skillPath, driftedBytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +328,7 @@ func TestInstall_Force(t *testing.T) {
 	}
 	// New file should carry the embedded hash.
 	newCur, _ := os.ReadFile(skillPath)
-	if !strings.Contains(string(newCur), "bv-skill-version: "+embeddedHash) {
+	if !strings.Contains(string(newCur), "sha256="+embeddedHash) {
 		t.Errorf("after --force, file should carry embedded hash; got: %s", newCur[:200])
 	}
 	// .bak should hold the OLD (drifted) bytes.
@@ -332,7 +355,7 @@ func TestInstall_Force_OverwritesPriorBak(t *testing.T) {
 
 	// Drift v1 -> --force produces .bak v1 (containing v1).
 	v1 := mustReadFile(t, skillPath)
-	driftV1 := strings.Replace(string(v1), "bv-skill-version: "+skillVersionHash(embeddedSkillBytes), "bv-skill-version: 111111111111", 1)
+	driftV1 := strings.Replace(string(v1), "sha256="+skillVersionHash(embeddedSkillBytes), "sha256=111111111111", 1)
 	if err := os.WriteFile(skillPath, []byte(driftV1), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +371,7 @@ func TestInstall_Force_OverwritesPriorBak(t *testing.T) {
 	// (v1) MUST be overwritten — .bak holds the IMMEDIATE-PREVIOUS
 	// state, NOT the original.
 	v2 := mustReadFile(t, skillPath)
-	driftV2 := strings.Replace(string(v2), "bv-skill-version: "+skillVersionHash(embeddedSkillBytes), "bv-skill-version: 222222222222", 1)
+	driftV2 := strings.Replace(string(v2), "sha256="+skillVersionHash(embeddedSkillBytes), "sha256=222222222222", 1)
 	if err := os.WriteFile(skillPath, []byte(driftV2), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -518,6 +541,23 @@ func TestInstallSkillDoesNotRequireLogin(t *testing.T) {
 	skillPath := claudeSkillPath(home)
 	if _, err := os.Stat(skillPath); err != nil {
 		t.Errorf("skill should be written without login: %v", err)
+	}
+}
+
+func TestAgentInitInstallsClaudeSkill(t *testing.T) {
+	home := setupTempHomeUnconfigured(t)
+	w, stdout, _ := newJSONWriter(t)
+	rc := runAgentInit(context.Background(), globalContext{w: w}, nil)
+	if rc != 0 {
+		t.Fatalf("agent-init rc=%d stdout=%s", rc, stdout.String())
+	}
+	contents, err := os.ReadFile(claudeSkillPath(home))
+	if err != nil {
+		t.Fatalf("agent-init did not install SKILL.md: %v", err)
+	}
+	metadata := "<!-- bv-skill: release=" + Version + " sha256=" + skillVersionHash(embeddedSkillBytes) + " -->\n"
+	if !strings.HasSuffix(string(contents), metadata) {
+		t.Fatalf("installed skill missing final metadata comment %q; got %s", metadata, contents)
 	}
 }
 
@@ -691,7 +731,7 @@ func TestRunInstallSkill_LogEvents(t *testing.T) {
 
 	t.Run("drift_refusal", func(t *testing.T) {
 		home := setupTempHome(t)
-		// Seed an install, then mutate the version line to force drift.
+		// Seed an install, then mutate the metadata hash to force drift.
 		if rc, _, _ := runInstall(t, "claude"); rc != 0 {
 			t.Fatal("setup install failed")
 		}
@@ -701,7 +741,7 @@ func TestRunInstallSkill_LogEvents(t *testing.T) {
 			t.Fatal(err)
 		}
 		embeddedHash := skillVersionHash(embeddedSkillBytes)
-		mutated := strings.Replace(string(cur), "bv-skill-version: "+embeddedHash, "bv-skill-version: deadbeef0000", 1)
+		mutated := strings.Replace(string(cur), "sha256="+embeddedHash, "sha256=deadbeef0000", 1)
 		if err := os.WriteFile(skillPath, []byte(mutated), 0o644); err != nil {
 			t.Fatal(err)
 		}

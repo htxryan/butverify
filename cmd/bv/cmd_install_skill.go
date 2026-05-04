@@ -46,50 +46,18 @@ import (
 //go:embed embedded_skills/claude_butverify.md
 var embeddedSkillBytes []byte
 
-// versionLinePrefix is the literal prefix of the YAML frontmatter line
-// the canonical-hash-domain function (BVS-U-9) replaces, and the
-// install-time stamper (stampVersion) updates. The single-source-of-
-// truth here means a future schema change to the frontmatter shape
-// edits exactly one constant.
-const versionLinePrefix = "bv-skill-version:"
+const skillMetadataPrefix = "<!-- bv-skill:"
 
-// versionSentinel is the literal value the canonical hash domain
-// substitutes onto the bv-skill-version line BEFORE hashing. The
-// embedded source carries `bv-skill-version: 0000000000ab` (a
-// placeholder); the canonical-domain transform rewrites that to
-// `bv-skill-version: 000000000000` so the hash is independent of the
-// placeholder choice. Length is exactly 12 hex chars to match the
-// installed hash width (BVS-U-7).
-const versionSentinel = versionLinePrefix + " 000000000000"
-
-// canonicalHashDomain returns the byte form of the markdown that
-// BVS-U-9 hashes:
-//
-//	(a) line endings normalized to LF (\r\n -> \n; lone \r -> \n)
-//	(b) the entire `bv-skill-version: ...` line replaced with the
-//	    literal sentinel `bv-skill-version: 000000000000`
-//	(c) trailing LF enforced (the result always ends with `\n`)
-//
-// This MUST be deterministic across builds (BVS-SC-13).
 func canonicalHashDomain(markdown []byte) []byte {
-	// (a) Line-ending normalization. We do this on the raw bytes
-	// rather than line-by-line to avoid silently dropping a
-	// non-LF-terminated final line.
 	normalized := normalizeLineEndings(markdown)
-
-	// (b) Replace the version line. We split on '\n' so we can
-	// rewrite the matching line verbatim regardless of where it
-	// appears in the frontmatter.
 	lines := strings.Split(string(normalized), "\n")
-	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), versionLinePrefix) {
-			lines[i] = versionSentinel
-			break
-		}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[len(lines)-1]), skillMetadataPrefix) {
+		lines = lines[:len(lines)-1]
 	}
 	out := strings.Join(lines, "\n")
-
-	// (c) Enforce trailing LF.
 	if !strings.HasSuffix(out, "\n") {
 		out += "\n"
 	}
@@ -115,39 +83,9 @@ func skillVersionHash(markdown []byte) string {
 	return hex.EncodeToString(sum[:])[:12]
 }
 
-// stampVersion replaces the bv-skill-version line with `bv-skill-
-// version: <hash>`. This happens AFTER hashing (BVS-U-9: the hash is
-// computed against the canonical sentinel, then the install-time
-// stamp goes onto the file written to disk). Idempotent: stamping a
-// file that already has a stamp simply replaces the prior value.
-//
-// Operates on the line-ending-normalized form so a CRLF input still
-// produces a sensible installed file (and the resulting bytes are
-// LF-only, matching what the canonical-domain function expects on a
-// future re-hash).
 func stampVersion(markdown []byte, hash string) []byte {
-	normalized := normalizeLineEndings(markdown)
-	lines := strings.Split(string(normalized), "\n")
-	replaced := false
-	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), versionLinePrefix) {
-			lines[i] = versionLinePrefix + " " + hash
-			replaced = true
-			break
-		}
-	}
-	if !replaced {
-		// The canonical source always carries the line; if a caller
-		// somehow passed in markdown without one, we don't synthesize
-		// it — the build-time embed-validation test (BVS-N-2 / T6)
-		// guarantees the embedded source has the line.
-		return normalized
-	}
-	out := strings.Join(lines, "\n")
-	if !strings.HasSuffix(out, "\n") {
-		out += "\n"
-	}
-	return []byte(out)
+	canon := canonicalHashDomain(markdown)
+	return []byte(fmt.Sprintf("%s<!-- bv-skill: release=%s sha256=%s -->\n", string(canon), Version, hash))
 }
 
 // supportedAgents is the closed set of agent values the v1 installer
@@ -258,6 +196,10 @@ func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
 		return doUninstall(g, opts, skillPath)
 	}
 	return doInstall(g, opts, skillPath)
+}
+
+func runAgentInit(ctx context.Context, g globalContext, args []string) int {
+	return runInstallSkill(ctx, g, append([]string{"claude"}, args...))
 }
 
 // splitAgentFromFlags walks `args` and pulls out the first non-flag
@@ -450,16 +392,19 @@ func readInstalledFrontmatter(path string) (version string, exists bool, err err
 		}
 		return "", false, fmt.Errorf("install-skill: read installed SKILL.md %q: %w", path, err)
 	}
-	// Walk the file line-by-line until we find the version line. We
-	// don't pull in a YAML parser at v1 — BVS-N-2 + the build-time
-	// embed-validation step keeps the canonical file's frontmatter
-	// shape narrow enough that line-prefix matching is safe.
 	normalized := normalizeLineEndings(raw)
-	for _, line := range strings.Split(string(normalized), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, versionLinePrefix) {
-			rest := strings.TrimSpace(strings.TrimPrefix(trimmed, versionLinePrefix))
-			return rest, true, nil
+	lines := strings.Split(string(normalized), "\n")
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) > 0 {
+		trimmed := strings.TrimSpace(lines[len(lines)-1])
+		if strings.HasPrefix(trimmed, skillMetadataPrefix) && strings.HasSuffix(trimmed, "-->") {
+			for _, field := range strings.Fields(strings.TrimSuffix(strings.TrimPrefix(trimmed, skillMetadataPrefix), "-->")) {
+				if strings.HasPrefix(field, "sha256=") {
+					return strings.TrimPrefix(field, "sha256="), true, nil
+				}
+			}
 		}
 	}
 	return "", true, nil
@@ -477,11 +422,20 @@ func doInstall(g globalContext, opts installSkillOptions, skillPath string) int 
 		logInstallSkillError(g, opts.Agent, "READ_INSTALLED", skillPath)
 		return reportError(g.w, err)
 	}
+	installedContentHash := ""
+	if exists {
+		installedBytes, rerr := os.ReadFile(skillPath)
+		if rerr != nil {
+			logInstallSkillError(g, opts.Agent, "READ_INSTALLED", skillPath)
+			return reportError(g.w, fmt.Errorf("install-skill: read installed SKILL.md %q: %w", skillPath, rerr))
+		}
+		installedContentHash = skillVersionHash(installedBytes)
+	}
 
 	switch {
 	case exists && !opts.Force:
 		// BVS-E-2: file exists; compare versions.
-		if installedVersion == embeddedHash {
+		if installedVersion == embeddedHash && installedContentHash == embeddedHash {
 			// Already up to date — exit 0, NO write, mtime untouched.
 			if g.w.IsJSON() {
 				_ = g.w.JSON(struct {
@@ -501,6 +455,9 @@ func doInstall(g globalContext, opts installSkillOptions, skillPath string) int 
 		shown := installedVersion
 		if shown == "" {
 			shown = "<unknown>"
+		}
+		if installedContentHash != "" && installedContentHash != installedVersion {
+			shown = fmt.Sprintf("%s, current_content=%s", shown, installedContentHash)
 		}
 		msg := fmt.Sprintf(
 			"/butverify skill at %s has a different version than the embedded one (installed=%s, embedded=%s); re-run with --force to overwrite (a .bak will be written) or --uninstall to remove",

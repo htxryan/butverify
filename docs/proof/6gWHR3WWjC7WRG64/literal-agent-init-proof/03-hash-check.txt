@@ -1,0 +1,5 @@
+file=docs/proof/6gWHR3WWjC7WRG64/literal-agent-init-proof/installed-SKILL.md
+metadata=<!-- bv-skill: release=dev sha256=a2a737f5beb8 -->
+computed_sha256_prefix=a2a737f5beb8
+metadata_sha256=a2a737f5beb8
+matches=true

@@ -59,3 +59,4 @@ chat.
   butverify.dev URL.
 - The free tier allows 30 remote evidence sites per month; if `--push` returns
   HTTP 402, the human's tenant is over cap.
+<!-- bv-skill: release=dev sha256=a2a737f5beb8 -->

@@ -176,6 +176,22 @@ func DefaultReference() Reference {
 				},
 			},
 			{
+				Name:        "agent-init",
+				Summary:     "agent-init [--force|--uninstall] [--project]",
+				Usage:       "bv agent-init [--project] [--force] [--uninstall]",
+				Description: "Install the /butverify agent skill for the current agent environment.",
+				Details:     []string{"v1 installs the Claude Code /butverify skill. Future versions may install additional skills, hooks, or MCP servers."},
+				Flags: []Flag{
+					{Name: "--project", Description: "install into ./.claude/skills/butverify/ instead of $HOME/.claude/skills/butverify/", Type: FlagBool, RuntimeHelp: "install into ./.claude/... instead of $HOME/.claude/..."},
+					{Name: "--force", Description: "overwrite an existing install", Type: FlagBool, RuntimeHelp: "overwrite an existing SKILL.md (writes a .bak)"},
+					{Name: "--uninstall", Description: "remove the deterministic install file set", Type: FlagBool, RuntimeHelp: "remove an installed SKILL.md and its sibling artifacts"},
+				},
+				Examples: []string{
+					"bv agent-init",
+					"bv agent-init --project",
+				},
+			},
+			{
 				Name:        "install-skill",
 				Summary:     "install-skill <agent> [--force|--uninstall] [--project]",
 				Usage:       "bv install-skill [--project] [--force] [--uninstall] <agent>",

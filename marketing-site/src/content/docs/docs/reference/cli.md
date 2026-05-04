@@ -144,6 +144,23 @@ Flags:
 - `--image-quality N` — image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default.
 - `--mode local|remote` — publish mode for --push.
 
+## `bv agent-init [--project] [--force] [--uninstall]`
+
+Install the /butverify agent skill for the current agent environment.
+
+v1 installs the Claude Code /butverify skill. Future versions may install additional skills, hooks, or MCP servers.
+
+Flags:
+
+- `--project` — install into ./.claude/skills/butverify/ instead of $HOME/.claude/skills/butverify/.
+- `--force` — overwrite an existing install.
+- `--uninstall` — remove the deterministic install file set.
+
+Examples:
+
+- `bv agent-init`
+- `bv agent-init --project`
+
 ## `bv install-skill [--project] [--force] [--uninstall] <agent>`
 
 Install the /butverify agent skill.

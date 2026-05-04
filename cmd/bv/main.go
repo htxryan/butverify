@@ -183,6 +183,8 @@ func main() {
 		exitCode = runDashboard(ctx, gctx, cmdArgs)
 	case "evidence":
 		exitCode = runEvidence(ctx, gctx, cmdArgs)
+	case "agent-init":
+		exitCode = runAgentInit(ctx, gctx, cmdArgs)
 	case "install-skill":
 		exitCode = runInstallSkill(ctx, gctx, cmdArgs)
 	default:

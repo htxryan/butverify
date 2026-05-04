@@ -248,7 +248,7 @@ non-zero exits from `bv`.
 
 ## See also
 
-- [`bv install-skill claude`](/docs/reference/install-skill) — the
+- [`bv agent-init`](/docs/reference/install-skill) — the
   `/butverify` skill calls `bv evidence` automatically once installed.
 - [`bv` CLI reference](/docs/reference/cli) — every subcommand.
 - [Error codes](/docs/reference/error-codes) — what each non-zero exit

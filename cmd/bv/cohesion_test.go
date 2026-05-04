@@ -66,6 +66,7 @@ func TestBVSU8a_BothSubcommandsCompiledIn(t *testing.T) {
 		handlerName string // the handler the case body must invoke
 	}{
 		{name: "evidence", caseLiteral: `case "evidence":`, handlerName: "runEvidence"},
+		{name: "agent-init", caseLiteral: `case "agent-init":`, handlerName: "runAgentInit"},
 		{name: "install-skill", caseLiteral: `case "install-skill":`, handlerName: "runInstallSkill"},
 	}
 	for _, tc := range cases {
@@ -104,7 +105,7 @@ func mainGoPath(t *testing.T) string {
 // runs `bv --help` should never see one of the two listed without the
 // other (BVS-U-8(b) requires BOTH).
 func TestBVSU8b_HelpListsBothSubcommands(t *testing.T) {
-	wantSubcommands := []string{"install-skill", "evidence"}
+	wantSubcommands := []string{"agent-init", "install-skill", "evidence"}
 	for _, name := range wantSubcommands {
 		name := name
 		t.Run(name, func(t *testing.T) {
@@ -413,7 +414,7 @@ func TestEmbeddedSkillContent_AC5_NonPrescriptiveLanguage(t *testing.T) {
 // cmd/bv/embedded_skills/claude_butverify.md) that affects the
 // canonical hash domain MUST fail this test.
 func TestBVSU9_HashDeterminism(t *testing.T) {
-	const wantHash = "3298e3720982"
+	const wantHash = "a2a737f5beb8"
 
 	hash := skillVersionHash(embeddedSkillBytes)
 	if hash == "" {
