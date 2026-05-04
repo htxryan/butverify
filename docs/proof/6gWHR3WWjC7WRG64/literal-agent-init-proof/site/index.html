@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Literal proof: bv agent-init installs /butverify</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b1020;
+      color: #eef3ff;
+      line-height: 1.55;
+    }
+    main { max-width: 1120px; margin: 0 auto; padding: 40px 20px 72px; }
+    header { margin-bottom: 28px; }
+    h1 { font-size: clamp(2rem, 5vw, 4rem); line-height: 1; margin: 0 0 12px; letter-spacing: -0.05em; }
+    h2 { margin: 0 0 12px; font-size: 1.1rem; color: #a9c7ff; }
+    p, li { max-width: 82ch; color: #d8e4ff; }
+    .claim {
+      border: 1px solid #33518f;
+      border-radius: 18px;
+      padding: 20px;
+      background: linear-gradient(135deg, rgba(35, 70, 140, 0.45), rgba(10, 18, 42, 0.85));
+      margin: 24px 0;
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    section {
+      border: 1px solid #26395f;
+      border-radius: 16px;
+      background: rgba(8, 14, 30, 0.78);
+      padding: 18px;
+      overflow: hidden;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: #050812;
+      border: 1px solid #1d2a45;
+      border-radius: 12px;
+      padding: 14px;
+      max-height: 520px;
+      overflow: auto;
+      color: #dff0ff;
+      font: 0.9rem/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    a { color: #9fc2ff; }
+    code { color: #f2d18a; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Literal proof: <code>bv agent-init</code> works</h1>
+      <p>This page contains the actual captured CLI outputs from running the PR branch in an isolated temporary <code>HOME</code>. It shows a fresh install, a repeat idempotent run, the installed skill metadata hash check, and a deliberate local edit being refused by drift detection.</p>
+    </header>
+
+    <div class="claim">
+      <strong>What this proves:</strong>
+      <ul>
+        <li><code>bv --json agent-init</code> writes <code>$HOME/.claude/skills/butverify/SKILL.md</code>.</li>
+        <li>The installed file ends with <code>&lt;!-- bv-skill: release=... sha256=... --&gt;</code>.</li>
+        <li>The metadata hash matches the SHA-256 prefix of the file body excluding that metadata line.</li>
+        <li>Running the command again reports <code>already_current</code> instead of overwriting.</li>
+        <li>After a local body edit, running again exits non-zero and reports drift, including <code>current_content</code>.</li>
+      </ul>
+    </div>
+
+    <div class="grid">
+      <section><h2>Fresh install JSON</h2><pre>{
+  &quot;ok&quot;: true,
+  &quot;agent&quot;: &quot;claude&quot;,
+  &quot;path&quot;: &quot;/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home/.claude/skills/butverify/SKILL.md&quot;,
+  &quot;version&quot;: &quot;a2a737f5beb8&quot;,
+  &quot;status&quot;: &quot;installed&quot;
+}</pre></section>
+      <section><h2>Repeat run JSON</h2><pre>{
+  &quot;ok&quot;: true,
+  &quot;path&quot;: &quot;/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home/.claude/skills/butverify/SKILL.md&quot;,
+  &quot;version&quot;: &quot;a2a737f5beb8&quot;,
+  &quot;status&quot;: &quot;already_current&quot;
+}</pre></section>
+      <section><h2>Metadata hash verification</h2><pre>file=docs/proof/6gWHR3WWjC7WRG64/literal-agent-init-proof/installed-SKILL.md
+metadata=&lt;!-- bv-skill: release=dev sha256=a2a737f5beb8 --&gt;
+computed_sha256_prefix=a2a737f5beb8
+metadata_sha256=a2a737f5beb8
+matches=true</pre></section>
+      <section><h2>Drift detection stdout</h2><pre>{&quot;error&quot;:{&quot;code&quot;:&quot;BAD_REQUEST&quot;,&quot;message&quot;:&quot;/butverify skill at /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home/.claude/skills/butverify/SKILL.md has a different version than the embedded one (installed=a2a737f5beb8, current_content=e67a0a765e23, embedded=a2a737f5beb8); re-run with --force to overwrite (a .bak will be written) or --uninstall to remove&quot;}}</pre></section>
+      <section><h2>Drift detection stderr</h2><pre>exit status 1</pre></section>
+    </div>
+
+    <section><h2>Full terminal transcript</h2><pre>$ export HOME=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home
+$ go run ./cmd/bv --json agent-init
+{
+  &quot;ok&quot;: true,
+  &quot;agent&quot;: &quot;claude&quot;,
+  &quot;path&quot;: &quot;/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home/.claude/skills/butverify/SKILL.md&quot;,
+  &quot;version&quot;: &quot;a2a737f5beb8&quot;,
+  &quot;status&quot;: &quot;installed&quot;
+}
+stderr: (empty)
+exit=0
+
+$ go run ./cmd/bv --json agent-init
+{
+  &quot;ok&quot;: true,
+  &quot;path&quot;: &quot;/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home/.claude/skills/butverify/SKILL.md&quot;,
+  &quot;version&quot;: &quot;a2a737f5beb8&quot;,
+  &quot;status&quot;: &quot;already_current&quot;
+}
+stderr: (empty)
+exit=0
+
+$ node hash-check installed-SKILL.md
+file=docs/proof/6gWHR3WWjC7WRG64/literal-agent-init-proof/installed-SKILL.md
+metadata=&lt;!-- bv-skill: release=dev sha256=a2a737f5beb8 --&gt;
+computed_sha256_prefix=a2a737f5beb8
+metadata_sha256=a2a737f5beb8
+matches=true
+exit=0
+
+# Local body edit inserted into the installed SKILL.md before its metadata comment.
+$ go run ./cmd/bv --json agent-init
+{&quot;error&quot;:{&quot;code&quot;:&quot;BAD_REQUEST&quot;,&quot;message&quot;:&quot;/butverify skill at /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home/.claude/skills/butverify/SKILL.md has a different version than the embedded one (installed=a2a737f5beb8, current_content=e67a0a765e23, embedded=a2a737f5beb8); re-run with --force to overwrite (a .bak will be written) or --uninstall to remove&quot;}}
+stderr:
+exit status 1
+exit=1</pre></section>
+    <section><h2>Installed SKILL.md proof copy</h2><pre>---
+name: butverify
+description: Publish proof of recent work as a private gallery on butverify.dev
+disable-model-invocation: false
+---
+
+# /butverify
+
+If you have just finished a piece of functional work, you must PROVE IT —
+and publish that proof so the human can review it without scrolling through
+chat.
+
+## Workflow
+
+1. **Run the app end-to-end.** No mocks, no faking, no forcing the app into
+   a particular state. Use it as a human would.
+2. **Capture proof as you go.** Use whatever capture tooling you have:
+   browser MCP, Playwright, an OS screenshot tool, terminal recording. Aim
+   for: empty state, primary success path, at least one edge case, and any
+   visual states the change touches.
+3. **Inspect each capture as you take it.** Look for functional bugs and
+   visual fidelity issues. The feature should be 100% functional and free
+   of visual fidelity bugs.
+4. **If you find issues:**
+   1. List them.
+   2. Fix them all.
+   3. Resume at step 1.
+5. **Write `evidence.json`** with one entry per capture (see the schema
+   shipped with `bv evidence --schema`). Set a `title` and `description`
+   for each entry; use `sequence` to order them deliberately.
+6. **Publish.** Run `bv evidence --from evidence.json --push --mode remote`.
+   Capture the returned `{url, expires_at}` JSON. If the CLI reports that
+   login is required, tell the human to run `bv login` or use local mode
+   manually for a same-machine preview.
+7. **Surface the URL to the human.** Tell them what you delivered and link
+   the gallery.
+
+## Rules
+
+1. NEVER skirt around UI complexity to force the app into a particular
+   state. Use the app as it is. If you hit blocking issues, resolve them
+   to achieve your goal.
+2. NEVER publish proof of unfinished work. If `bv evidence --push --mode remote` would
+   represent the work as done when it is not, fix the work first.
+3. NEVER claim the work is delivered to the human until `bv evidence
+--push --mode remote` has returned a `{url, expires_at}` payload AND you have
+   surfaced that URL to the human. If `--push` returns an error
+   (HTTP 4xx, network failure, anything else), surface the error
+   verbatim and the work is NOT delivered.
+4. If you run into major, epic-level changes that are needed, stop and
+   ask the user for a decision before proceeding.
+
+## Logistics
+
+- Working directory: put captures in `./.butverify/&lt;short-task-id&gt;/`.
+- Remote publish URLs are private — recipients sign in with GitHub.
+- Local mode is available for same-machine previews, but it serves only
+  while the CLI process is running and does not produce an expiring
+  butverify.dev URL.
+- The free tier allows 30 remote evidence sites per month; if `--push` returns
+  HTTP 402, the human's tenant is over cap.
+&lt;!-- bv-skill: release=dev sha256=a2a737f5beb8 --&gt;</pre></section>
+  </main>
+</body>
+</html>

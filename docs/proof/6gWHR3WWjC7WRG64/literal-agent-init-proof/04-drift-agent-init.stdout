@@ -1,0 +1,1 @@
+{"error":{"code":"BAD_REQUEST","message":"/butverify skill at /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home/.claude/skills/butverify/SKILL.md has a different version than the embedded one (installed=a2a737f5beb8, current_content=e67a0a765e23, embedded=a2a737f5beb8); re-run with --force to overwrite (a .bak will be written) or --uninstall to remove"}}

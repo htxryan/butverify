@@ -1,0 +1,36 @@
+$ export HOME=/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home
+$ go run ./cmd/bv --json agent-init
+{
+  "ok": true,
+  "agent": "claude",
+  "path": "/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home/.claude/skills/butverify/SKILL.md",
+  "version": "a2a737f5beb8",
+  "status": "installed"
+}
+stderr: (empty)
+exit=0
+
+$ go run ./cmd/bv --json agent-init
+{
+  "ok": true,
+  "path": "/var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home/.claude/skills/butverify/SKILL.md",
+  "version": "a2a737f5beb8",
+  "status": "already_current"
+}
+stderr: (empty)
+exit=0
+
+$ node hash-check installed-SKILL.md
+file=docs/proof/6gWHR3WWjC7WRG64/literal-agent-init-proof/installed-SKILL.md
+metadata=<!-- bv-skill: release=dev sha256=a2a737f5beb8 -->
+computed_sha256_prefix=a2a737f5beb8
+metadata_sha256=a2a737f5beb8
+matches=true
+exit=0
+
+# Local body edit inserted into the installed SKILL.md before its metadata comment.
+$ go run ./cmd/bv --json agent-init
+{"error":{"code":"BAD_REQUEST","message":"/butverify skill at /var/folders/_z/mrnvcw_j25746h9mwn9rqv8r0000gn/T/tmp.Ntj9CYip6K/home/.claude/skills/butverify/SKILL.md has a different version than the embedded one (installed=a2a737f5beb8, current_content=e67a0a765e23, embedded=a2a737f5beb8); re-run with --force to overwrite (a .bak will be written) or --uninstall to remove"}}
+stderr:
+exit status 1
+exit=1
