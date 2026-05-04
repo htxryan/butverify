@@ -41,7 +41,7 @@ Print or set the default publish mode.
 
 Fresh installs default to local. A successful bv login switches the default to remote.
 
-## `bv push [--mode local|remote] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--include-hidden] <dir>`
+## `bv push [--mode local|remote] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--include-hidden] [--skip-gitleaks-check] <dir>`
 
 Bundle a directory and publish it in local or remote mode.
 
@@ -58,6 +58,7 @@ Flags:
 - `--ttl-seconds N` — site TTL in seconds; 0 uses the server default.
 - `--image-quality N` — image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default.
 - `--include-hidden` — include dot-files in the bundle.
+- `--skip-gitleaks-check` — skip the pre-upload gitleaks secret scan.
 
 ## `bv ls`
 

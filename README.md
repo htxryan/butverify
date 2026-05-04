@@ -38,6 +38,8 @@ Use `bv mode` to inspect or change the default publish mode. Fresh installs defa
 
 `bv push` optimizes supported images before publishing. JPEGs use quality `75` by default, and PNGs are recompressed losslessly when the result is smaller. Use `bv push --image-quality <1-100> ./build` for a single push, or set `image_quality` in `$XDG_CONFIG_HOME/butverify/config.json` (default `~/.config/butverify/config.json`) to change the default for future pushes.
 
+Before a push creates or uploads a site, the CLI scans the exact upload bundle with gitleaks and blocks potential credentials by default. If you intentionally need to publish matching content, rerun with `bv push --skip-gitleaks-check ./build`.
+
 After installing the skill, your agent can run `/butverify` after delivering work — it captures evidence and publishes it remotely via `bv evidence --push --mode remote`.
 
 Full reference: https://butverify.dev/docs/

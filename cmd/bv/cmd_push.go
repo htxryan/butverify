@@ -43,6 +43,7 @@ func runPush(ctx context.Context, g globalContext, args []string) int {
 	uploadIDFlag := flags.String("upload-id")
 	ttlFlag := flags.Int64("ttl-seconds")
 	includeHidden := flags.Bool("include-hidden")
+	skipGitleaksCheck := flags.Bool("skip-gitleaks-check")
 	imageQuality := flags.Int("image-quality")
 	modeFlag := flags.String("mode")
 	if err := fs.Parse(args); err != nil {
@@ -66,13 +67,14 @@ func runPush(ctx context.Context, g globalContext, args []string) int {
 		}
 	}
 	return runPushFlowForMode(ctx, g, pushOptions{
-		dir:           dir,
-		sourcePath:    publishSourcePath(dir),
-		uploadID:      uploadID,
-		ttlSeconds:    *ttlFlag,
-		includeHidden: *includeHidden,
-		imageQuality:  *imageQuality,
-		modeOverride:  *modeFlag,
+		dir:               dir,
+		sourcePath:        publishSourcePath(dir),
+		uploadID:          uploadID,
+		ttlSeconds:        *ttlFlag,
+		includeHidden:     *includeHidden,
+		skipGitleaksCheck: *skipGitleaksCheck,
+		imageQuality:      *imageQuality,
+		modeOverride:      *modeFlag,
 	})
 }
 

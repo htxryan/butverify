@@ -469,6 +469,104 @@ func TestPushHappyPath(t *testing.T) {
 	}
 }
 
+func TestPushBlocksGitleaksFindingBeforeNetwork(t *testing.T) {
+	srv := newFakeServer(t)
+	var createCalls int
+	srv.create = func(w http.ResponseWriter, r *http.Request) {
+		createCalls++
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	setupConfig(t, server.URL)
+
+	dir := t.TempDir()
+	secret := privateKeyGitleaksFixture()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte(secret), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	w, stdout, _ := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{dir})
+	if rc == 0 {
+		t.Fatalf("push should fail on gitleaks finding, stdout=%s", stdout.String())
+	}
+	if createCalls != 0 {
+		t.Fatalf("push should not create a site before blocking, createCalls=%d", createCalls)
+	}
+	out := stdout.String()
+	for _, want := range []string{"gitleaks detected", "blocked before creating or uploading", "--skip-gitleaks-check", "index.html"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, secret) {
+		t.Fatalf("stdout should not leak the detected secret:\n%s", out)
+	}
+}
+
+func TestPushSkipGitleaksCheckAllowsFinding(t *testing.T) {
+	srv := newFakeServer(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte(privateKeyGitleaksFixture()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotPut bool
+	stagingURL := ""
+	srv.create = func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":               "abcd1234",
+			"url":                   "https://abcd1234.butverify.dev",
+			"expires_at":            "2026-05-04T10:00:00Z",
+			"upload_token":          "use_installation_token",
+			"manifest_url":          "x",
+			"status":                "creating",
+			"idempotent":            false,
+			"upload_url":            stagingURL,
+			"upload_max_bytes":      100 * 1024 * 1024,
+			"upload_url_expires_at": "2026-04-27T10:15:00Z",
+		})
+	}
+	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":        siteID,
+			"status":         "active",
+			"url":            "https://abcd1234.butverify.dev",
+			"manifest_url":   "x",
+			"expires_at":     "2026-05-04T10:00:00Z",
+			"manifest_sha":   strings.Repeat("a", 64),
+			"last_pushed_at": "2026-04-27T10:00:00Z",
+			"idempotent":     false,
+		})
+	}
+	srv.put = func(w http.ResponseWriter, r *http.Request) {
+		gotPut = true
+		w.WriteHeader(200)
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	stagingURL = server.URL + "/staging-put"
+	setupConfig(t, server.URL)
+
+	w, stdout, _ := newJSONWriter(t)
+	rc := runPush(context.Background(), globalContext{w: w}, []string{"--skip-gitleaks-check", dir})
+	if rc != 0 {
+		t.Fatalf("push rc: %d, stdout=%s", rc, stdout.String())
+	}
+	if !gotPut {
+		t.Fatal("PUT not seen with explicit skip flag")
+	}
+}
+
+func privateKeyGitleaksFixture() string {
+	return strings.Join([]string{
+		"-----BEGIN OPENSSH" + " PRIVATE KEY-----",
+		"b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW",
+		"-----END OPENSSH" + " PRIVATE KEY-----",
+	}, "\n")
+}
+
 func TestPushOptimizesImagesBeforeUpload(t *testing.T) {
 	srv := newFakeServer(t)
 	dir := t.TempDir()
@@ -599,8 +697,8 @@ func TestPushHumanOutputShowsProgressAndStructuredResult(t *testing.T) {
 
 	errOut := stderr.String()
 	for _, want := range []string{
-		"[1/4] [#####---------------] Provisioned: abcd1234 ready for upload",
-		"[2/4] [##########----------] Bundled: 1 files",
+		"[1/4] [#####---------------] Bundled: 1 files",
+		"[2/4] [##########----------] Provisioned: abcd1234 ready for upload",
 		"[3/4] [###############-----] Uploaded: bundle staged",
 		"[4/4] [####################] Published: https://abcd1234.butverify.dev",
 	} {

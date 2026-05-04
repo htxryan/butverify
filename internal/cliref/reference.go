@@ -100,7 +100,7 @@ func DefaultReference() Reference {
 			{
 				Name:        "push",
 				Summary:     "push <dir>",
-				Usage:       "bv push [--mode local|remote] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--include-hidden] <dir>",
+				Usage:       "bv push [--mode local|remote] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--include-hidden] [--skip-gitleaks-check] <dir>",
 				Description: "Bundle a directory and publish it in local or remote mode.",
 				Details: []string{
 					"Local mode serves the filtered publish bundle on 127.0.0.1 until interrupted.",
@@ -113,6 +113,7 @@ func DefaultReference() Reference {
 					{Name: "--ttl-seconds", Value: "N", Description: "site TTL in seconds; 0 uses the server default", Type: FlagInt64, Default: "0", RuntimeHelp: "site TTL in seconds (paid plan; 0 = use server default)"},
 					{Name: "--image-quality", Value: "N", Description: "image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default", Type: FlagInt, Default: "0", RuntimeHelp: "image optimization quality (1-100; 0 = config/default)"},
 					{Name: "--include-hidden", Description: "include dot-files in the bundle", Type: FlagBool, RuntimeHelp: "include dot-files in the bundle"},
+					{Name: "--skip-gitleaks-check", Description: "skip the pre-upload gitleaks secret scan", Type: FlagBool, RuntimeHelp: "skip the pre-upload gitleaks secret scan"},
 				},
 			},
 			{Name: "ls", Summary: "ls", Usage: "bv ls", Description: "List sites for the authenticated tenant."},
