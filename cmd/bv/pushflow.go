@@ -38,14 +38,15 @@ import (
 
 // pushOptions bundles the parameters of a single push pipeline run.
 type pushOptions struct {
-	dir           string
-	sourcePath    string
-	uploadID      string
-	ttlSeconds    int64 // 0 = use server default
-	template      string
-	includeHidden bool
-	imageQuality  int
-	modeOverride  string
+	dir               string
+	sourcePath        string
+	uploadID          string
+	ttlSeconds        int64 // 0 = use server default
+	template          string
+	includeHidden     bool
+	skipGitleaksCheck bool
+	imageQuality      int
+	modeOverride      string
 	// createErrTransform optionally rewrites the error returned from
 	// POST /v1/sites BEFORE reportError formats it. Used by `bv
 	// evidence` to surface the EV-E-8 distinctive 400 envelope when
@@ -91,6 +92,27 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 		g.w.Error(toErrorEnvelope(err))
 		return 2
 	}
+	imageQuality, err := config.ResolveImageQuality(cfg, opts.imageQuality, 0)
+	if err != nil {
+		g.w.Error(toErrorEnvelope(err))
+		return 2
+	}
+
+	var buf bytes.Buffer
+	info, err := tarbundle.BundleDir(opts.dir, &buf, tarbundle.Options{
+		IncludeHidden: opts.includeHidden,
+		ImageQuality:  imageQuality,
+	})
+	if err != nil {
+		return reportError(g.w, fmt.Errorf("bundle %s: %w", opts.dir, err))
+	}
+	if !opts.skipGitleaksCheck {
+		if err := checkBundleForSecrets(ctx, opts.dir, buf.Bytes()); err != nil {
+			return reportError(g.w, err)
+		}
+	}
+	pushProgress(g, 1, "Bundled", fmt.Sprintf("%d files (%d bytes)", info.FileCount, info.TotalBytes))
+
 	clientHostname, _ := collectClientHostname()
 	publishCommand, publishCWD := collectPublishInvocationMetadata()
 	createReq := api.CreateSiteRequest{
@@ -123,23 +145,10 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 			return reportError(g.w, err)
 		}
 	}
-	pushProgress(g, 1, "Provisioned", fmt.Sprintf("%s ready for upload", created.SiteID))
-	imageQuality, err := config.ResolveImageQuality(cfg, opts.imageQuality, 0)
-	if err != nil {
-		g.w.Error(toErrorEnvelope(err))
-		return 2
+	pushProgress(g, 2, "Provisioned", fmt.Sprintf("%s ready for upload", created.SiteID))
+	if created.UploadMaxBytes > 0 && int64(buf.Len()) > created.UploadMaxBytes {
+		return reportError(g.w, fmt.Errorf("bundle %s: tarbundle: bundle would exceed max_bytes=%d (tar size %d)", opts.dir, created.UploadMaxBytes, buf.Len()))
 	}
-
-	var buf bytes.Buffer
-	info, err := tarbundle.BundleDir(opts.dir, &buf, tarbundle.Options{
-		MaxBytes:      created.UploadMaxBytes,
-		IncludeHidden: opts.includeHidden,
-		ImageQuality:  imageQuality,
-	})
-	if err != nil {
-		return reportError(g.w, fmt.Errorf("bundle %s: %w", opts.dir, err))
-	}
-	pushProgress(g, 2, "Bundled", fmt.Sprintf("%d files (%d bytes)", info.FileCount, info.TotalBytes))
 
 	if err := putTar(ctx, created.UploadURL, buf.Bytes()); err != nil {
 		return reportError(g.w, fmt.Errorf("upload tar: %w", err))
