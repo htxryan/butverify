@@ -62,17 +62,31 @@ type CreateSiteResponse struct {
 
 // SiteSummary is one entry in GET /v1/sites and the body of GET /v1/sites/{id}.
 type SiteSummary struct {
-	SiteID       string `json:"site_id"`
-	TenantID     string `json:"tenant_id"`
-	Status       string `json:"status"`
-	URL          string `json:"url"`
-	ManifestURL  string `json:"manifest_url"`
-	ExpiresAt    string `json:"expires_at"`
-	PinnedAt     string `json:"pinned_at"`
-	BytesUsed    int64  `json:"bytes_used"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
-	LastPushedAt string `json:"last_pushed_at"`
+	SiteID        string         `json:"site_id"`
+	TenantID      string         `json:"tenant_id"`
+	Status        string         `json:"status"`
+	URL           string         `json:"url"`
+	ManifestURL   string         `json:"manifest_url"`
+	ExpiresAt     string         `json:"expires_at"`
+	PinnedAt      string         `json:"pinned_at"`
+	BytesUsed     int64          `json:"bytes_used"`
+	CreatedAt     string         `json:"created_at"`
+	UpdatedAt     string         `json:"updated_at"`
+	LastPushedAt  string         `json:"last_pushed_at"`
+	LatestPublish *LatestPublish `json:"latest_publish,omitempty"`
+}
+
+// LatestPublish is compact metadata about the most recent finalized publish.
+type LatestPublish struct {
+	PublishedAt     string `json:"published_at"`
+	UploadID        string `json:"upload_id"`
+	ManifestSHA     string `json:"manifest_sha"`
+	SourcePath      string `json:"source_path,omitempty"`
+	ClientHostname  string `json:"client_hostname,omitempty"`
+	ClientUserAgent string `json:"client_user_agent,omitempty"`
+	CLIVersion      string `json:"cli_version,omitempty"`
+	PublishCommand  string `json:"publish_command,omitempty"`
+	PublishCWD      string `json:"publish_cwd,omitempty"`
 }
 
 // ListSitesResponse is the GET /v1/sites payload.

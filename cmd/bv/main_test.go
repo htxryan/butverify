@@ -258,7 +258,25 @@ func TestListSites(t *testing.T) {
 	srv.listSites = func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"sites": []map[string]any{
-				{"site_id": "abcd1234", "tenant_id": "t_u42", "status": "active", "url": "https://abcd1234.butverify.dev", "manifest_url": "x", "bytes_used": 1024, "created_at": "x", "updated_at": "x"},
+				{
+					"site_id":      "abcd1234",
+					"tenant_id":    "t_u42",
+					"status":       "active",
+					"url":          "https://abcd1234.butverify.dev",
+					"manifest_url": "x",
+					"bytes_used":   1024,
+					"created_at":   "x",
+					"updated_at":   "x",
+					"latest_publish": map[string]any{
+						"published_at":      "2026-05-04T12:00:00Z",
+						"upload_id":         "u-1",
+						"manifest_sha":      strings.Repeat("a", 64),
+						"source_path":       "/workspace/project/proof",
+						"cli_version":       "0.8.0",
+						"publish_cwd":       "/workspace/project",
+						"client_user_agent": "bv/0.8.0 darwin-arm64",
+					},
+				},
 			},
 		})
 	}
@@ -272,6 +290,9 @@ func TestListSites(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"site_id": "abcd1234"`) {
 		t.Errorf("stdout: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"publish_cwd": "/workspace/project"`) {
+		t.Errorf("stdout missing latest publish metadata: %s", stdout.String())
 	}
 }
 
