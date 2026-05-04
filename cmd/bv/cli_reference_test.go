@@ -12,7 +12,7 @@ import (
 )
 
 func TestCommandHelpExitsZero(t *testing.T) {
-	for _, command := range []string{"push", "report", "dashboard", "evidence", "login", "install-skill", "mode"} {
+	for _, command := range []string{"push", "report", "dashboard", "evidence", "login", "agent-init", "install-skill", "mode"} {
 		command := command
 		t.Run(command, func(t *testing.T) {
 			cmd := exec.Command("go", "run", ".", command, "--help")
@@ -58,7 +58,7 @@ func TestDispatchCasesAreDocumentedOrHidden(t *testing.T) {
 func TestVisibleCommandsAppearInTopLevelHelp(t *testing.T) {
 	for _, command := range cliref.DefaultReference().Commands {
 		if command.Hidden {
-			if strings.Contains(usageText, command.Name) {
+			if regexp.MustCompile(`(?m)^\s+`+regexp.QuoteMeta(command.Name)+`\b`).FindString(usageText) != "" {
 				t.Fatalf("hidden command %q appeared in top-level usage", command.Name)
 			}
 			continue

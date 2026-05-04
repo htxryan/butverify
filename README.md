@@ -31,7 +31,7 @@ go install github.com/htxryan/butverify/cmd/bv@latest
 bv push ./build                     # serve a directory locally by default
 bv login                            # optional: switch default mode to remote
 bv push --mode remote ./build       # publish a private microsite
-bv install-skill claude             # install the /butverify agent skill
+bv agent-init                       # install the /butverify agent skill
 ```
 
 Use `bv mode` to inspect or change the default publish mode. Fresh installs default to `local`; `bv login` switches the default to `remote`; `bv logout` clears saved auth and switches back to `local`.
