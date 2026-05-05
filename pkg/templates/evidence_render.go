@@ -1,6 +1,7 @@
-// Evidence template rendering: produces index.html + styles.css from a
-// validated EvidenceInput. The rendered page includes a CSS-only control
-// for switching between stacked and carousel layouts.
+// Evidence template rendering: produces index.html + styles.css +
+// evidence.js from a validated EvidenceInput. The rendered page includes a
+// static-bundle controller for layout, metadata, outline, and carousel
+// navigation.
 //
 // This file is the wave-1 minimal-shell renderer (E12-T4). Asset copy,
 // MIME sniffing, path containment, atomic --out, and tmp-dir cleanup
@@ -13,7 +14,7 @@
 //     AND for `<img src="assets/...">` hrefs in the HTML — lives in
 //     evidence.go as the exported `SafeAssetName`. This file calls it
 //     from `toEvidenceModel` so HTML and disk can never drift.
-//   - This file owns HTML/CSS template execution.
+//   - This file owns HTML/CSS/JS template execution.
 //
 // The /compound:build-great-things design pass is T7, NOT this task; the
 // templates here are intentionally minimal-but-correct so EARS coverage
@@ -31,7 +32,7 @@ import (
 	"strings"
 )
 
-//go:embed assets/evidence.html.tmpl assets/evidence.css
+//go:embed assets/evidence.html.tmpl assets/evidence.css assets/evidence.js
 var evidenceFS embed.FS
 
 // evidenceFuncs are the template helpers we need for 1-based item labels.
@@ -129,7 +130,7 @@ func toEvidenceModel(in EvidenceInput, g Generator) evidenceRenderModel {
 	}
 }
 
-// renderEvidenceHTML writes index.html + styles.css into outDir.
+// renderEvidenceHTML writes index.html + styles.css + evidence.js into outDir.
 //
 // Caller (T3) is responsible for:
 //   - validating `in` (via ParseEvidence)
@@ -163,6 +164,13 @@ func renderEvidenceHTML(in EvidenceInput, outDir string, g Generator) error {
 		return fmt.Errorf("templates: read embedded evidence.css: %w", err)
 	}
 	if err := writeFile(outDir, "styles.css", cssBytes); err != nil {
+		return err
+	}
+	jsBytes, err := evidenceFS.ReadFile("assets/evidence.js")
+	if err != nil {
+		return fmt.Errorf("templates: read embedded evidence.js: %w", err)
+	}
+	if err := writeFile(outDir, "evidence.js", jsBytes); err != nil {
 		return err
 	}
 	return nil

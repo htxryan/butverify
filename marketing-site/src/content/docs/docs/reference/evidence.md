@@ -21,9 +21,9 @@ In remote mode, `bv` prints JSON with the published URL and its expiry:
 ```
 
 The render is fully client-side: the control plane never sees your raw
-screenshots. The published bundle is HTML, CSS, and copied assets — no
-JavaScript runtime — so the gallery first-paints without network round
-trips after the page itself loads.
+screenshots. The published bundle is static HTML, CSS, a small local
+JavaScript controller, and copied assets, so the gallery first-paints
+without network round trips after the page itself loads.
 
 ## Input contract — `evidence.json`
 
@@ -101,8 +101,8 @@ out-of-line on disk).
 ### `--out <dir>`
 
 Render-only mode. Produces a self-contained static bundle at `<dir>`
-(`index.html`, `styles.css`, `assets/`) that opens in a browser without
-network. The renderer writes to a sibling temp directory and atomically
+(`index.html`, `styles.css`, `evidence.js`, `assets/`) that opens in a
+browser without network. The renderer writes to a sibling temp directory and atomically
 renames into place on success — your `--out` path is never partially
 written and never `rm -rf`'d.
 
@@ -187,13 +187,14 @@ should output PNG/JPEG/WebP.
 
 ## Layouts
 
-Rendered evidence pages include a CSS-only layout switcher. Viewers can
-swap between a vertical stacked view and a horizontal carousel without
+Rendered evidence pages include a layout switcher. Viewers can swap
+between a vertical stacked view and a horizontal carousel without
 republishing the site.
 
 The stacked view renders each item as title, asset, and description in
-JSON-resolved order. The carousel view uses horizontal snap-scroll with
-pager links that anchor-jump between items. No JavaScript — both views
+JSON-resolved order inside a scrollable content panel with a collapsible
+outline. The carousel view uses horizontal snap-scroll with previous/next
+buttons, paging buttons, and left/right keyboard navigation. Both views
 share the same HTML and JSON contract.
 
 ## Bundle properties
@@ -201,9 +202,9 @@ share the same HTML and JSON contract.
 - **Deterministic.** Re-running the renderer on the same input
   produces byte-identical output. No wall-clock timestamps are
   embedded.
-- **No JavaScript.** First paint and gallery navigation work without a
-  JS runtime; `<img loading="lazy" decoding="async">` and
-  `<video preload="metadata" controls>` are the only "smarts."
+- **Static JavaScript only.** `evidence.js` is bundled locally and drives
+  layout toggles, metadata/outline panels, and carousel navigation. It
+  does not fetch remote code or data.
 - **Small.** A typical input renders to under 50 KB of HTML+CSS;
   copied assets are the bulk of the bundle.
 

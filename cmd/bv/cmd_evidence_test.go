@@ -130,7 +130,7 @@ func TestEvidence_RenderOnly_IncludesLayoutSwitcher(t *testing.T) {
 	if strings.Contains(string(idx), `data-layout=`) {
 		t.Errorf("rendered html should not hard-code a publish-time layout (first 300): %s", idx[:min(300, len(idx))])
 	}
-	for _, want := range []string{`id="ev-layout-stacked"`, `id="ev-layout-carousel"`, `class="ev-track"`, `class="ev-pager"`} {
+	for _, want := range []string{`class="ev-topbar"`, `id="ev-meta-panel"`, `id="ev-layout-stacked"`, `id="ev-layout-carousel"`, `class="ev-outline"`, `class="ev-track"`, `class="ev-pager"`, `src="evidence.js"`} {
 		if !strings.Contains(string(idx), want) {
 			t.Errorf("rendered html missing layout-switcher marker %q (first 300): %s", want, idx[:min(300, len(idx))])
 		}
@@ -140,6 +140,9 @@ func TestEvidence_RenderOnly_IncludesLayoutSwitcher(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "styles.css")); err != nil {
 		t.Errorf("styles.css missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "evidence.js")); err != nil {
+		t.Errorf("evidence.js missing: %v", err)
 	}
 	// Asset has the deterministic `001-shot.png` prefix from
 	// templates.SafeAssetName.

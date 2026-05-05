@@ -49,7 +49,7 @@ func fixedEvidenceInput() EvidenceInput {
 
 // ---------------------------------------------------------------------------
 // Switchable layout golden snapshot test (EV-U-7 determinism +
-// EV-U-9 lazy/decoding/controls + EV-U-2 no script).
+// EV-U-9 lazy/decoding/controls + controlled static script).
 // ---------------------------------------------------------------------------
 
 func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
@@ -88,6 +88,17 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 	if string(css1) != string(css2) {
 		t.Errorf("non-deterministic styles.css — bundles differ across runs")
 	}
+	js1, err := os.ReadFile(filepath.Join(dir1, "evidence.js"))
+	if err != nil {
+		t.Fatalf("read evidence.js: %v", err)
+	}
+	js2, err := os.ReadFile(filepath.Join(dir2, "evidence.js"))
+	if err != nil {
+		t.Fatalf("read evidence.js 2: %v", err)
+	}
+	if string(js1) != string(js2) {
+		t.Errorf("non-deterministic evidence.js — bundles differ across runs")
+	}
 
 	s := string(html1)
 
@@ -95,19 +106,28 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 		t.Errorf("render should not hard-code layout in the HTML; got:\n%s", firstFewLines(s, 16))
 	}
 
-	// EV-U-2: no <script> ANYWHERE.
-	if strings.Contains(s, "<script") {
-		t.Errorf("rendered HTML contains <script> tag (EV-U-2 violation)")
+	if strings.Count(s, `<script src="evidence.js" defer></script>`) != 1 {
+		t.Errorf("rendered HTML must include exactly one static evidence.js script; got:\n%s", firstFewLines(s, 20))
 	}
 
 	for _, want := range []string{
+		`class="ev-topbar"`,
+		`class="ev-meta-strip"`,
+		`id="ev-meta-panel"`,
+		`hidden`,
 		`id="ev-layout-stacked"`,
 		`id="ev-layout-carousel"`,
 		`for="ev-layout-stacked"`,
 		`for="ev-layout-carousel"`,
+		`class="ev-content-panel"`,
+		`class="ev-outline"`,
+		`data-ev-outline-toggle`,
+		`data-ev-prev`,
+		`data-ev-next`,
 		`class="ev-track"`,
 		`class="ev-slide"`,
 		`class="ev-pager"`,
+		`data-ev-page`,
 		`href="#item-1"`,
 		`href="#item-3"`,
 	} {
@@ -199,10 +219,10 @@ func TestRenderEvidenceHTML_EscapesScriptTagInputs(t *testing.T) {
 	}
 	s := string(b)
 
-	// Case-sensitive: an attacker-controlled `<script>` substring must
-	// NOT appear unescaped anywhere.
-	if strings.Contains(s, "<script>") {
-		t.Errorf("unescaped <script> in output (EV-U-4 violation)")
+	// The static bundle script is allowed, but attacker-controlled script
+	// text must not become executable markup.
+	if strings.Contains(s, "<script>alert") || strings.Contains(s, `</title><script`) {
+		t.Errorf("unescaped attacker script in output (EV-U-4 violation)")
 	}
 	// Escaped form must appear.
 	if !strings.Contains(s, "&lt;script&gt;") {
@@ -220,10 +240,8 @@ func TestRenderEvidenceHTML_EscapesScriptTagInputs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRenderEvidenceHTML_BundleUnder50KB(t *testing.T) {
-	// A typical small gallery's index.html + styles.css must stay well
-	// under 50 KB combined. The minimal-shell CSS + flat HTML easily fits;
-	// this test exists so a future polish pass (T7) doesn't accidentally
-	// blow the bundle out by inlining hero images or fonts in CSS.
+	// A typical small gallery's index.html + styles.css + evidence.js must
+	// stay well under 50 KB combined. This keeps the static shell small.
 	dir := t.TempDir()
 	if err := renderEvidenceHTML(fixedEvidenceInput(), dir, Generator{Version: "1"}); err != nil {
 		t.Fatalf("render: %v", err)
@@ -236,10 +254,14 @@ func TestRenderEvidenceHTML_BundleUnder50KB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat css: %v", err)
 	}
-	total := htmlInfo.Size() + cssInfo.Size()
+	jsInfo, err := os.Stat(filepath.Join(dir, "evidence.js"))
+	if err != nil {
+		t.Fatalf("stat evidence.js: %v", err)
+	}
+	total := htmlInfo.Size() + cssInfo.Size() + jsInfo.Size()
 	const limit = 50 * 1024
 	if total > limit {
-		t.Errorf("bundle (index.html + styles.css) is %d bytes; limit %d", total, limit)
+		t.Errorf("bundle (index.html + styles.css + evidence.js) is %d bytes; limit %d", total, limit)
 	}
 }
 

@@ -656,7 +656,7 @@ func renderTempName() (string, error) {
 // RenderEvidence parses+validates the JSON input, sorts items per
 // EVSC-10, copies referenced assets into the bundle (with MIME
 // double-gate, containment, and 1-GiB cap), and calls T4's
-// renderEvidenceHTML to emit index.html + styles.css.
+// renderEvidenceHTML to emit index.html + styles.css + evidence.js.
 //
 // Returns the parsed EvidenceInput (so the caller can log
 // title/itemcount) and the absolute path of the final bundle directory:
@@ -898,6 +898,7 @@ func renderToOutDir(in EvidenceInput, opts RenderOptions, dstNames, resolvedSrcs
 //	outDir/
 //	  index.html
 //	  styles.css        (T4 owns)
+//	  evidence.js       (T4 owns)
 //	  assets/<safe-name>...
 //
 // Asset copies happen first (so a missing asset / MIME failure aborts
