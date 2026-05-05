@@ -130,9 +130,17 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 		`data-ev-page`,
 		`href="#item-1"`,
 		`href="#item-3"`,
+		`class="ev-button-icon"`,
+		`class="ev-page-icon"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing switchable layout marker %q", want)
+		}
+	}
+	buttonRe := regexp.MustCompile(`(?s)<button\b[^>]*>.*?</button>`)
+	for _, button := range buttonRe.FindAllString(s, -1) {
+		if !strings.Contains(button, `class="ev-button-icon"`) && !strings.Contains(button, `class="ev-page-icon"`) {
+			t.Errorf("button missing icon: %s", button)
 		}
 	}
 

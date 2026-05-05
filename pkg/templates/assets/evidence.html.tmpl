@@ -17,7 +17,10 @@
         {{if .Subtitle}}<p class="ev-kicker">{{.Subtitle}}</p>{{end}}
         <h1 class="ev-title" id="ev-page-title">{{.Title}}</h1>
       </div>
-      <button class="ev-meta-toggle" type="button" data-ev-meta-toggle aria-expanded="false" aria-controls="ev-meta-panel">Metadata</button>
+      <button class="ev-meta-toggle" type="button" data-ev-meta-toggle aria-expanded="false" aria-controls="ev-meta-panel">
+        <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
+        <span>Metadata</span>
+      </button>
     </div>
     <div class="ev-meta-strip" aria-label="Evidence metadata">
       <span class="ev-meta-chip">{{len .Items}} items</span>
@@ -26,9 +29,15 @@
       <fieldset class="ev-layout-control">
         <legend class="ev-sr-only">Layout</legend>
         <input class="ev-layout-input" type="radio" name="ev-layout" id="ev-layout-stacked" value="stacked" checked data-ev-layout>
-        <label class="ev-layout-label" for="ev-layout-stacked">Stacked</label>
+        <label class="ev-layout-label" for="ev-layout-stacked">
+          <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 6h12"></path><path d="M8 12h12"></path><path d="M8 18h12"></path><path d="M4 6h.01"></path><path d="M4 12h.01"></path><path d="M4 18h.01"></path></svg>
+          <span>Stacked</span>
+        </label>
         <input class="ev-layout-input" type="radio" name="ev-layout" id="ev-layout-carousel" value="carousel" data-ev-layout>
-        <label class="ev-layout-label" for="ev-layout-carousel">Carousel</label>
+        <label class="ev-layout-label" for="ev-layout-carousel">
+          <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="M8 3v3"></path><path d="M16 18v3"></path></svg>
+          <span>Carousel</span>
+        </label>
       </fieldset>
     </div>
   </header>
@@ -36,7 +45,10 @@
     <aside class="ev-metadata-sidebar" id="ev-meta-panel" aria-labelledby="ev-meta-heading" hidden>
       <div class="ev-sidebar-head">
         <h2 id="ev-meta-heading">Metadata</h2>
-        <button class="ev-icon-button" type="button" data-ev-meta-close aria-label="Close metadata">Close</button>
+        <button class="ev-icon-button" type="button" data-ev-meta-close aria-label="Close metadata">
+          <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+          <span>Close</span>
+        </button>
       </div>
       <dl class="ev-meta-list">
         <div><dt>Title</dt><dd>{{.Title}}</dd></div>
@@ -57,6 +69,7 @@
       <aside class="ev-outline" data-ev-outline aria-label="Evidence outline">
         <div class="ev-outline-head">
           <button class="ev-outline-toggle" type="button" data-ev-outline-toggle aria-expanded="true" aria-controls="ev-outline-list">
+            <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h16"></path></svg>
             <span class="ev-outline-label">Outline</span>
           </button>
         </div>
@@ -73,8 +86,14 @@
         <div class="ev-panel-toolbar">
           <h2>Evidence</h2>
           <div class="ev-carousel-actions" aria-label="Carousel controls">
-            <button class="ev-step-button" type="button" data-ev-prev>Previous</button>
-            <button class="ev-step-button" type="button" data-ev-next>Next</button>
+            <button class="ev-step-button" type="button" data-ev-prev>
+              <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"></path></svg>
+              <span>Previous</span>
+            </button>
+            <button class="ev-step-button" type="button" data-ev-next>
+              <span>Next</span>
+              <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></svg>
+            </button>
           </div>
         </div>
         <div class="ev-gallery-viewport" data-ev-gallery-viewport tabindex="0">
@@ -102,7 +121,7 @@
           </ol>
         </div>
         <nav class="ev-pager" aria-label="Carousel pages">
-          {{range $i, $it := .Items}}<button class="ev-page-button" type="button" data-ev-page data-ev-index="{{$i}}" aria-label="Go to item {{add1 $i}}">{{add1 $i}}</button>{{end}}
+          {{range $i, $it := .Items}}<button class="ev-page-button" type="button" data-ev-page data-ev-index="{{$i}}" aria-label="Go to item {{add1 $i}}"><svg class="ev-page-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle></svg><span>{{add1 $i}}</span></button>{{end}}
         </nav>
       </section>
     </section>
