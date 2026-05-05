@@ -227,12 +227,21 @@
     }
   }
 
+  function safeLightboxSrc(raw) {
+    var src = raw || "";
+    return /^assets\/[0-9]{3}-[a-z0-9][a-z0-9.-]*\.(png|jpe?g|webp|gif)$/.test(src) ? src : "";
+  }
+
   function openLightbox(trigger) {
     if (!lightbox || !lightboxImg) {
       return;
     }
+    var src = safeLightboxSrc(trigger.getAttribute("data-ev-lightbox-src"));
+    if (!src) {
+      return;
+    }
     lastLightboxTrigger = trigger;
-    lightboxImg.setAttribute("src", trigger.getAttribute("data-ev-lightbox-src") || "");
+    lightboxImg.setAttribute("src", src);
     lightboxImg.setAttribute("alt", trigger.getAttribute("data-ev-lightbox-alt") || "");
     if (lightboxTitle) {
       lightboxTitle.textContent = trigger.getAttribute("data-ev-lightbox-title") || "Image preview";
