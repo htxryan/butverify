@@ -27,7 +27,11 @@ chat.
    3. Resume at step 1.
 5. **Write `evidence.json`** with one entry per capture (see the schema
    shipped with `bv evidence --schema`). Set a `title` and `description`
-   for each entry; use `sequence` to order them deliberately.
+   for each entry; use `sequence` to order them deliberately. If the work
+   maps to a Jira/Linear/GitHub/Todoist item, set top-level
+   `metadata.issue_url`, `metadata.issue_id`, and `metadata.issue_title`;
+   use per-entry `metadata` only when a capture maps to a different or
+   more specific work item.
 6. **Publish.** Run `bv evidence --from evidence.json --push --mode remote`.
    Capture the returned `{url, expires_at}` JSON. If the CLI reports that
    login is required, tell the human to run `bv login` or use local mode

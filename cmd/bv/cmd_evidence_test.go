@@ -52,8 +52,23 @@ func stageEvidenceFixture(t *testing.T, dir string) string {
 	manifest := `{
 		"title": "Evidence test",
 		"subtitle": "Subtest",
+		"metadata": {
+			"issue_url": "https://jira.example.com/browse/EV-1",
+			"issue_id": "EV-1",
+			"issue_title": "Evidence test issue"
+		},
 		"items": [
-			{"src": "./shot.png", "title": "First", "description": "shot 1", "sequence": 1}
+			{
+				"src": "./shot.png",
+				"title": "First",
+				"description": "shot 1",
+				"sequence": 1,
+				"metadata": {
+					"issue_url": "https://jira.example.com/browse/EV-1",
+					"issue_id": "EV-1",
+					"issue_title": "Evidence test issue"
+				}
+			}
 		]
 	}`
 	if err := os.WriteFile(jsonPath, []byte(manifest), 0o644); err != nil {
@@ -109,7 +124,7 @@ func TestEvidence_StdinTTYRejected(t *testing.T) {
 	}
 }
 
-func TestEvidence_RenderOnly_StackedDefault(t *testing.T) {
+func TestEvidence_RenderOnly_IncludesLayoutSwitcher(t *testing.T) {
 	dir := t.TempDir()
 	jsonPath := stageEvidenceFixture(t, dir)
 	outDir := filepath.Join(dir, "out")
@@ -123,21 +138,26 @@ func TestEvidence_RenderOnly_StackedDefault(t *testing.T) {
 	if !strings.Contains(stdout.String(), `"template": "evidence"`) {
 		t.Errorf("expected template field in stdout: %s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), `"layout": "stacked"`) {
-		t.Errorf("expected default layout=stacked in stdout: %s", stdout.String())
-	}
 	idx, err := os.ReadFile(filepath.Join(outDir, "index.html"))
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !strings.Contains(string(idx), `data-layout="stacked"`) {
-		t.Errorf("rendered html missing stacked layout marker (first 300): %s", idx[:min(300, len(idx))])
+	if strings.Contains(string(idx), `data-layout=`) {
+		t.Errorf("rendered html should not hard-code a publish-time layout (first 300): %s", idx[:min(300, len(idx))])
+	}
+	for _, want := range []string{`class="ev-topbar"`, `class="ev-brand"`, `data-ev-published-at`, `id="ev-meta-panel"`, `data-ev-theme-toggle`, `id="ev-layout-stacked"`, `id="ev-layout-carousel"`, `class="ev-outline `, `class="ev-track"`, `class="ev-pager"`, `data-ev-lightbox`, `data-ev-lightbox-trigger`, `href="https://jira.example.com/browse/EV-1"`, `EV-1`, `src="evidence.js"`} {
+		if !strings.Contains(string(idx), want) {
+			t.Errorf("rendered html missing layout-switcher marker %q (first 300): %s", want, idx[:min(300, len(idx))])
+		}
 	}
 	if !strings.Contains(string(idx), "Evidence test") {
 		t.Errorf("title missing from index: %s", idx[:min(300, len(idx))])
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "styles.css")); err != nil {
 		t.Errorf("styles.css missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "evidence.js")); err != nil {
+		t.Errorf("evidence.js missing: %v", err)
 	}
 	// Asset has the deterministic `001-shot.png` prefix from
 	// templates.SafeAssetName.
@@ -147,42 +167,19 @@ func TestEvidence_RenderOnly_StackedDefault(t *testing.T) {
 	}
 }
 
-func TestEvidence_BogusLayoutExit2(t *testing.T) {
+func TestEvidence_LayoutFlagRemoved(t *testing.T) {
 	dir := t.TempDir()
 	jsonPath := stageEvidenceFixture(t, dir)
 
-	// Use the human writer so the assertion can grep stderr text
-	// directly (in JSON mode, the envelope lands on stdout as a
-	// quoted string and is harder to read at a glance).
 	wHuman, _, hStderr := newHumanWriter(t)
 	rc := runEvidence(context.Background(), globalContext{w: wHuman},
-		[]string{"--from", jsonPath, "--layout", "bogus", "--out", filepath.Join(dir, "out")})
+		[]string{"--from", jsonPath, "--layout", "carousel", "--out", filepath.Join(dir, "out")})
 	if rc != 2 {
-		t.Errorf("expected rc=2 for bogus layout, got %d", rc)
+		t.Errorf("expected rc=2 for removed --layout flag, got %d", rc)
 	}
 	msg := hStderr.String()
-	if !strings.Contains(msg, "stacked") || !strings.Contains(msg, "carousel") {
-		t.Errorf("error message should list supported layouts: %s", msg)
-	}
-}
-
-func TestEvidence_CarouselLayout(t *testing.T) {
-	dir := t.TempDir()
-	jsonPath := stageEvidenceFixture(t, dir)
-	outDir := filepath.Join(dir, "out")
-
-	w, _, _ := newJSONWriter(t)
-	rc := runEvidence(context.Background(), globalContext{w: w},
-		[]string{"--from", jsonPath, "--layout", "carousel", "--out", outDir})
-	if rc != 0 {
-		t.Fatalf("carousel rc: %d", rc)
-	}
-	idx, err := os.ReadFile(filepath.Join(outDir, "index.html"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(idx), `data-layout="carousel"`) {
-		t.Errorf("expected data-layout=\"carousel\" in rendered html (first 300): %s", idx[:min(300, len(idx))])
+	if !strings.Contains(msg, "flag provided but not defined") || !strings.Contains(msg, "layout") {
+		t.Errorf("error message should reject removed --layout flag: %s", msg)
 	}
 }
 
@@ -422,8 +419,8 @@ func TestEvidence_NonRolloutBadRequestPassesThrough(t *testing.T) {
 
 // newHumanWriter is a small helper for tests that need to assert
 // human-readable output (stderr-formatted error lines). The other
-// suites use newJSONWriter; we add this only for layout-message
-// assertions where the JSON envelope is harder to grep.
+// suites use newJSONWriter; we add this for parse-message assertions
+// where the JSON envelope is harder to grep.
 func newHumanWriter(t *testing.T) (*output.Writer, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer

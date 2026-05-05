@@ -125,11 +125,15 @@ Flags:
 - `--image-quality N` — image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default.
 - `--mode local|remote` — publish mode for --push.
 
-## `bv evidence (--schema | --from <evidence.json|-> [--out DIR] [--push] [--layout stacked|carousel] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--mode local|remote])`
+## `bv evidence (--schema | --from <evidence.json|-> [--out DIR] [--push] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--mode local|remote])`
 
 Render a static evidence/gallery site from JSON.
 
 Use --schema to print the JSON Schema for the input without rendering.
+
+Manifest metadata may include issue_url, issue_id, and issue_title at the top level for the work-management item the whole gallery proves, or under an individual item when a capture maps to a specific Jira/Linear/GitHub issue.
+
+Rendered evidence pages include a viewer-side stacked/carousel layout switcher.
 
 With --push, image optimization recompresses JPEGs with --image-quality and recompresses PNGs losslessly when smaller. Persist a default by setting image_quality in the bv config JSON.
 
@@ -139,7 +143,6 @@ Flags:
 - `--out DIR` — output directory.
 - `--push` — after rendering, push the directory as a new site.
 - `--schema` — print the JSON Schema for the evidence input and exit.
-- `--layout stacked|carousel` — gallery layout.
 - `--upload-id ID` — explicit upload_id for idempotent --push retry.
 - `--ttl-seconds N` — site TTL in seconds; 0 uses the server default.
 - `--image-quality N` — image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default.

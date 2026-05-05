@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -42,10 +43,11 @@ import (
 // hand-authored EvidenceSchema below — schema/parser parity is asserted
 // by a unit test (EV-U-11).
 type EvidenceInput struct {
-	Title    string         `json:"title"`
-	Subtitle string         `json:"subtitle,omitempty"`
-	Summary  string         `json:"summary,omitempty"`
-	Items    []EvidenceItem `json:"items"`
+	Title    string           `json:"title"`
+	Subtitle string           `json:"subtitle,omitempty"`
+	Summary  string           `json:"summary,omitempty"`
+	Metadata EvidenceMetadata `json:"metadata,omitempty"`
+	Items    []EvidenceItem   `json:"items"`
 }
 
 // EvidenceItem is one gallery entry. `Sequence` is `*int` (not `int`)
@@ -54,24 +56,41 @@ type EvidenceInput struct {
 // `sequence: 0` (sort first). A non-pointer int would collapse those
 // two cases.
 type EvidenceItem struct {
-	Src         string `json:"src"`
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
-	Sequence    *int   `json:"sequence,omitempty"`
-	Alt         string `json:"alt,omitempty"`
+	Src         string           `json:"src"`
+	Title       string           `json:"title,omitempty"`
+	Description string           `json:"description,omitempty"`
+	Sequence    *int             `json:"sequence,omitempty"`
+	Alt         string           `json:"alt,omitempty"`
+	Metadata    EvidenceMetadata `json:"metadata,omitempty"`
+	Properties  map[string]any   `json:"properties,omitempty"`
+}
+
+// EvidenceMetadata describes the work-management item being evidenced.
+// Top-level metadata is for a gallery that proves one issue; per-item
+// metadata is for galleries spanning multiple issues.
+type EvidenceMetadata struct {
+	IssueURL   string `json:"issue_url,omitempty"`
+	IssueID    string `json:"issue_id,omitempty"`
+	IssueTitle string `json:"issue_title,omitempty"`
 }
 
 // Bounds from §5 / EARS §4. These are parse-time caps; bundle-size
 // enforcement happens server-side (HTTP 413) and is out of scope here.
 const (
-	maxEvidenceTitleLen     = 200
-	maxEvidenceSubtitleLen  = 300
-	maxEvidenceSummaryLen   = 2000
-	maxEvidenceItemTitleLen = 200
-	maxEvidenceItemDescLen  = 2000
-	maxEvidenceItemAltLen   = 1000    // not in spec table; bounded for safety
-	maxEvidenceItems        = 500     // EV-N-5
-	evidenceStdinMaxBytes   = 4 << 20 // EV-N-6: 4 MiB
+	maxEvidenceTitleLen          = 200
+	maxEvidenceSubtitleLen       = 300
+	maxEvidenceSummaryLen        = 2000
+	maxEvidenceItemTitleLen      = 200
+	maxEvidenceItemDescLen       = 2000
+	maxEvidenceItemAltLen        = 1000 // not in spec table; bounded for safety
+	maxEvidenceIssueURLLen       = 2048
+	maxEvidenceIssueIDLen        = 200
+	maxEvidenceIssueTitleLen     = 300
+	maxEvidenceProperties        = 50
+	maxEvidencePropertyNameLen   = 100
+	maxEvidencePropertyStringLen = 1000
+	maxEvidenceItems             = 500     // EV-N-5
+	evidenceStdinMaxBytes        = 4 << 20 // EV-N-6: 4 MiB
 )
 
 // rejectedSrcSchemes is the closed set of URL schemes that MUST NOT
@@ -92,6 +111,7 @@ var rejectedSrcSchemes = []string{
 func ParseEvidence(input []byte) (EvidenceInput, error) {
 	var in EvidenceInput
 	dec := json.NewDecoder(bytes.NewReader(input))
+	dec.UseNumber()
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&in); err != nil {
 		return EvidenceInput{}, fmt.Errorf("templates: parse evidence: %w", err)
@@ -123,6 +143,9 @@ func (in *EvidenceInput) Validate() error {
 	}
 	if len(in.Summary) > maxEvidenceSummaryLen {
 		return fmt.Errorf("templates: evidence.summary exceeds %d chars (got %d)", maxEvidenceSummaryLen, len(in.Summary))
+	}
+	if err := validateMetadata("templates: evidence.metadata", in.Metadata); err != nil {
+		return err
 	}
 	if len(in.Items) == 0 {
 		// EV-N-1: an evidence site with zero items has no purpose.
@@ -164,6 +187,65 @@ func validateItem(i int, it EvidenceItem) error {
 	}
 	if len(it.Alt) > maxEvidenceItemAltLen {
 		return fmt.Errorf("templates: evidence.items[%d].alt exceeds %d chars (got %d)", i, maxEvidenceItemAltLen, len(it.Alt))
+	}
+	if err := validateMetadata(fmt.Sprintf("templates: evidence.items[%d].metadata", i), it.Metadata); err != nil {
+		return err
+	}
+	if err := validateProperties(fmt.Sprintf("templates: evidence.items[%d].properties", i), it.Properties); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateProperties(path string, props map[string]any) error {
+	if len(props) > maxEvidenceProperties {
+		return fmt.Errorf("%s exceeds %d properties (got %d)", path, maxEvidenceProperties, len(props))
+	}
+	for k, v := range props {
+		if strings.TrimSpace(k) == "" {
+			return fmt.Errorf("%s contains an empty property name", path)
+		}
+		if len(k) > maxEvidencePropertyNameLen {
+			return fmt.Errorf("%s.%s property name exceeds %d chars (got %d)", path, k, maxEvidencePropertyNameLen, len(k))
+		}
+		switch val := v.(type) {
+		case string:
+			if len(val) > maxEvidencePropertyStringLen {
+				return fmt.Errorf("%s.%s exceeds %d chars (got %d)", path, k, maxEvidencePropertyStringLen, len(val))
+			}
+		case json.Number:
+			if _, err := val.Float64(); err != nil {
+				return fmt.Errorf("%s.%s must be a valid JSON number", path, k)
+			}
+		case float64:
+		case map[string]any:
+		default:
+			return fmt.Errorf("%s.%s must be a string, number, or object", path, k)
+		}
+	}
+	return nil
+}
+
+func validateMetadata(path string, meta EvidenceMetadata) error {
+	if len(meta.IssueURL) > maxEvidenceIssueURLLen {
+		return fmt.Errorf("%s.issue_url exceeds %d chars (got %d)", path, maxEvidenceIssueURLLen, len(meta.IssueURL))
+	}
+	if len(meta.IssueID) > maxEvidenceIssueIDLen {
+		return fmt.Errorf("%s.issue_id exceeds %d chars (got %d)", path, maxEvidenceIssueIDLen, len(meta.IssueID))
+	}
+	if len(meta.IssueTitle) > maxEvidenceIssueTitleLen {
+		return fmt.Errorf("%s.issue_title exceeds %d chars (got %d)", path, maxEvidenceIssueTitleLen, len(meta.IssueTitle))
+	}
+	if meta.IssueURL == "" {
+		return nil
+	}
+	u, err := url.Parse(meta.IssueURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("%s.issue_url must be an absolute http(s) URL (got %q)", path, meta.IssueURL)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("%s.issue_url must be an absolute http(s) URL (got %q)", path, meta.IssueURL)
 	}
 	return nil
 }
@@ -289,6 +371,32 @@ const EvidenceSchema = `{
       "maxLength": 2000,
       "description": "Short paragraph above the gallery; rendered with white-space: pre-wrap."
     },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional work-management item this evidence site proves. Use this when all evidence items relate to one Jira/Linear/GitHub issue; use item.metadata when individual captures map to different work items.",
+      "properties": {
+        "issue_url": {
+          "type": "string",
+          "maxLength": 2048,
+          "anyOf": [
+            {"maxLength": 0},
+            {"pattern": "^[Hh][Tt][Tt][Pp][Ss]?://[^\\s/?#][^\\s]*$"}
+          ],
+          "description": "Absolute http(s) URL for the work item, such as a Jira issue URL."
+        },
+        "issue_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Work item identifier or key, such as JIRA-123, ENG-456, or #789."
+        },
+        "issue_title": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Work item title/summary from the source system."
+        }
+      }
+    },
     "items": {
       "type": "array",
       "minItems": 1,
@@ -330,6 +438,45 @@ const EvidenceSchema = `{
             "type": "string",
             "maxLength": 1000,
             "description": "Alt text for images. Defaults to the item's title if unset."
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Optional work-management item represented by this individual evidence item. Use this when the gallery spans multiple Jira/Linear/GitHub issues or a capture proves a more specific issue than the page-level metadata.",
+            "properties": {
+              "issue_url": {
+                "type": "string",
+                "maxLength": 2048,
+                "anyOf": [
+                  {"maxLength": 0},
+                  {"pattern": "^[Hh][Tt][Tt][Pp][Ss]?://[^\\s/?#][^\\s]*$"}
+                ],
+                "description": "Absolute http(s) URL for the work item, such as a Jira issue URL."
+              },
+              "issue_id": {
+                "type": "string",
+                "maxLength": 200,
+                "description": "Work item identifier or key, such as JIRA-123, ENG-456, or #789."
+              },
+              "issue_title": {
+                "type": "string",
+                "maxLength": 300,
+                "description": "Work item title/summary from the source system."
+              }
+            }
+          },
+          "properties": {
+            "type": "object",
+            "maxProperties": 50,
+            "propertyNames": {"minLength": 1, "maxLength": 100, "pattern": "\\S"},
+            "description": "Optional arbitrary per-item metadata. Property names must be non-empty. String and number values render as label/value rows; object values render as formatted JSON in the item's collapsed More Details panel.",
+            "additionalProperties": {
+              "anyOf": [
+                {"type": "string", "maxLength": 1000},
+                {"type": "number"},
+                {"type": "object"}
+              ]
+            }
           }
         }
       }
@@ -623,7 +770,8 @@ func SafeAssetName(item EvidenceItem, idx int) string {
 // long positional arg list) keeps the call site readable as new fields
 // land in v1.x.
 type RenderOptions struct {
-	// Layout is "stacked" (default) or "carousel". Empty == "stacked".
+	// Deprecated: ignored. Evidence pages include a viewer-side layout
+	// switcher, so layout is no longer chosen at render/publish time.
 	Layout string
 	// OutDir is the user-supplied --out target. Empty when --push only:
 	// in that case RenderEvidence creates a CLI-owned temp dir, returns
@@ -655,7 +803,7 @@ func renderTempName() (string, error) {
 // RenderEvidence parses+validates the JSON input, sorts items per
 // EVSC-10, copies referenced assets into the bundle (with MIME
 // double-gate, containment, and 1-GiB cap), and calls T4's
-// renderEvidenceHTML to emit index.html + styles.css.
+// renderEvidenceHTML to emit index.html + styles.css + evidence.js.
 //
 // Returns the parsed EvidenceInput (so the caller can log
 // title/itemcount) and the absolute path of the final bundle directory:
@@ -686,17 +834,6 @@ func RenderEvidence(input []byte, opts RenderOptions, g Generator) (EvidenceInpu
 
 	if opts.ContainmentRoot == "" {
 		return in, "", errors.New("templates: evidence RenderOptions.ContainmentRoot is required")
-	}
-
-	layout := opts.Layout
-	if layout == "" {
-		layout = "stacked"
-	}
-	switch layout {
-	case "stacked", "carousel":
-		// ok
-	default:
-		return in, "", fmt.Errorf("templates: evidence layout %q not supported (expected stacked or carousel)", layout)
 	}
 
 	// Pre-flight: build dst names for every (sorted) item and detect
@@ -732,9 +869,9 @@ func RenderEvidence(input []byte, opts RenderOptions, g Generator) (EvidenceInpu
 
 	// Branch on --out vs --push-only.
 	if opts.OutDir != "" {
-		return renderToOutDir(in, opts, layout, dstNames, resolvedSrcs, g)
+		return renderToOutDir(in, opts, dstNames, resolvedSrcs, g)
 	}
-	return renderToTempDir(in, layout, dstNames, resolvedSrcs, g)
+	return renderToTempDir(in, dstNames, resolvedSrcs, g)
 }
 
 // errEvidenceAborted signals that the asset-copy loop bailed because
@@ -751,7 +888,7 @@ var errEvidenceAborted = errors.New("templates: evidence render aborted by signa
 // renderToTempDir handles the --push-only path: create a CLI-owned temp
 // dir and return its absolute path. The caller (T5) owns cleanup and
 // signal handling; we install nothing here.
-func renderToTempDir(in EvidenceInput, layout string, dstNames, resolvedSrcs []string, g Generator) (EvidenceInput, string, error) {
+func renderToTempDir(in EvidenceInput, dstNames, resolvedSrcs []string, g Generator) (EvidenceInput, string, error) {
 	tmpName, err := renderTempName()
 	if err != nil {
 		return in, "", fmt.Errorf("templates: evidence tmp name: %w", err)
@@ -765,7 +902,7 @@ func renderToTempDir(in EvidenceInput, layout string, dstNames, resolvedSrcs []s
 	// --push mode: no signal handler at this layer (the caller, T5, owns
 	// process-level signals and tmp cleanup per EV-E-5). Pass a nil
 	// abort channel; writeBundleContents treats nil as "never aborts".
-	if err := writeBundleContents(in, layout, tmpDir, dstNames, resolvedSrcs, g, nil); err != nil {
+	if err := writeBundleContents(in, tmpDir, dstNames, resolvedSrcs, g, nil); err != nil {
 		// Best-effort cleanup on failure; caller would clean up too,
 		// but we own this dir until we return.
 		_ = os.RemoveAll(tmpDir)
@@ -778,7 +915,7 @@ func renderToTempDir(in EvidenceInput, layout string, dstNames, resolvedSrcs []s
 // sibling-tmp build, signal-handler cleanup (sibling-tmp only — never
 // touches opts.OutDir), atomic rename, RENAME_NOREPLACE-ish concurrent
 // guard.
-func renderToOutDir(in EvidenceInput, opts RenderOptions, layout string, dstNames, resolvedSrcs []string, g Generator) (EvidenceInput, string, error) {
+func renderToOutDir(in EvidenceInput, opts RenderOptions, dstNames, resolvedSrcs []string, g Generator) (EvidenceInput, string, error) {
 	absOut, err := filepath.Abs(opts.OutDir)
 	if err != nil {
 		return in, "", fmt.Errorf("templates: evidence --out abs %q: %w", opts.OutDir, err)
@@ -873,7 +1010,7 @@ func renderToOutDir(in EvidenceInput, opts RenderOptions, layout string, dstName
 		close(done)
 	}()
 
-	werr := writeBundleContents(in, layout, siblingTmp, dstNames, resolvedSrcs, g, abort)
+	werr := writeBundleContents(in, siblingTmp, dstNames, resolvedSrcs, g, abort)
 	close(writerDone)
 	if werr != nil {
 		// The signal handler may have already initiated cleanup. doCleanup
@@ -908,6 +1045,7 @@ func renderToOutDir(in EvidenceInput, opts RenderOptions, layout string, dstName
 //	outDir/
 //	  index.html
 //	  styles.css        (T4 owns)
+//	  evidence.js       (T4 owns)
 //	  assets/<safe-name>...
 //
 // Asset copies happen first (so a missing asset / MIME failure aborts
@@ -920,7 +1058,7 @@ func renderToOutDir(in EvidenceInput, opts RenderOptions, layout string, dstName
 // per-asset cap (EV-S-2) — see renderToOutDir's signal-handler comment
 // for the residual race analysis. A nil abort channel means "never
 // aborts" (the --push mode in renderToTempDir uses this).
-func writeBundleContents(in EvidenceInput, layout, outDir string, dstNames, resolvedSrcs []string, g Generator, abort <-chan struct{}) error {
+func writeBundleContents(in EvidenceInput, outDir string, dstNames, resolvedSrcs []string, g Generator, abort <-chan struct{}) error {
 	assetsDir := filepath.Join(outDir, "assets")
 	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
 		return fmt.Errorf("templates: evidence assets dir: %w", err)
@@ -954,5 +1092,5 @@ func writeBundleContents(in EvidenceInput, layout, outDir string, dstNames, reso
 	// T4 owns the actual template execution. We pass items already
 	// sorted (per EVSC-10) and dstNames so the template can build the
 	// `assets/<name>` href without re-deriving the safe-name.
-	return renderEvidenceHTML(in, layout, outDir, g)
+	return renderEvidenceHTML(in, outDir, g)
 }

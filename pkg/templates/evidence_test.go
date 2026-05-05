@@ -42,9 +42,97 @@ func TestParseEvidence_HappyPath(t *testing.T) {
 	if len(in.Items) != 3 {
 		t.Fatalf("items: %d", len(in.Items))
 	}
+	if in.Metadata.IssueID != "DELIVERY-1234" {
+		t.Errorf("metadata.issue_id: %q", in.Metadata.IssueID)
+	}
+	if in.Items[1].Metadata.IssueTitle != "Inline validation bug" {
+		t.Errorf("items[1].metadata.issue_title: %q", in.Items[1].Metadata.IssueTitle)
+	}
 	if in.Items[0].Sequence == nil || *in.Items[0].Sequence != 1 {
 		t.Errorf("items[0].sequence: %v", in.Items[0].Sequence)
 	}
+}
+
+func TestParseEvidence_AcceptsIssueMetadata(t *testing.T) {
+	in, err := ParseEvidence([]byte(`{
+	  "title": "X",
+	  "metadata": {
+	    "issue_url": "https://jira.example.com/browse/ABC-123",
+	    "issue_id": "ABC-123",
+	    "issue_title": "Ship the thing"
+	  },
+	  "items": [{
+	    "src": "./a.png",
+	    "metadata": {
+	      "issue_url": "https://linear.app/acme/issue/ENG-456",
+	      "issue_id": "ENG-456",
+	      "issue_title": "Capture proof"
+	    }
+	  }]
+	}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if in.Metadata.IssueURL != "https://jira.example.com/browse/ABC-123" {
+		t.Errorf("top-level issue_url: %q", in.Metadata.IssueURL)
+	}
+	if in.Items[0].Metadata.IssueID != "ENG-456" {
+		t.Errorf("item issue_id: %q", in.Items[0].Metadata.IssueID)
+	}
+}
+
+func TestParseEvidence_AcceptsItemProperties(t *testing.T) {
+	in, err := ParseEvidence([]byte(`{
+	  "title": "X",
+	  "items": [{
+	    "src": "./a.png",
+	    "properties": {
+	      "commit": "abc123",
+	      "build_number": 42,
+	      "details": {"branch": "main", "attempt": 2}
+	    }
+	  }]
+	}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	props := in.Items[0].Properties
+	if props["commit"] != "abc123" {
+		t.Errorf("commit property: %#v", props["commit"])
+	}
+	if n, ok := props["build_number"].(json.Number); !ok || n.String() != "42" {
+		t.Errorf("build_number property: %#v", props["build_number"])
+	}
+	if _, ok := props["details"].(map[string]any); !ok {
+		t.Errorf("details property should decode as object: %#v", props["details"])
+	}
+}
+
+func TestParseEvidence_RejectsUnsupportedItemProperties(t *testing.T) {
+	for name, payload := range map[string]string{
+		"boolean":         `{"title":"X","items":[{"src":"./a.png","properties":{"ok":true}}]}`,
+		"array":           `{"title":"X","items":[{"src":"./a.png","properties":{"steps":["a"]}}]}`,
+		"null":            `{"title":"X","items":[{"src":"./a.png","properties":{"empty":null}}]}`,
+		"empty_name":      `{"title":"X","items":[{"src":"./a.png","properties":{"":"x"}}]}`,
+		"whitespace_name": `{"title":"X","items":[{"src":"./a.png","properties":{"   ":"x"}}]}`,
+		"too_many":        `{"title":"X","items":[{"src":"./a.png","properties":{` + manyJSONProperties(maxEvidenceProperties+1) + `}}]}`,
+		"too_long_string": `{"title":"X","items":[{"src":"./a.png","properties":{"log":"` + strings.Repeat("a", maxEvidencePropertyStringLen+1) + `"}}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseEvidence([]byte(payload))
+			if err == nil || !strings.Contains(err.Error(), "properties") {
+				t.Fatalf("expected properties type error, got %v", err)
+			}
+		})
+	}
+}
+
+func manyJSONProperties(n int) string {
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = fmt.Sprintf("%q:%q", "k"+strconv.Itoa(i), "v")
+	}
+	return strings.Join(parts, ",")
 }
 
 func TestParseEvidence_RejectsUnknownTopLevel(t *testing.T) {
@@ -70,6 +158,20 @@ func TestParseEvidence_RejectsUnknownItemField(t *testing.T) {
 		t.Fatal("expected error for unknown item field")
 	}
 	if !strings.Contains(err.Error(), "weight") {
+		t.Errorf("error should mention bad field: %v", err)
+	}
+}
+
+func TestParseEvidence_RejectsUnknownMetadataField(t *testing.T) {
+	_, err := ParseEvidence([]byte(`{
+	  "title": "X",
+	  "metadata": {"issue_id": "ABC-123", "tracker": "jira"},
+	  "items": [{"src": "./a.png"}]
+	}`))
+	if err == nil {
+		t.Fatal("expected error for unknown metadata field")
+	}
+	if !strings.Contains(err.Error(), "tracker") {
 		t.Errorf("error should mention bad field: %v", err)
 	}
 }
@@ -364,6 +466,65 @@ func TestValidate_ItemTitleTooLong(t *testing.T) {
 	}
 }
 
+func TestValidate_IssueMetadataTooLong(t *testing.T) {
+	in := EvidenceInput{
+		Title: "ok",
+		Metadata: EvidenceMetadata{
+			IssueID: strings.Repeat("a", maxEvidenceIssueIDLen+1),
+		},
+		Items: []EvidenceItem{{Src: "./a.png"}},
+	}
+	if err := in.Validate(); err == nil || !strings.Contains(err.Error(), "issue_id") {
+		t.Errorf("expected issue_id-length error, got %v", err)
+	}
+
+	in = EvidenceInput{
+		Title: "ok",
+		Items: []EvidenceItem{{
+			Src: "./a.png",
+			Metadata: EvidenceMetadata{
+				IssueTitle: strings.Repeat("a", maxEvidenceIssueTitleLen+1),
+			},
+		}},
+	}
+	if err := in.Validate(); err == nil || !strings.Contains(err.Error(), "issue_title") {
+		t.Errorf("expected item issue_title-length error, got %v", err)
+	}
+}
+
+func TestValidate_IssueURLRequiresHTTP(t *testing.T) {
+	cases := []struct {
+		name string
+		in   EvidenceInput
+	}{
+		{
+			name: "top_level",
+			in: EvidenceInput{
+				Title:    "ok",
+				Metadata: EvidenceMetadata{IssueURL: "javascript:alert(1)"},
+				Items:    []EvidenceItem{{Src: "./a.png"}},
+			},
+		},
+		{
+			name: "item",
+			in: EvidenceInput{
+				Title: "ok",
+				Items: []EvidenceItem{{
+					Src:      "./a.png",
+					Metadata: EvidenceMetadata{IssueURL: "ftp://tracker.example/ABC-123"},
+				}},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.in.Validate(); err == nil || !strings.Contains(err.Error(), "issue_url") {
+				t.Errorf("expected issue_url error, got %v", err)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Schema/parser parity (EV-U-11)
 // ---------------------------------------------------------------------------
@@ -372,8 +533,8 @@ func TestValidate_ItemTitleTooLong(t *testing.T) {
 // miniSchemaValidate below) per templates.go design principle 1. The
 // validator implements the subset of keywords actually used by
 // EvidenceSchema: type, required, additionalProperties, properties,
-// minLength, maxLength, minItems, maxItems, items, integer, pattern,
-// not + anyOf. That's enough to verify the parity claim — every
+// propertyNames, minLength, maxLength, minItems, maxItems, maxProperties,
+// items, integer, pattern, not, and anyOf. That's enough to verify the parity claim — every
 // positive payload validates against the schema AND parses, every
 // negative payload fails both.
 
@@ -427,18 +588,20 @@ func TestEvidenceSchema_NegativeExamplesParityWithParser(t *testing.T) {
 // minimal-but-valid variants. Each must validate AND parse.
 func positivePayloads() map[string]string {
 	return map[string]string{
-		"spec_canonical":      specExampleJSON,
-		"single_image":        `{"title":"X","items":[{"src":"./a.png"}]}`,
-		"image_with_seq_zero": `{"title":"X","items":[{"src":"./a.png","sequence":0}]}`,
-		"video_mp4":           `{"title":"X","items":[{"src":"./clip.mp4","title":"clip","description":"d"}]}`,
-		"video_webm":          `{"title":"X","items":[{"src":"./clip.webm"}]}`,
-		"video_mov":           `{"title":"X","items":[{"src":"./clip.mov"}]}`,
-		"image_jpg":           `{"title":"X","items":[{"src":"./a.jpg"}]}`,
-		"image_jpeg":          `{"title":"X","items":[{"src":"./a.jpeg"}]}`,
-		"image_webp":          `{"title":"X","items":[{"src":"./a.webp"}]}`,
-		"image_gif":           `{"title":"X","items":[{"src":"./a.gif"}]}`,
-		"with_optional_alt":   `{"title":"X","subtitle":"sub","summary":"s","items":[{"src":"./a.png","alt":"alt text"}]}`,
-		"deep_relative_path":  `{"title":"X","items":[{"src":"./screenshots/sub/a.png"}]}`,
+		"spec_canonical":       specExampleJSON,
+		"single_image":         `{"title":"X","items":[{"src":"./a.png"}]}`,
+		"image_with_seq_zero":  `{"title":"X","items":[{"src":"./a.png","sequence":0}]}`,
+		"video_mp4":            `{"title":"X","items":[{"src":"./clip.mp4","title":"clip","description":"d"}]}`,
+		"video_webm":           `{"title":"X","items":[{"src":"./clip.webm"}]}`,
+		"video_mov":            `{"title":"X","items":[{"src":"./clip.mov"}]}`,
+		"image_jpg":            `{"title":"X","items":[{"src":"./a.jpg"}]}`,
+		"image_jpeg":           `{"title":"X","items":[{"src":"./a.jpeg"}]}`,
+		"image_webp":           `{"title":"X","items":[{"src":"./a.webp"}]}`,
+		"image_gif":            `{"title":"X","items":[{"src":"./a.gif"}]}`,
+		"with_optional_alt":    `{"title":"X","subtitle":"sub","summary":"s","items":[{"src":"./a.png","alt":"alt text"}]}`,
+		"with_issue_metadata":  `{"title":"X","metadata":{"issue_url":"https://jira.example.com/browse/ABC-123","issue_id":"ABC-123","issue_title":"Ship proof"},"items":[{"src":"./a.png","metadata":{"issue_url":"https://linear.app/acme/issue/ENG-456","issue_id":"ENG-456","issue_title":"Capture screenshot"}}]}`,
+		"with_item_properties": `{"title":"X","items":[{"src":"./a.png","properties":{"commit":"abc123","build_number":42,"details":{"branch":"main"}}}]}`,
+		"deep_relative_path":   `{"title":"X","items":[{"src":"./screenshots/sub/a.png"}]}`,
 	}
 }
 
@@ -456,6 +619,7 @@ func negativePayloads() map[string]string {
 	return map[string]string{
 		"unknown_top_level":   `{"title":"X","extra":"nope","items":[{"src":"./a.png"}]}`,
 		"unknown_item_field":  `{"title":"X","items":[{"src":"./a.png","weight":1}]}`,
+		"unknown_metadata":    `{"title":"X","metadata":{"tracker":"jira"},"items":[{"src":"./a.png"}]}`,
 		"missing_title":       `{"items":[{"src":"./a.png"}]}`,
 		"missing_src":         `{"title":"X","items":[{"title":"no src"}]}`,
 		"empty_items":         `{"title":"X","items":[]}`,
@@ -466,6 +630,9 @@ func negativePayloads() map[string]string {
 		"title_wrong_type":    `{"title":42,"items":[{"src":"./a.png"}]}`,
 		"items_wrong_type":    `{"title":"X","items":"oops"}`,
 		"sequence_wrong_type": `{"title":"X","items":[{"src":"./a.png","sequence":"first"}]}`,
+		"bad_issue_url":       `{"title":"X","metadata":{"issue_url":"javascript:alert(1)"},"items":[{"src":"./a.png"}]}`,
+		"bad_property_type":   `{"title":"X","items":[{"src":"./a.png","properties":{"ok":true}}]}`,
+		"empty_property_name": `{"title":"X","items":[{"src":"./a.png","properties":{"":"x"}}]}`,
 	}
 }
 
@@ -480,6 +647,11 @@ const specExampleJSON = `{
   "title": "Login page redesign",
   "subtitle": "Ticket DELIVERY-1234 · 2026-04-27",
   "summary": "Updated the login form to match the new identity. All states pass automated tests; here is the human-visible proof.",
+  "metadata": {
+    "issue_url": "https://jira.example.com/browse/DELIVERY-1234",
+    "issue_id": "DELIVERY-1234",
+    "issue_title": "Login page redesign"
+  },
   "items": [
     {
       "src": "./screenshots/01-empty.png",
@@ -491,6 +663,11 @@ const specExampleJSON = `{
       "src": "./screenshots/02-error.png",
       "title": "Inline validation",
       "description": "Empty-email submit shows the helper inline; field gets aria-describedby.",
+      "metadata": {
+        "issue_url": "https://jira.example.com/browse/DELIVERY-1235",
+        "issue_id": "DELIVERY-1235",
+        "issue_title": "Inline validation bug"
+      },
       "sequence": 2
     },
     {
@@ -516,8 +693,10 @@ const specExampleJSON = `{
 //   - required (array of strings)
 //   - additionalProperties (false)
 //   - properties (object)
+//   - propertyNames (object)
 //   - minLength / maxLength
 //   - minItems / maxItems
+//   - maxProperties
 //   - items (single subschema; tuple form not used)
 //   - pattern (Go regexp)
 //   - not + anyOf (just enough to express "no scheme prefix")
@@ -569,6 +748,18 @@ func msvCheck(schema, data any, path string) error {
 
 	switch d := data.(type) {
 	case map[string]any:
+		if mx, ok := s["maxProperties"]; ok {
+			if n := msvAsInt(mx); len(d) > n {
+				return msvErr(path, "more than maxProperties")
+			}
+		}
+		if propertyNames, ok := s["propertyNames"].(map[string]any); ok {
+			for k := range d {
+				if err := msvCheck(propertyNames, k, path+".<propertyName>"); err != nil {
+					return err
+				}
+			}
+		}
 		// required
 		if req, ok := s["required"].([]any); ok {
 			for _, r := range req {
@@ -578,13 +769,26 @@ func msvCheck(schema, data any, path string) error {
 				}
 			}
 		}
-		// additionalProperties: false
+		// additionalProperties: false or a single schema for arbitrary keys.
 		props, _ := s["properties"].(map[string]any)
 		if ap, exists := s["additionalProperties"]; exists {
-			if allow, isBool := ap.(bool); isBool && !allow {
+			switch allow := ap.(type) {
+			case bool:
+				if allow {
+					break
+				}
 				for k := range d {
 					if _, declared := props[k]; !declared {
 						return msvErr(path, "additional property not allowed: "+k)
+					}
+				}
+			case map[string]any:
+				for k, v := range d {
+					if _, declared := props[k]; declared {
+						continue
+					}
+					if err := msvCheck(allow, v, path+"."+k); err != nil {
+						return err
 					}
 				}
 			}
@@ -662,6 +866,10 @@ func msvCheckType(t string, data any, path string) error {
 		}
 		if f != float64(int64(f)) {
 			return msvErr(path, "expected integer (got fraction)")
+		}
+	case "number":
+		if _, ok := data.(float64); !ok {
+			return msvErr(path, "expected number")
 		}
 	}
 	return nil
@@ -1424,7 +1632,7 @@ func TestWriteBundleContents_AbortChannelStopsLoopBetweenCopies(t *testing.T) {
 	// iteration check and never copy any asset.
 	abort := make(chan struct{})
 	close(abort)
-	err := writeBundleContents(in, "stacked", outDir, dstNames, resolvedSrcs, Generator{}, abort)
+	err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, abort)
 	if err == nil {
 		t.Fatal("expected abort error, got nil")
 	}
@@ -1463,7 +1671,7 @@ func TestWriteBundleContents_NilAbortChannelNeverAborts(t *testing.T) {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeBundleContents(in, "stacked", outDir, dstNames, resolvedSrcs, Generator{}, nil); err != nil {
+	if err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, nil); err != nil {
 		t.Fatalf("nil abort channel: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "assets", dstNames[0])); err != nil {
@@ -1506,7 +1714,7 @@ func TestWriteBundleContents_AbortMidLoopStopsRemainingCopies(t *testing.T) {
 	// expect zero asset copies AND errEvidenceAborted.
 	abort := make(chan struct{})
 	close(abort)
-	err := writeBundleContents(in, "stacked", outDir, dstNames, resolvedSrcs, Generator{}, abort)
+	err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, abort)
 	if !errors.Is(err, errEvidenceAborted) {
 		t.Fatalf("expected errEvidenceAborted, got %v", err)
 	}
@@ -1897,26 +2105,32 @@ func TestRenderEvidence_RejectsEmptyContainmentRoot(t *testing.T) {
 	}
 }
 
-// EV-E-7 / unknown layout flagged at RenderEvidence (not just at flag
-// parse): defense-in-depth so a programmatic caller can't sneak past
-// the cmd_evidence.go layout switch.
-func TestRenderEvidence_RejectsUnknownLayout(t *testing.T) {
+// RenderOptions.Layout is retained as a deprecated compatibility field
+// but ignored: evidence pages now include a viewer-side layout switcher.
+func TestRenderEvidence_IgnoresDeprecatedLayoutOption(t *testing.T) {
 	dir := t.TempDir()
 	contRoot := filepath.Join(dir, "root")
 	if err := os.MkdirAll(contRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(contRoot, "a.png"), makePNG(t), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	body := []byte(`{"title":"X","items":[{"src":"./a.png"}]}`)
-	_, _, err := RenderEvidence(body, RenderOptions{
-		Layout:          "diorama", // not stacked or carousel
+	_, outDir, err := RenderEvidence(body, RenderOptions{
+		Layout:          "diorama", // ignored, not validated
 		OutDir:          filepath.Join(dir, "out"),
 		ContainmentRoot: contRoot,
 	}, Generator{})
-	if err == nil {
-		t.Fatal("expected unknown-layout error")
+	if err != nil {
+		t.Fatalf("RenderEvidence: %v", err)
 	}
-	if !strings.Contains(err.Error(), "diorama") {
-		t.Errorf("error should name the bad layout: %v", err)
+	idx, err := os.ReadFile(filepath.Join(outDir, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(idx), `id="ev-layout-carousel"`) {
+		t.Errorf("expected switchable layout UI despite deprecated Layout option")
 	}
 }
 
@@ -2100,7 +2314,7 @@ func TestWriteBundleContents_PostLoopAbortCheck(t *testing.T) {
 	in := EvidenceInput{Title: "X", Items: nil} // zero items deliberately
 	abort := make(chan struct{})
 	close(abort)
-	err := writeBundleContents(in, "stacked", outDir, nil, nil, Generator{}, abort)
+	err := writeBundleContents(in, outDir, nil, nil, Generator{}, abort)
 	if !errors.Is(err, errEvidenceAborted) {
 		t.Fatalf("expected errEvidenceAborted from post-loop check; got %v", err)
 	}

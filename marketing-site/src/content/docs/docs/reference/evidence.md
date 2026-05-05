@@ -21,9 +21,9 @@ In remote mode, `bv` prints JSON with the published URL and its expiry:
 ```
 
 The render is fully client-side: the control plane never sees your raw
-screenshots. The published bundle is HTML, CSS, and copied assets — no
-JavaScript runtime — so the gallery first-paints without network round
-trips after the page itself loads.
+screenshots. The published bundle is static HTML, CSS, a small local
+JavaScript controller, and copied assets, so the gallery first-paints
+without network round trips after the page itself loads.
 
 ## Input contract — `evidence.json`
 
@@ -34,6 +34,11 @@ A minimal manifest:
   "title": "Login page redesign",
   "subtitle": "Ticket DELIVERY-1234 · 2026-04-27",
   "summary": "Updated the login form to match the new identity. All states pass automated tests; here is the human-visible proof.",
+  "metadata": {
+    "issue_url": "https://jira.example.com/browse/DELIVERY-1234",
+    "issue_id": "DELIVERY-1234",
+    "issue_title": "Login page redesign"
+  },
   "items": [
     {
       "src": "./screenshots/01-empty.png",
@@ -45,6 +50,16 @@ A minimal manifest:
       "src": "./screenshots/02-error.png",
       "title": "Inline validation",
       "description": "Empty-email submit shows the helper inline; field gets aria-describedby.",
+      "metadata": {
+        "issue_url": "https://jira.example.com/browse/DELIVERY-1235",
+        "issue_id": "DELIVERY-1235",
+        "issue_title": "Inline validation bug"
+      },
+      "properties": {
+        "commit": "abc123",
+        "build_number": 42,
+        "checks": { "unit": "passed", "lint": "passed" }
+      },
       "sequence": 2
     },
     {
@@ -64,7 +79,21 @@ A minimal manifest:
 | `title`    | string | yes      | Page `<title>` and the H1 above the gallery. ≤200 chars.                                                     |
 | `subtitle` | string | no       | Single secondary line below the title. ≤300 chars.                                                           |
 | `summary`  | string | no       | Short paragraph above the gallery (e.g. ticket ref, what was delivered). ≤2000 chars; preserves line breaks. |
+| `metadata` | object | no       | Work-management issue for the whole gallery when all items evidence one ticket/story/issue.                   |
 | `items`    | array  | yes (≥1) | One gallery entry per element.                                                                               |
+
+### Metadata fields
+
+`metadata` is optional at both the top level and on each item. Use the
+top-level object when the gallery proves one work-management item. Use
+item-level metadata when a specific screenshot/video maps to a different
+or more specific item.
+
+| Field         | Type   | Required | Notes                                                                                      |
+| ------------- | ------ | -------- | ------------------------------------------------------------------------------------------ |
+| `issue_url`   | string | no       | Absolute HTTP(S) URL for the work item, e.g. a Jira, Linear, GitHub, or Todoist issue URL. |
+| `issue_id`    | string | no       | Work item identifier/key, e.g. `DELIVERY-1234`, `ENG-456`, or `#789`.                     |
+| `issue_title` | string | no       | Work item title/summary from the source work-management system.                            |
 
 ### Item fields
 
@@ -75,6 +104,11 @@ A minimal manifest:
 | `description` | string  | no       | Body text shown beneath the asset. ≤2000 chars.                                                                                                                        |
 | `sequence`    | integer | no       | Explicit ordering. Sequenced items sort ascending; un-sequenced items keep JSON-array order and follow. Stable sort.                                                   |
 | `alt`         | string  | no       | Alt text for images. Defaults to the item's `title`; never falls back to `description`.                                                                                |
+| `metadata`    | object  | no       | Work-management issue for this capture when it differs from, or is more specific than, the top-level issue.                                                            |
+| `properties`  | object  | no       | Arbitrary per-item metadata. Up to 50 non-empty keys, each ≤100 chars. String values are ≤1000 chars.                                                                  |
+
+String and number `properties` render as label/value rows. Object values
+render as formatted JSON in the collapsed item details panel.
 
 The JSON is parsed in **strict mode**: unknown top-level or item fields
 fail at parse time with a path pointing at the offending JSON node. The
@@ -101,8 +135,8 @@ out-of-line on disk).
 ### `--out <dir>`
 
 Render-only mode. Produces a self-contained static bundle at `<dir>`
-(`index.html`, `styles.css`, `assets/`) that opens in a browser without
-network. The renderer writes to a sibling temp directory and atomically
+(`index.html`, `styles.css`, `evidence.js`, `assets/`) that opens in a
+browser without network. The renderer writes to a sibling temp directory and atomically
 renames into place on success — your `--out` path is never partially
 written and never `rm -rf`'d.
 
@@ -130,12 +164,6 @@ default to `local`; `bv login` switches the default to `remote`.
 Prints the JSON Schema for `evidence.json` to stdout and exits 0. The
 example payload in this page validates against it.
 
-### `--layout {stacked|carousel}`
-
-Picks the rendered layout. Default is `stacked` (vertical figure-stack).
-`carousel` opts into a CSS-only horizontal snap-scroll variant. Any
-other value exits with a usage error listing the supported set.
-
 ### `--ttl-seconds N`
 
 Paid-plan TTL override for the published site. Free-plan accounts get
@@ -158,7 +186,8 @@ The renderer enforces this in three steps: it canonicalises the root
 with `filepath.EvalSymlinks`, joins each `src` against it, canonicalises
 the result, and rejects anything whose relative path starts with `..`
 or resolves absolute. Both lexical (`../../etc/passwd`) and
-symlink-based traversal fail at parse time before any bytes are copied.
+symlink-based traversal fail during render preflight before any bytes are
+copied.
 
 **Recommended**: prefer `--from <path>` for narrow containment. Running
 `bv evidence --from -` from a broad CWD (e.g. a repo root) widens the
@@ -193,29 +222,40 @@ should output PNG/JPEG/WebP.
 
 ## Layouts
 
-### Stacked (default)
+Rendered evidence pages include a layout switcher. Viewers can swap
+between a vertical stacked view and a horizontal carousel without
+republishing the site.
 
-A vertical figure-stack. Each item renders as title, asset, and
-description in JSON-resolved order. Best for "here is what changed,
-walked top-to-bottom."
+The stacked view renders each item as title, asset, and description in
+JSON-resolved order inside a scrollable content panel with a collapsible
+outline. Item issue metadata and `properties` are hidden by default behind
+each capture's collapsed **More Details** panel. The carousel view uses
+horizontal snap-scroll with previous/next buttons, paging buttons, and
+left/right keyboard navigation; previous is disabled on the first capture
+and next is disabled on the last capture. Carousel media is fit inside the
+viewport without cropping or stretching, while long captions scroll inside
+a fixed-height caption area.
 
-### Carousel (`--layout carousel`)
-
-A CSS-only horizontal snap-scroll. Pager links anchor-jump between
-items; arrow keys scroll natively. No JavaScript — same JSON contract
-as stacked. Both layouts are covered by golden-snapshot tests so
-template edits cannot silently produce the wrong output.
+Top-level issue metadata appears in the pinned metadata bar and expandable
+metadata sidebar. The metadata bar also shows the item count, layout
+controls, `bv` version, and publication timestamp; the timestamp is
+rendered in the viewer browser's local timezone. The light/dark mode toggle
+follows the browser preference until a viewer toggles it, then stores the last choice
+in localStorage for future butverify pages on the same browser origin.
+Both views share the same HTML and JSON contract. Clicking an image opens
+a lightbox with zoom controls and a fullscreen toggle.
 
 ## Bundle properties
 
-- **Deterministic.** Re-running the renderer on the same input
-  produces byte-identical output. No wall-clock timestamps are
-  embedded.
-- **No JavaScript.** First paint and gallery navigation work without a
-  JS runtime; `<img loading="lazy" decoding="async">` and
-  `<video preload="metadata" controls>` are the only "smarts."
-- **Small.** A typical input renders to under 50 KB of HTML+CSS;
-  copied assets are the bulk of the bundle.
+- **Publication-stamped.** Rendered pages embed the `bv` version and a UTC
+  publication timestamp that the viewer localizes in-browser.
+- **Static JavaScript only.** `evidence.js` is bundled locally and drives
+  layout toggles, metadata/outline panels, carousel navigation, and image
+  lightbox controls. It also persists the light/dark theme preference in
+  localStorage. It does not fetch remote code or data.
+- **Small.** A typical input renders to under 100 KiB across `index.html`,
+  `styles.css`, and `evidence.js`; copied assets are the bulk of the
+  bundle.
 
 ## Caps
 
@@ -223,6 +263,9 @@ template edits cannot silently produce the wrong output.
 | -------------------------------- | -------------------- |
 | Per-asset file size              | 1 GiB                |
 | Items per evidence site          | 1..500               |
+| Per-item `properties` count      | 50                   |
+| `properties` key length          | 1..100 chars         |
+| `properties` string value length | ≤1000 chars          |
 | Stdin manifest size (`--from -`) | 4 MiB                |
 | Bundle upload (free tier)        | 100 MB               |
 | Bundle upload (paid tier)        | 1 GB                 |
