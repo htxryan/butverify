@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
+<script>
+(function () {
+  try {
+    var theme = localStorage.getItem("butverify:theme");
+    if (theme === "light" || theme === "dark") {
+      document.documentElement.setAttribute("data-ev-theme", theme);
+    }
+  } catch (e) {}
+})();
+</script>
 <link rel="stylesheet" href="styles.css">
 <meta name="generator" content="bv {{.GeneratorVersion}} (template=evidence)">
 <meta name="color-scheme" content="light dark">
@@ -26,6 +36,11 @@
       <span class="ev-meta-chip">{{len .Items}} items</span>
       <span class="ev-meta-chip">template=evidence</span>
       {{if .GeneratorVersion}}<span class="ev-meta-chip">bv {{.GeneratorVersion}}</span>{{end}}
+      <button class="ev-theme-toggle" type="button" data-ev-theme-toggle aria-label="Switch color theme" aria-pressed="false">
+        <svg class="ev-button-icon" data-ev-theme-icon="sun" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+        <svg class="ev-button-icon" data-ev-theme-icon="moon" aria-hidden="true" viewBox="0 0 24 24"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a7 7 0 1 0 11 11Z"></path></svg>
+        <span data-ev-theme-label>Theme</span>
+      </button>
       {{if .Metadata.HasIssue}}
         {{if .Metadata.IssueURL}}
           <a class="ev-meta-chip ev-meta-link" href="{{.Metadata.IssueURL}}" target="_blank" rel="noopener noreferrer">

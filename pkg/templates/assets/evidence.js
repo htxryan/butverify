@@ -13,6 +13,8 @@
   var metaPanel = document.getElementById("ev-meta-panel");
   var metaToggle = document.querySelector("[data-ev-meta-toggle]");
   var metaClose = document.querySelector("[data-ev-meta-close]");
+  var themeToggle = document.querySelector("[data-ev-theme-toggle]");
+  var themeLabel = document.querySelector("[data-ev-theme-label]");
   var lightbox = document.querySelector("[data-ev-lightbox]");
   var lightboxImg = document.querySelector("[data-ev-lightbox-img]");
   var lightboxTitle = document.querySelector("[data-ev-lightbox-title]");
@@ -26,6 +28,8 @@
   var scrollTimer = 0;
   var lightboxScale = 1;
   var lastLightboxTrigger = null;
+  var themeStorageKey = "butverify:theme";
+  var systemThemeQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
   function isCarousel() {
     return Boolean(carousel && carousel.checked);
@@ -102,6 +106,60 @@
     } else {
       metaToggle.focus();
     }
+  }
+
+  function storedTheme() {
+    try {
+      var theme = localStorage.getItem(themeStorageKey);
+      return theme === "light" || theme === "dark" ? theme : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function systemTheme() {
+    return systemThemeQuery && systemThemeQuery.matches ? "dark" : "light";
+  }
+
+  function currentTheme() {
+    return storedTheme() || systemTheme();
+  }
+
+  function syncThemeToggle(theme) {
+    if (!themeToggle) {
+      return;
+    }
+    var dark = theme === "dark";
+    themeToggle.setAttribute("aria-pressed", String(dark));
+    themeToggle.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+    if (themeLabel) {
+      themeLabel.textContent = dark ? "Dark" : "Light";
+    }
+  }
+
+  function setTheme(theme) {
+    if (theme !== "light" && theme !== "dark") {
+      return;
+    }
+    document.documentElement.setAttribute("data-ev-theme", theme);
+    try {
+      localStorage.setItem(themeStorageKey, theme);
+    } catch (e) {}
+    syncThemeToggle(theme);
+  }
+
+  if (themeToggle) {
+    syncThemeToggle(currentTheme());
+    themeToggle.addEventListener("click", function () {
+      setTheme(currentTheme() === "dark" ? "light" : "dark");
+    });
+  }
+  if (systemThemeQuery && systemThemeQuery.addEventListener) {
+    systemThemeQuery.addEventListener("change", function () {
+      if (!storedTheme()) {
+        syncThemeToggle(systemTheme());
+      }
+    });
   }
 
   function isLightboxOpen() {

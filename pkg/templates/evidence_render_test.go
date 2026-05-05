@@ -121,10 +121,13 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 	}
 
 	for _, want := range []string{
+		`localStorage.getItem("butverify:theme")`,
 		`class="ev-topbar"`,
 		`class="ev-meta-strip"`,
 		`id="ev-meta-panel"`,
 		`hidden`,
+		`data-ev-theme-toggle`,
+		`data-ev-theme-label`,
 		`id="ev-layout-stacked"`,
 		`id="ev-layout-carousel"`,
 		`for="ev-layout-stacked"`,

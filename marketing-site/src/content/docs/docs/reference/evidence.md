@@ -221,9 +221,11 @@ description in JSON-resolved order inside a scrollable content panel with
 a collapsible outline. The carousel view uses horizontal snap-scroll with
 previous/next buttons, paging buttons, and left/right keyboard navigation.
 Top-level issue metadata appears in the pinned metadata strip and the
-expandable metadata sidebar. Both views share the same HTML and JSON
-contract. Clicking an image opens a lightbox with zoom controls and a
-fullscreen toggle.
+expandable metadata sidebar. The light/dark mode toggle follows the
+browser preference until a viewer toggles it, then stores the last choice
+in localStorage for future butverify pages on the same browser origin.
+Both views share the same HTML and JSON contract. Clicking an image opens
+a lightbox with zoom controls and a fullscreen toggle.
 
 ## Bundle properties
 
@@ -232,7 +234,8 @@ fullscreen toggle.
   embedded.
 - **Static JavaScript only.** `evidence.js` is bundled locally and drives
   layout toggles, metadata/outline panels, carousel navigation, and image
-  lightbox controls. It does not fetch remote code or data.
+  lightbox controls. It also persists the light/dark theme preference in
+  localStorage. It does not fetch remote code or data.
 - **Small.** A typical input renders to under 50 KB of HTML+CSS;
   copied assets are the bulk of the bundle.
 
