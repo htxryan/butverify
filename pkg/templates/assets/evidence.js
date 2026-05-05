@@ -13,8 +13,19 @@
   var metaPanel = document.getElementById("ev-meta-panel");
   var metaToggle = document.querySelector("[data-ev-meta-toggle]");
   var metaClose = document.querySelector("[data-ev-meta-close]");
+  var lightbox = document.querySelector("[data-ev-lightbox]");
+  var lightboxImg = document.querySelector("[data-ev-lightbox-img]");
+  var lightboxTitle = document.querySelector("[data-ev-lightbox-title]");
+  var lightboxTriggers = Array.prototype.slice.call(document.querySelectorAll("[data-ev-lightbox-trigger]"));
+  var lightboxClose = document.querySelector("[data-ev-lightbox-close]");
+  var lightboxZoomIn = document.querySelector("[data-ev-lightbox-zoom-in]");
+  var lightboxZoomOut = document.querySelector("[data-ev-lightbox-zoom-out]");
+  var lightboxReset = document.querySelector("[data-ev-lightbox-reset]");
+  var lightboxFullscreen = document.querySelector("[data-ev-lightbox-fullscreen]");
   var currentIndex = 0;
   var scrollTimer = 0;
+  var lightboxScale = 1;
+  var lastLightboxTrigger = null;
 
   function isCarousel() {
     return Boolean(carousel && carousel.checked);
@@ -93,6 +104,112 @@
     }
   }
 
+  function isLightboxOpen() {
+    return Boolean(lightbox && !lightbox.hidden);
+  }
+
+  function setLightboxZoom(scale) {
+    if (!lightboxImg) {
+      return;
+    }
+    lightboxScale = Math.max(1, Math.min(4, scale));
+    lightboxImg.style.transform = "scale(" + lightboxScale + ")";
+    lightboxImg.setAttribute("data-zoomed", String(lightboxScale > 1));
+    if (lightboxZoomOut) {
+      lightboxZoomOut.toggleAttribute("disabled", lightboxScale <= 1);
+    }
+    if (lightboxReset) {
+      lightboxReset.toggleAttribute("disabled", lightboxScale <= 1);
+    }
+    if (lightboxZoomIn) {
+      lightboxZoomIn.toggleAttribute("disabled", lightboxScale >= 4);
+    }
+  }
+
+  function openLightbox(trigger) {
+    if (!lightbox || !lightboxImg) {
+      return;
+    }
+    lastLightboxTrigger = trigger;
+    lightboxImg.setAttribute("src", trigger.getAttribute("data-ev-lightbox-src") || "");
+    lightboxImg.setAttribute("alt", trigger.getAttribute("data-ev-lightbox-alt") || "");
+    if (lightboxTitle) {
+      lightboxTitle.textContent = trigger.getAttribute("data-ev-lightbox-title") || "Image preview";
+    }
+    lightbox.hidden = false;
+    setLightboxZoom(1);
+    if (lightboxClose) {
+      lightboxClose.focus();
+    } else {
+      lightbox.focus();
+    }
+  }
+
+  function closeLightbox() {
+    if (!lightbox || !lightboxImg) {
+      return;
+    }
+    if (document.fullscreenElement === lightbox && document.exitFullscreen) {
+      document.exitFullscreen().catch(function () {});
+    }
+    lightbox.hidden = true;
+    lightboxImg.removeAttribute("src");
+    setLightboxZoom(1);
+    if (lastLightboxTrigger) {
+      lastLightboxTrigger.focus();
+    }
+  }
+
+  function toggleLightboxFullscreen() {
+    if (!lightbox || !document.fullscreenEnabled) {
+      return;
+    }
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(function () {});
+      return;
+    }
+    lightbox.requestFullscreen().catch(function () {});
+  }
+
+  lightboxTriggers.forEach(function (trigger) {
+    trigger.addEventListener("click", function () {
+      openLightbox(trigger);
+    });
+  });
+
+  if (lightbox) {
+    lightbox.setAttribute("tabindex", "-1");
+    lightbox.addEventListener("click", function (event) {
+      if (event.target === lightbox) {
+        closeLightbox();
+      }
+    });
+  }
+  if (lightboxClose) {
+    lightboxClose.addEventListener("click", closeLightbox);
+  }
+  if (lightboxZoomIn) {
+    lightboxZoomIn.addEventListener("click", function () {
+      setLightboxZoom(lightboxScale + 0.25);
+    });
+  }
+  if (lightboxZoomOut) {
+    lightboxZoomOut.addEventListener("click", function () {
+      setLightboxZoom(lightboxScale - 0.25);
+    });
+  }
+  if (lightboxReset) {
+    lightboxReset.addEventListener("click", function () {
+      setLightboxZoom(1);
+    });
+  }
+  if (lightboxFullscreen) {
+    if (!document.fullscreenEnabled || !lightbox || !lightbox.requestFullscreen) {
+      lightboxFullscreen.setAttribute("disabled", "");
+    }
+    lightboxFullscreen.addEventListener("click", toggleLightboxFullscreen);
+  }
+
   if (metaPanel) {
     metaPanel.setAttribute("tabindex", "-1");
   }
@@ -159,6 +276,22 @@
     var target = event.target;
     var tag = target && target.tagName ? target.tagName.toLowerCase() : "";
     if (tag === "input" || tag === "textarea" || tag === "select" || (target && target.isContentEditable)) {
+      return;
+    }
+    if (isLightboxOpen()) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeLightbox();
+      } else if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        setLightboxZoom(lightboxScale + 0.25);
+      } else if (event.key === "-" || event.key === "_") {
+        event.preventDefault();
+        setLightboxZoom(lightboxScale - 0.25);
+      } else if (event.key === "0") {
+        event.preventDefault();
+        setLightboxZoom(1);
+      }
       return;
     }
     if (event.key === "Escape" && metaPanel && !metaPanel.hidden) {

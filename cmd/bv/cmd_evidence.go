@@ -9,8 +9,8 @@
 //	bv evidence --from in.json --push    # render to ephemeral tmp + push (EV-E-5)
 //	bv evidence --from - --out DIR       # read manifest from stdin
 //
-// Rendered evidence pages include a viewer-side layout switcher; layout is
-// intentionally not a publish-time CLI option.
+// Rendered evidence pages include a viewer-side layout switcher and image
+// lightbox; layout is intentionally not a publish-time CLI option.
 //
 // The CLI passes `template=evidence` on POST /v1/sites so the server
 // counts the templated site against the tenant's monthly fairness

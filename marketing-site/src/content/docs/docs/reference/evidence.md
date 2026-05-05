@@ -195,7 +195,8 @@ The stacked view renders each item as title, asset, and description in
 JSON-resolved order inside a scrollable content panel with a collapsible
 outline. The carousel view uses horizontal snap-scroll with previous/next
 buttons, paging buttons, and left/right keyboard navigation. Both views
-share the same HTML and JSON contract.
+share the same HTML and JSON contract. Clicking an image opens a lightbox
+with zoom controls and a fullscreen toggle.
 
 ## Bundle properties
 
@@ -203,8 +204,8 @@ share the same HTML and JSON contract.
   produces byte-identical output. No wall-clock timestamps are
   embedded.
 - **Static JavaScript only.** `evidence.js` is bundled locally and drives
-  layout toggles, metadata/outline panels, and carousel navigation. It
-  does not fetch remote code or data.
+  layout toggles, metadata/outline panels, carousel navigation, and image
+  lightbox controls. It does not fetch remote code or data.
 - **Small.** A typical input renders to under 50 KB of HTML+CSS;
   copied assets are the bulk of the bundle.
 

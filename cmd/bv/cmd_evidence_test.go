@@ -130,7 +130,7 @@ func TestEvidence_RenderOnly_IncludesLayoutSwitcher(t *testing.T) {
 	if strings.Contains(string(idx), `data-layout=`) {
 		t.Errorf("rendered html should not hard-code a publish-time layout (first 300): %s", idx[:min(300, len(idx))])
 	}
-	for _, want := range []string{`class="ev-topbar"`, `id="ev-meta-panel"`, `id="ev-layout-stacked"`, `id="ev-layout-carousel"`, `class="ev-outline"`, `class="ev-track"`, `class="ev-pager"`, `src="evidence.js"`} {
+	for _, want := range []string{`class="ev-topbar"`, `id="ev-meta-panel"`, `id="ev-layout-stacked"`, `id="ev-layout-carousel"`, `class="ev-outline"`, `class="ev-track"`, `class="ev-pager"`, `data-ev-lightbox`, `data-ev-lightbox-trigger`, `src="evidence.js"`} {
 		if !strings.Contains(string(idx), want) {
 			t.Errorf("rendered html missing layout-switcher marker %q (first 300): %s", want, idx[:min(300, len(idx))])
 		}

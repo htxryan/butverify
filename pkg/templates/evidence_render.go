@@ -1,7 +1,7 @@
 // Evidence template rendering: produces index.html + styles.css +
 // evidence.js from a validated EvidenceInput. The rendered page includes a
-// static-bundle controller for layout, metadata, outline, and carousel
-// navigation.
+// static-bundle controller for layout, metadata, outline, carousel
+// navigation, and image lightbox controls.
 //
 // This file is the wave-1 minimal-shell renderer (E12-T4). Asset copy,
 // MIME sniffing, path containment, atomic --out, and tmp-dir cleanup

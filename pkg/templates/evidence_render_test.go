@@ -128,6 +128,11 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 		`class="ev-slide"`,
 		`class="ev-pager"`,
 		`data-ev-page`,
+		`data-ev-lightbox`,
+		`data-ev-lightbox-trigger`,
+		`data-ev-lightbox-zoom-in`,
+		`data-ev-lightbox-fullscreen`,
+		`data-ev-lightbox-close`,
 		`href="#item-1"`,
 		`href="#item-3"`,
 		`class="ev-button-icon"`,
@@ -144,11 +149,13 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 		}
 	}
 
-	// EV-U-9: every <img> has loading=lazy + decoding=async + non-empty alt.
-	imgRe := regexp.MustCompile(`<img\s+([^>]+)>`)
+	// EV-U-9: every evidence asset <img> has loading=lazy +
+	// decoding=async + non-empty alt. The lightbox shell image is
+	// populated by evidence.js at click time and has no static src.
+	imgRe := regexp.MustCompile(`<img\s+([^>]*src="assets/[^"]+"[^>]*)>`)
 	imgs := imgRe.FindAllStringSubmatch(s, -1)
 	if len(imgs) != 2 {
-		t.Errorf("expected 2 <img> tags, got %d (input has 2 images)", len(imgs))
+		t.Errorf("expected 2 evidence asset <img> tags, got %d (input has 2 images)", len(imgs))
 	}
 	for _, m := range imgs {
 		attrs := m[1]
@@ -336,7 +343,7 @@ func TestRenderEvidence_HTMLAndDiskAreConsistent(t *testing.T) {
 
 	// Pull every `src="assets/<name>"` reference out of the rendered
 	// HTML — both <img> and <video> use the same prefix.
-	srcRe := regexp.MustCompile(`src="assets/([^"]+)"`)
+	srcRe := regexp.MustCompile(`<(?:img|video)\b[^>]*\ssrc="assets/([^"]+)"`)
 	matches := srcRe.FindAllStringSubmatch(string(htmlBytes), -1)
 	if len(matches) != len(in.Items) {
 		t.Fatalf(
