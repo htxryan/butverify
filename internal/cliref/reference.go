@@ -163,7 +163,7 @@ func DefaultReference() Reference {
 				Summary:     "evidence --from <evidence.json> [--out DIR] [--push]",
 				Usage:       "bv evidence (--schema | --from <evidence.json|-> [--out DIR] [--push] [--upload-id ID] [--ttl-seconds N] [--image-quality N] [--mode local|remote])",
 				Description: "Render a static evidence/gallery site from JSON.",
-				Details:     []string{"Use --schema to print the JSON Schema for the input without rendering.", "Rendered evidence pages include a viewer-side stacked/carousel layout switcher.", "With --push, image optimization recompresses JPEGs with --image-quality and recompresses PNGs losslessly when smaller. Persist a default by setting image_quality in the bv config JSON."},
+				Details:     []string{"Use --schema to print the JSON Schema for the input without rendering.", "Manifest metadata may include issue_url, issue_id, and issue_title at the top level for the work-management item the whole gallery proves, or under an individual item when a capture maps to a specific Jira/Linear/GitHub issue.", "Rendered evidence pages include a viewer-side stacked/carousel layout switcher.", "With --push, image optimization recompresses JPEGs with --image-quality and recompresses PNGs losslessly when smaller. Persist a default by setting image_quality in the bv config JSON."},
 				Flags: []Flag{
 					{Name: "--from", Value: "PATH|-", Description: "input JSON file or stdin", Type: FlagString, RuntimeHelp: "input JSON file (use - for stdin)"},
 					{Name: "--out", Value: "DIR", Description: "output directory", Type: FlagString, RuntimeHelp: "output directory (omit when only --push is set)"},

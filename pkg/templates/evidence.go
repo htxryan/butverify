@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -42,10 +43,11 @@ import (
 // hand-authored EvidenceSchema below — schema/parser parity is asserted
 // by a unit test (EV-U-11).
 type EvidenceInput struct {
-	Title    string         `json:"title"`
-	Subtitle string         `json:"subtitle,omitempty"`
-	Summary  string         `json:"summary,omitempty"`
-	Items    []EvidenceItem `json:"items"`
+	Title    string           `json:"title"`
+	Subtitle string           `json:"subtitle,omitempty"`
+	Summary  string           `json:"summary,omitempty"`
+	Metadata EvidenceMetadata `json:"metadata,omitempty"`
+	Items    []EvidenceItem   `json:"items"`
 }
 
 // EvidenceItem is one gallery entry. `Sequence` is `*int` (not `int`)
@@ -54,24 +56,37 @@ type EvidenceInput struct {
 // `sequence: 0` (sort first). A non-pointer int would collapse those
 // two cases.
 type EvidenceItem struct {
-	Src         string `json:"src"`
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
-	Sequence    *int   `json:"sequence,omitempty"`
-	Alt         string `json:"alt,omitempty"`
+	Src         string           `json:"src"`
+	Title       string           `json:"title,omitempty"`
+	Description string           `json:"description,omitempty"`
+	Sequence    *int             `json:"sequence,omitempty"`
+	Alt         string           `json:"alt,omitempty"`
+	Metadata    EvidenceMetadata `json:"metadata,omitempty"`
+}
+
+// EvidenceMetadata describes the work-management item being evidenced.
+// Top-level metadata is for a gallery that proves one issue; per-item
+// metadata is for galleries spanning multiple issues.
+type EvidenceMetadata struct {
+	IssueURL   string `json:"issue_url,omitempty"`
+	IssueID    string `json:"issue_id,omitempty"`
+	IssueTitle string `json:"issue_title,omitempty"`
 }
 
 // Bounds from §5 / EARS §4. These are parse-time caps; bundle-size
 // enforcement happens server-side (HTTP 413) and is out of scope here.
 const (
-	maxEvidenceTitleLen     = 200
-	maxEvidenceSubtitleLen  = 300
-	maxEvidenceSummaryLen   = 2000
-	maxEvidenceItemTitleLen = 200
-	maxEvidenceItemDescLen  = 2000
-	maxEvidenceItemAltLen   = 1000    // not in spec table; bounded for safety
-	maxEvidenceItems        = 500     // EV-N-5
-	evidenceStdinMaxBytes   = 4 << 20 // EV-N-6: 4 MiB
+	maxEvidenceTitleLen      = 200
+	maxEvidenceSubtitleLen   = 300
+	maxEvidenceSummaryLen    = 2000
+	maxEvidenceItemTitleLen  = 200
+	maxEvidenceItemDescLen   = 2000
+	maxEvidenceItemAltLen    = 1000 // not in spec table; bounded for safety
+	maxEvidenceIssueURLLen   = 2048
+	maxEvidenceIssueIDLen    = 200
+	maxEvidenceIssueTitleLen = 300
+	maxEvidenceItems         = 500     // EV-N-5
+	evidenceStdinMaxBytes    = 4 << 20 // EV-N-6: 4 MiB
 )
 
 // rejectedSrcSchemes is the closed set of URL schemes that MUST NOT
@@ -124,6 +139,9 @@ func (in *EvidenceInput) Validate() error {
 	if len(in.Summary) > maxEvidenceSummaryLen {
 		return fmt.Errorf("templates: evidence.summary exceeds %d chars (got %d)", maxEvidenceSummaryLen, len(in.Summary))
 	}
+	if err := validateMetadata("templates: evidence.metadata", in.Metadata); err != nil {
+		return err
+	}
 	if len(in.Items) == 0 {
 		// EV-N-1: an evidence site with zero items has no purpose.
 		return errors.New("templates: evidence.items must contain at least one item")
@@ -164,6 +182,33 @@ func validateItem(i int, it EvidenceItem) error {
 	}
 	if len(it.Alt) > maxEvidenceItemAltLen {
 		return fmt.Errorf("templates: evidence.items[%d].alt exceeds %d chars (got %d)", i, maxEvidenceItemAltLen, len(it.Alt))
+	}
+	if err := validateMetadata(fmt.Sprintf("templates: evidence.items[%d].metadata", i), it.Metadata); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateMetadata(path string, meta EvidenceMetadata) error {
+	if len(meta.IssueURL) > maxEvidenceIssueURLLen {
+		return fmt.Errorf("%s.issue_url exceeds %d chars (got %d)", path, maxEvidenceIssueURLLen, len(meta.IssueURL))
+	}
+	if len(meta.IssueID) > maxEvidenceIssueIDLen {
+		return fmt.Errorf("%s.issue_id exceeds %d chars (got %d)", path, maxEvidenceIssueIDLen, len(meta.IssueID))
+	}
+	if len(meta.IssueTitle) > maxEvidenceIssueTitleLen {
+		return fmt.Errorf("%s.issue_title exceeds %d chars (got %d)", path, maxEvidenceIssueTitleLen, len(meta.IssueTitle))
+	}
+	if meta.IssueURL == "" {
+		return nil
+	}
+	u, err := url.Parse(meta.IssueURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("%s.issue_url must be an absolute http(s) URL (got %q)", path, meta.IssueURL)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("%s.issue_url must be an absolute http(s) URL (got %q)", path, meta.IssueURL)
 	}
 	return nil
 }
@@ -289,6 +334,32 @@ const EvidenceSchema = `{
       "maxLength": 2000,
       "description": "Short paragraph above the gallery; rendered with white-space: pre-wrap."
     },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional work-management item this evidence site proves. Use this when all evidence items relate to one Jira/Linear/GitHub issue; use item.metadata when individual captures map to different work items.",
+      "properties": {
+        "issue_url": {
+          "type": "string",
+          "maxLength": 2048,
+          "anyOf": [
+            {"maxLength": 0},
+            {"pattern": "^[Hh][Tt][Tt][Pp][Ss]?://[^\\s/?#][^\\s]*$"}
+          ],
+          "description": "Absolute http(s) URL for the work item, such as a Jira issue URL."
+        },
+        "issue_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Work item identifier or key, such as JIRA-123, ENG-456, or #789."
+        },
+        "issue_title": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Work item title/summary from the source system."
+        }
+      }
+    },
     "items": {
       "type": "array",
       "minItems": 1,
@@ -330,6 +401,32 @@ const EvidenceSchema = `{
             "type": "string",
             "maxLength": 1000,
             "description": "Alt text for images. Defaults to the item's title if unset."
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Optional work-management item represented by this individual evidence item. Use this when the gallery spans multiple Jira/Linear/GitHub issues or a capture proves a more specific issue than the page-level metadata.",
+            "properties": {
+              "issue_url": {
+                "type": "string",
+                "maxLength": 2048,
+                "anyOf": [
+                  {"maxLength": 0},
+                  {"pattern": "^[Hh][Tt][Tt][Pp][Ss]?://[^\\s/?#][^\\s]*$"}
+                ],
+                "description": "Absolute http(s) URL for the work item, such as a Jira issue URL."
+              },
+              "issue_id": {
+                "type": "string",
+                "maxLength": 200,
+                "description": "Work item identifier or key, such as JIRA-123, ENG-456, or #789."
+              },
+              "issue_title": {
+                "type": "string",
+                "maxLength": 300,
+                "description": "Work item title/summary from the source system."
+              }
+            }
           }
         }
       }

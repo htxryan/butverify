@@ -26,6 +26,19 @@
       <span class="ev-meta-chip">{{len .Items}} items</span>
       <span class="ev-meta-chip">template=evidence</span>
       {{if .GeneratorVersion}}<span class="ev-meta-chip">bv {{.GeneratorVersion}}</span>{{end}}
+      {{if .Metadata.HasIssue}}
+        {{if .Metadata.IssueURL}}
+          <a class="ev-meta-chip ev-meta-link" href="{{.Metadata.IssueURL}}" target="_blank" rel="noopener noreferrer">
+            <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
+            <span>{{.Metadata.IssueLabel}}</span>
+          </a>
+        {{else}}
+          <span class="ev-meta-chip">
+            <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 7h8"></path><path d="M8 12h8"></path><path d="M8 17h5"></path><rect x="4" y="3" width="16" height="18" rx="2"></rect></svg>
+            <span>{{.Metadata.IssueLabel}}</span>
+          </span>
+        {{end}}
+      {{end}}
       <fieldset class="ev-layout-control">
         <legend class="ev-sr-only">Layout</legend>
         <input class="ev-layout-input" type="radio" name="ev-layout" id="ev-layout-stacked" value="stacked" checked data-ev-layout>
@@ -53,6 +66,9 @@
       <dl class="ev-meta-list">
         <div><dt>Title</dt><dd>{{.Title}}</dd></div>
         {{if .Subtitle}}<div><dt>Subtitle</dt><dd>{{.Subtitle}}</dd></div>{{end}}
+        {{if .Metadata.IssueID}}<div><dt>Issue ID</dt><dd>{{.Metadata.IssueID}}</dd></div>{{end}}
+        {{if .Metadata.IssueTitle}}<div><dt>Issue Title</dt><dd>{{.Metadata.IssueTitle}}</dd></div>{{end}}
+        {{if .Metadata.IssueURL}}<div><dt>Issue URL</dt><dd><a href="{{.Metadata.IssueURL}}" target="_blank" rel="noopener noreferrer">{{.Metadata.IssueURL}}</a></dd></div>{{end}}
         <div><dt>Items</dt><dd>{{len .Items}}</dd></div>
         <div><dt>Template</dt><dd>evidence</dd></div>
         {{if .GeneratorVersion}}<div><dt>Generator</dt><dd>bv {{.GeneratorVersion}}</dd></div>{{end}}
@@ -114,10 +130,23 @@
                       <video src="assets/{{$it.SafeName}}" preload="metadata" controls playsinline></video>
                     {{end}}
                   </div>
-                  {{if or $it.Title $it.Description}}
+                  {{if or $it.Title $it.Description $it.Metadata.HasIssue}}
                     <figcaption class="ev-caption">
                       <span class="ev-seq" aria-hidden="true">{{add1 $i}}</span>
                       {{if $it.Title}}<h3 class="ev-item-title">{{$it.Title}}</h3>{{end}}
+                      {{if $it.Metadata.HasIssue}}
+                        <p class="ev-item-issue">
+                          <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
+                          {{if $it.Metadata.IssueURL}}
+                            <a href="{{$it.Metadata.IssueURL}}" target="_blank" rel="noopener noreferrer">{{$it.Metadata.IssueLabel}}</a>
+                          {{else}}
+                            <span>{{$it.Metadata.IssueLabel}}</span>
+                          {{end}}
+                          {{if and $it.Metadata.IssueID $it.Metadata.IssueTitle}}
+                            <span class="ev-item-issue-title">{{$it.Metadata.IssueTitle}}</span>
+                          {{end}}
+                        </p>
+                      {{end}}
                       {{if $it.Description}}<p class="ev-item-desc">{{$it.Description}}</p>{{end}}
                     </figcaption>
                   {{end}}

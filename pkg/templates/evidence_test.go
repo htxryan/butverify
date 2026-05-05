@@ -42,8 +42,42 @@ func TestParseEvidence_HappyPath(t *testing.T) {
 	if len(in.Items) != 3 {
 		t.Fatalf("items: %d", len(in.Items))
 	}
+	if in.Metadata.IssueID != "DELIVERY-1234" {
+		t.Errorf("metadata.issue_id: %q", in.Metadata.IssueID)
+	}
+	if in.Items[1].Metadata.IssueTitle != "Inline validation bug" {
+		t.Errorf("items[1].metadata.issue_title: %q", in.Items[1].Metadata.IssueTitle)
+	}
 	if in.Items[0].Sequence == nil || *in.Items[0].Sequence != 1 {
 		t.Errorf("items[0].sequence: %v", in.Items[0].Sequence)
+	}
+}
+
+func TestParseEvidence_AcceptsIssueMetadata(t *testing.T) {
+	in, err := ParseEvidence([]byte(`{
+	  "title": "X",
+	  "metadata": {
+	    "issue_url": "https://jira.example.com/browse/ABC-123",
+	    "issue_id": "ABC-123",
+	    "issue_title": "Ship the thing"
+	  },
+	  "items": [{
+	    "src": "./a.png",
+	    "metadata": {
+	      "issue_url": "https://linear.app/acme/issue/ENG-456",
+	      "issue_id": "ENG-456",
+	      "issue_title": "Capture proof"
+	    }
+	  }]
+	}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if in.Metadata.IssueURL != "https://jira.example.com/browse/ABC-123" {
+		t.Errorf("top-level issue_url: %q", in.Metadata.IssueURL)
+	}
+	if in.Items[0].Metadata.IssueID != "ENG-456" {
+		t.Errorf("item issue_id: %q", in.Items[0].Metadata.IssueID)
 	}
 }
 
@@ -70,6 +104,20 @@ func TestParseEvidence_RejectsUnknownItemField(t *testing.T) {
 		t.Fatal("expected error for unknown item field")
 	}
 	if !strings.Contains(err.Error(), "weight") {
+		t.Errorf("error should mention bad field: %v", err)
+	}
+}
+
+func TestParseEvidence_RejectsUnknownMetadataField(t *testing.T) {
+	_, err := ParseEvidence([]byte(`{
+	  "title": "X",
+	  "metadata": {"issue_id": "ABC-123", "tracker": "jira"},
+	  "items": [{"src": "./a.png"}]
+	}`))
+	if err == nil {
+		t.Fatal("expected error for unknown metadata field")
+	}
+	if !strings.Contains(err.Error(), "tracker") {
 		t.Errorf("error should mention bad field: %v", err)
 	}
 }
@@ -364,6 +412,65 @@ func TestValidate_ItemTitleTooLong(t *testing.T) {
 	}
 }
 
+func TestValidate_IssueMetadataTooLong(t *testing.T) {
+	in := EvidenceInput{
+		Title: "ok",
+		Metadata: EvidenceMetadata{
+			IssueID: strings.Repeat("a", maxEvidenceIssueIDLen+1),
+		},
+		Items: []EvidenceItem{{Src: "./a.png"}},
+	}
+	if err := in.Validate(); err == nil || !strings.Contains(err.Error(), "issue_id") {
+		t.Errorf("expected issue_id-length error, got %v", err)
+	}
+
+	in = EvidenceInput{
+		Title: "ok",
+		Items: []EvidenceItem{{
+			Src: "./a.png",
+			Metadata: EvidenceMetadata{
+				IssueTitle: strings.Repeat("a", maxEvidenceIssueTitleLen+1),
+			},
+		}},
+	}
+	if err := in.Validate(); err == nil || !strings.Contains(err.Error(), "issue_title") {
+		t.Errorf("expected item issue_title-length error, got %v", err)
+	}
+}
+
+func TestValidate_IssueURLRequiresHTTP(t *testing.T) {
+	cases := []struct {
+		name string
+		in   EvidenceInput
+	}{
+		{
+			name: "top_level",
+			in: EvidenceInput{
+				Title:    "ok",
+				Metadata: EvidenceMetadata{IssueURL: "javascript:alert(1)"},
+				Items:    []EvidenceItem{{Src: "./a.png"}},
+			},
+		},
+		{
+			name: "item",
+			in: EvidenceInput{
+				Title: "ok",
+				Items: []EvidenceItem{{
+					Src:      "./a.png",
+					Metadata: EvidenceMetadata{IssueURL: "ftp://tracker.example/ABC-123"},
+				}},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.in.Validate(); err == nil || !strings.Contains(err.Error(), "issue_url") {
+				t.Errorf("expected issue_url error, got %v", err)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Schema/parser parity (EV-U-11)
 // ---------------------------------------------------------------------------
@@ -373,7 +480,7 @@ func TestValidate_ItemTitleTooLong(t *testing.T) {
 // validator implements the subset of keywords actually used by
 // EvidenceSchema: type, required, additionalProperties, properties,
 // minLength, maxLength, minItems, maxItems, items, integer, pattern,
-// not + anyOf. That's enough to verify the parity claim — every
+// not, and anyOf. That's enough to verify the parity claim — every
 // positive payload validates against the schema AND parses, every
 // negative payload fails both.
 
@@ -438,6 +545,7 @@ func positivePayloads() map[string]string {
 		"image_webp":          `{"title":"X","items":[{"src":"./a.webp"}]}`,
 		"image_gif":           `{"title":"X","items":[{"src":"./a.gif"}]}`,
 		"with_optional_alt":   `{"title":"X","subtitle":"sub","summary":"s","items":[{"src":"./a.png","alt":"alt text"}]}`,
+		"with_issue_metadata": `{"title":"X","metadata":{"issue_url":"https://jira.example.com/browse/ABC-123","issue_id":"ABC-123","issue_title":"Ship proof"},"items":[{"src":"./a.png","metadata":{"issue_url":"https://linear.app/acme/issue/ENG-456","issue_id":"ENG-456","issue_title":"Capture screenshot"}}]}`,
 		"deep_relative_path":  `{"title":"X","items":[{"src":"./screenshots/sub/a.png"}]}`,
 	}
 }
@@ -456,6 +564,7 @@ func negativePayloads() map[string]string {
 	return map[string]string{
 		"unknown_top_level":   `{"title":"X","extra":"nope","items":[{"src":"./a.png"}]}`,
 		"unknown_item_field":  `{"title":"X","items":[{"src":"./a.png","weight":1}]}`,
+		"unknown_metadata":    `{"title":"X","metadata":{"tracker":"jira"},"items":[{"src":"./a.png"}]}`,
 		"missing_title":       `{"items":[{"src":"./a.png"}]}`,
 		"missing_src":         `{"title":"X","items":[{"title":"no src"}]}`,
 		"empty_items":         `{"title":"X","items":[]}`,
@@ -466,6 +575,7 @@ func negativePayloads() map[string]string {
 		"title_wrong_type":    `{"title":42,"items":[{"src":"./a.png"}]}`,
 		"items_wrong_type":    `{"title":"X","items":"oops"}`,
 		"sequence_wrong_type": `{"title":"X","items":[{"src":"./a.png","sequence":"first"}]}`,
+		"bad_issue_url":       `{"title":"X","metadata":{"issue_url":"javascript:alert(1)"},"items":[{"src":"./a.png"}]}`,
 	}
 }
 
@@ -480,6 +590,11 @@ const specExampleJSON = `{
   "title": "Login page redesign",
   "subtitle": "Ticket DELIVERY-1234 · 2026-04-27",
   "summary": "Updated the login form to match the new identity. All states pass automated tests; here is the human-visible proof.",
+  "metadata": {
+    "issue_url": "https://jira.example.com/browse/DELIVERY-1234",
+    "issue_id": "DELIVERY-1234",
+    "issue_title": "Login page redesign"
+  },
   "items": [
     {
       "src": "./screenshots/01-empty.png",
@@ -491,6 +606,11 @@ const specExampleJSON = `{
       "src": "./screenshots/02-error.png",
       "title": "Inline validation",
       "description": "Empty-email submit shows the helper inline; field gets aria-describedby.",
+      "metadata": {
+        "issue_url": "https://jira.example.com/browse/DELIVERY-1235",
+        "issue_id": "DELIVERY-1235",
+        "issue_title": "Inline validation bug"
+      },
       "sequence": 2
     },
     {

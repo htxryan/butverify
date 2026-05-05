@@ -67,8 +67,17 @@ type evidenceRenderModel struct {
 	Title            string
 	Subtitle         string
 	Summary          string
+	Metadata         evidenceRenderMetadata
 	GeneratorVersion string
 	Items            []evidenceRenderItem
+}
+
+type evidenceRenderMetadata struct {
+	IssueURL   string
+	IssueID    string
+	IssueTitle string
+	IssueLabel string
+	HasIssue   bool
 }
 
 type evidenceRenderItem struct {
@@ -76,6 +85,7 @@ type evidenceRenderItem struct {
 	Alt         string
 	Title       string
 	Description string
+	Metadata    evidenceRenderMetadata
 	IsImage     bool
 	IsVideo     bool
 }
@@ -99,6 +109,23 @@ var videoExts = map[string]bool{
 	".mov":  true,
 }
 
+func toRenderMetadata(meta EvidenceMetadata) evidenceRenderMetadata {
+	label := meta.IssueID
+	if label == "" {
+		label = meta.IssueTitle
+	}
+	if label == "" {
+		label = meta.IssueURL
+	}
+	return evidenceRenderMetadata{
+		IssueURL:   meta.IssueURL,
+		IssueID:    meta.IssueID,
+		IssueTitle: meta.IssueTitle,
+		IssueLabel: label,
+		HasIssue:   label != "",
+	}
+}
+
 // toEvidenceModel maps a validated EvidenceInput (already sorted via
 // SortItems) to the template's render model. Alt-text default rule
 // (per spec §5): item.Alt → fall back to item.Title (NEVER to
@@ -117,6 +144,7 @@ func toEvidenceModel(in EvidenceInput, g Generator) evidenceRenderModel {
 			Alt:         alt,
 			Title:       it.Title,
 			Description: it.Description,
+			Metadata:    toRenderMetadata(it.Metadata),
 			IsImage:     imageExts[ext],
 			IsVideo:     videoExts[ext],
 		})
@@ -125,6 +153,7 @@ func toEvidenceModel(in EvidenceInput, g Generator) evidenceRenderModel {
 		Title:            in.Title,
 		Subtitle:         in.Subtitle,
 		Summary:          in.Summary,
+		Metadata:         toRenderMetadata(in.Metadata),
 		GeneratorVersion: g.version(),
 		Items:            items,
 	}
@@ -148,6 +177,7 @@ func renderEvidenceHTML(in EvidenceInput, outDir string, g Generator) error {
 		Title:    in.Title,
 		Subtitle: in.Subtitle,
 		Summary:  in.Summary,
+		Metadata: in.Metadata,
 		Items:    sorted,
 	}, g)
 

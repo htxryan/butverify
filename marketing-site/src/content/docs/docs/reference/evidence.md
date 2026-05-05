@@ -34,6 +34,11 @@ A minimal manifest:
   "title": "Login page redesign",
   "subtitle": "Ticket DELIVERY-1234 · 2026-04-27",
   "summary": "Updated the login form to match the new identity. All states pass automated tests; here is the human-visible proof.",
+  "metadata": {
+    "issue_url": "https://jira.example.com/browse/DELIVERY-1234",
+    "issue_id": "DELIVERY-1234",
+    "issue_title": "Login page redesign"
+  },
   "items": [
     {
       "src": "./screenshots/01-empty.png",
@@ -45,6 +50,11 @@ A minimal manifest:
       "src": "./screenshots/02-error.png",
       "title": "Inline validation",
       "description": "Empty-email submit shows the helper inline; field gets aria-describedby.",
+      "metadata": {
+        "issue_url": "https://jira.example.com/browse/DELIVERY-1235",
+        "issue_id": "DELIVERY-1235",
+        "issue_title": "Inline validation bug"
+      },
       "sequence": 2
     },
     {
@@ -64,7 +74,21 @@ A minimal manifest:
 | `title`    | string | yes      | Page `<title>` and the H1 above the gallery. ≤200 chars.                                                     |
 | `subtitle` | string | no       | Single secondary line below the title. ≤300 chars.                                                           |
 | `summary`  | string | no       | Short paragraph above the gallery (e.g. ticket ref, what was delivered). ≤2000 chars; preserves line breaks. |
+| `metadata` | object | no       | Work-management issue for the whole gallery when all items evidence one ticket/story/issue.                   |
 | `items`    | array  | yes (≥1) | One gallery entry per element.                                                                               |
+
+### Metadata fields
+
+`metadata` is optional at both the top level and on each item. Use the
+top-level object when the gallery proves one work-management item. Use
+item-level metadata when a specific screenshot/video maps to a different
+or more specific item.
+
+| Field         | Type   | Required | Notes                                                                                      |
+| ------------- | ------ | -------- | ------------------------------------------------------------------------------------------ |
+| `issue_url`   | string | no       | Absolute HTTP(S) URL for the work item, e.g. a Jira, Linear, GitHub, or Todoist issue URL. |
+| `issue_id`    | string | no       | Work item identifier/key, e.g. `DELIVERY-1234`, `ENG-456`, or `#789`.                     |
+| `issue_title` | string | no       | Work item title/summary from the source work-management system.                            |
 
 ### Item fields
 
@@ -75,6 +99,7 @@ A minimal manifest:
 | `description` | string  | no       | Body text shown beneath the asset. ≤2000 chars.                                                                                                                        |
 | `sequence`    | integer | no       | Explicit ordering. Sequenced items sort ascending; un-sequenced items keep JSON-array order and follow. Stable sort.                                                   |
 | `alt`         | string  | no       | Alt text for images. Defaults to the item's `title`; never falls back to `description`.                                                                                |
+| `metadata`    | object  | no       | Work-management issue for this capture when it differs from, or is more specific than, the top-level issue.                                                            |
 
 The JSON is parsed in **strict mode**: unknown top-level or item fields
 fail at parse time with a path pointing at the offending JSON node. The
@@ -191,12 +216,14 @@ Rendered evidence pages include a layout switcher. Viewers can swap
 between a vertical stacked view and a horizontal carousel without
 republishing the site.
 
-The stacked view renders each item as title, asset, and description in
-JSON-resolved order inside a scrollable content panel with a collapsible
-outline. The carousel view uses horizontal snap-scroll with previous/next
-buttons, paging buttons, and left/right keyboard navigation. Both views
-share the same HTML and JSON contract. Clicking an image opens a lightbox
-with zoom controls and a fullscreen toggle.
+The stacked view renders each item as title, asset, issue metadata, and
+description in JSON-resolved order inside a scrollable content panel with
+a collapsible outline. The carousel view uses horizontal snap-scroll with
+previous/next buttons, paging buttons, and left/right keyboard navigation.
+Top-level issue metadata appears in the pinned metadata strip and the
+expandable metadata sidebar. Both views share the same HTML and JSON
+contract. Clicking an image opens a lightbox with zoom controls and a
+fullscreen toggle.
 
 ## Bundle properties
 

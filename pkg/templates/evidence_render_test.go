@@ -22,6 +22,11 @@ func fixedEvidenceInput() EvidenceInput {
 		Title:    "Login redesign",
 		Subtitle: "Ticket DELIVERY-1234",
 		Summary:  "Updated the login form.\nAll states pass automated tests.",
+		Metadata: EvidenceMetadata{
+			IssueURL:   "https://jira.example.com/browse/DELIVERY-1234",
+			IssueID:    "DELIVERY-1234",
+			IssueTitle: "Login page redesign",
+		},
 		Items: []EvidenceItem{
 			{
 				Src:         "./screenshots/01-empty.png",
@@ -36,6 +41,11 @@ func fixedEvidenceInput() EvidenceInput {
 				Description: "Empty-email submit shows the helper inline.",
 				Sequence:    &seq2,
 				Alt:         "Form with red error text under the email field",
+				Metadata: EvidenceMetadata{
+					IssueURL:   "https://jira.example.com/browse/DELIVERY-1234",
+					IssueID:    "DELIVERY-1234",
+					IssueTitle: "Login page redesign",
+				},
 			},
 			{
 				Src:         "./videos/03-success.webm",
@@ -135,6 +145,10 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 		`data-ev-lightbox-close`,
 		`href="#item-1"`,
 		`href="#item-3"`,
+		`href="https://jira.example.com/browse/DELIVERY-1234"`,
+		`Issue ID`,
+		`Issue Title`,
+		`DELIVERY-1234`,
 		`class="ev-button-icon"`,
 		`class="ev-page-icon"`,
 	} {
