@@ -55,6 +55,11 @@ A minimal manifest:
         "issue_id": "DELIVERY-1235",
         "issue_title": "Inline validation bug"
       },
+      "properties": {
+        "commit": "abc123",
+        "build_number": 42,
+        "checks": { "unit": "passed", "lint": "passed" }
+      },
       "sequence": 2
     },
     {
@@ -100,6 +105,10 @@ or more specific item.
 | `sequence`    | integer | no       | Explicit ordering. Sequenced items sort ascending; un-sequenced items keep JSON-array order and follow. Stable sort.                                                   |
 | `alt`         | string  | no       | Alt text for images. Defaults to the item's `title`; never falls back to `description`.                                                                                |
 | `metadata`    | object  | no       | Work-management issue for this capture when it differs from, or is more specific than, the top-level issue.                                                            |
+| `properties`  | object  | no       | Arbitrary per-item metadata. Up to 50 non-empty keys, each ≤100 chars. String values are ≤1000 chars.                                                                  |
+
+String and number `properties` render as label/value rows. Object values
+render as formatted JSON in the collapsed item details panel.
 
 The JSON is parsed in **strict mode**: unknown top-level or item fields
 fail at parse time with a path pointing at the offending JSON node. The
@@ -177,7 +186,8 @@ The renderer enforces this in three steps: it canonicalises the root
 with `filepath.EvalSymlinks`, joins each `src` against it, canonicalises
 the result, and rejects anything whose relative path starts with `..`
 or resolves absolute. Both lexical (`../../etc/passwd`) and
-symlink-based traversal fail at parse time before any bytes are copied.
+symlink-based traversal fail during render preflight before any bytes are
+copied.
 
 **Recommended**: prefer `--from <path>` for narrow containment. Running
 `bv evidence --from -` from a broad CWD (e.g. a repo root) widens the
@@ -216,28 +226,36 @@ Rendered evidence pages include a layout switcher. Viewers can swap
 between a vertical stacked view and a horizontal carousel without
 republishing the site.
 
-The stacked view renders each item as title, asset, issue metadata, and
-description in JSON-resolved order inside a scrollable content panel with
-a collapsible outline. The carousel view uses horizontal snap-scroll with
-previous/next buttons, paging buttons, and left/right keyboard navigation.
-Top-level issue metadata appears in the pinned metadata strip and the
-expandable metadata sidebar. The light/dark mode toggle follows the
-browser preference until a viewer toggles it, then stores the last choice
+The stacked view renders each item as title, asset, and description in
+JSON-resolved order inside a scrollable content panel with a collapsible
+outline. Item issue metadata and `properties` are hidden by default behind
+each capture's collapsed **More Details** panel. The carousel view uses
+horizontal snap-scroll with previous/next buttons, paging buttons, and
+left/right keyboard navigation; previous is disabled on the first capture
+and next is disabled on the last capture. Carousel media is fit inside the
+viewport without cropping or stretching, while long captions scroll inside
+a fixed-height caption area.
+
+Top-level issue metadata appears in the pinned metadata bar and expandable
+metadata sidebar. The metadata bar also shows the item count, layout
+controls, `bv` version, and publication timestamp; the timestamp is
+rendered in the viewer browser's local timezone. The light/dark mode toggle
+follows the browser preference until a viewer toggles it, then stores the last choice
 in localStorage for future butverify pages on the same browser origin.
 Both views share the same HTML and JSON contract. Clicking an image opens
 a lightbox with zoom controls and a fullscreen toggle.
 
 ## Bundle properties
 
-- **Deterministic.** Re-running the renderer on the same input
-  produces byte-identical output. No wall-clock timestamps are
-  embedded.
+- **Publication-stamped.** Rendered pages embed the `bv` version and a UTC
+  publication timestamp that the viewer localizes in-browser.
 - **Static JavaScript only.** `evidence.js` is bundled locally and drives
   layout toggles, metadata/outline panels, carousel navigation, and image
   lightbox controls. It also persists the light/dark theme preference in
   localStorage. It does not fetch remote code or data.
-- **Small.** A typical input renders to under 50 KB of HTML+CSS;
-  copied assets are the bulk of the bundle.
+- **Small.** A typical input renders to under 100 KiB across `index.html`,
+  `styles.css`, and `evidence.js`; copied assets are the bulk of the
+  bundle.
 
 ## Caps
 
@@ -245,6 +263,9 @@ a lightbox with zoom controls and a fullscreen toggle.
 | -------------------------------- | -------------------- |
 | Per-asset file size              | 1 GiB                |
 | Items per evidence site          | 1..500               |
+| Per-item `properties` count      | 50                   |
+| `properties` key length          | 1..100 chars         |
+| `properties` string value length | ≤1000 chars          |
 | Stdin manifest size (`--from -`) | 4 MiB                |
 | Bundle upload (free tier)        | 100 MB               |
 | Bundle upload (paid tier)        | 1 GB                 |

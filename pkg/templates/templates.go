@@ -1,26 +1,27 @@
 // Package templates renders structured agent data into ready-to-publish
 // "evidence sites" — closes the loop on butverify.dev's "agent shows their
-// work" value prop. Two templates are exposed at v1: report (from JSON) and
-// dashboard (from CSV). Both produce a directory of static HTML/CSS that the
-// CLI's standard push flow uploads as a normal site.
+// work" value prop. The CLI exposes report (from JSON), dashboard (from CSV),
+// and evidence (from JSON manifests plus local media assets). Each produces a
+// directory of static files that the CLI's standard push flow uploads as a
+// normal site.
 //
 // Design principles, in order:
 //
 //  1. **Stdlib only** — no third-party deps. The HTML is rendered via Go's
 //     `html/template` (autoescaping built-in), CSV parsing via `encoding/csv`,
-//     charts as inline SVG generated from a few hand-rolled primitives. The
-//     resulting bundle has no JS runtime; everything renders on first paint.
+//     charts as inline SVG generated from a few hand-rolled primitives. Report
+//     and dashboard render without JavaScript; evidence bundles a small local
+//     script for viewer controls.
 //  2. **Schemas validate at parse time** — bad input fails before any HTML
 //     is written. The data contracts are documented in
 //     docs/specs/templates.md and tested as the source of truth.
-//  3. **Deterministic output** — a given input file always produces a
-//     byte-identical bundle. The deterministic-mtime + sorted-walk discipline
-//     in go/pkg/tarbundle relies on this so a templated `bv push` produces
-//     the same site_id each time (deterministic_site_id is derived from
-//     (tenant_id, upload_id), but the file bytes are also stable).
-//  4. **Bundle size budget** — typical input produces <2MB output (fitness
-//     function from the epic). Charts are SVG (KB-scale, not MB) and CSS is
-//     a single file embedded once.
+//  3. **Deterministic when generation metadata is pinned** — a given input
+//     file plus Generator produces a byte-identical bundle. Evidence renders
+//     include publication metadata, so callers/tests that require byte identity
+//     must pass Generator.Now.
+//  4. **Bundle size budget** — each template has a shell-size fitness test
+//     appropriate to its rendered surface. Media assets remain governed by
+//     upload-tier caps and evidence's per-asset limit.
 package templates
 
 import (
@@ -33,10 +34,9 @@ import (
 	"time"
 )
 
-// Generator is the version string injected into the rendered HTML's
-// <meta name="generator"> tag and the manifest. Wire this from the CLI's
-// build-time Version variable so audit logs can correlate a rendered site
-// to a specific CLI release.
+// Generator carries render-time metadata injected into generated HTML. Wire
+// Version from the CLI's build-time Version variable so audit logs can
+// correlate a rendered site to a specific CLI release.
 type Generator struct {
 	Version string
 	// Now overrides the timestamp written into the rendered footer; tests

@@ -81,6 +81,60 @@ func TestParseEvidence_AcceptsIssueMetadata(t *testing.T) {
 	}
 }
 
+func TestParseEvidence_AcceptsItemProperties(t *testing.T) {
+	in, err := ParseEvidence([]byte(`{
+	  "title": "X",
+	  "items": [{
+	    "src": "./a.png",
+	    "properties": {
+	      "commit": "abc123",
+	      "build_number": 42,
+	      "details": {"branch": "main", "attempt": 2}
+	    }
+	  }]
+	}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	props := in.Items[0].Properties
+	if props["commit"] != "abc123" {
+		t.Errorf("commit property: %#v", props["commit"])
+	}
+	if n, ok := props["build_number"].(json.Number); !ok || n.String() != "42" {
+		t.Errorf("build_number property: %#v", props["build_number"])
+	}
+	if _, ok := props["details"].(map[string]any); !ok {
+		t.Errorf("details property should decode as object: %#v", props["details"])
+	}
+}
+
+func TestParseEvidence_RejectsUnsupportedItemProperties(t *testing.T) {
+	for name, payload := range map[string]string{
+		"boolean":         `{"title":"X","items":[{"src":"./a.png","properties":{"ok":true}}]}`,
+		"array":           `{"title":"X","items":[{"src":"./a.png","properties":{"steps":["a"]}}]}`,
+		"null":            `{"title":"X","items":[{"src":"./a.png","properties":{"empty":null}}]}`,
+		"empty_name":      `{"title":"X","items":[{"src":"./a.png","properties":{"":"x"}}]}`,
+		"whitespace_name": `{"title":"X","items":[{"src":"./a.png","properties":{"   ":"x"}}]}`,
+		"too_many":        `{"title":"X","items":[{"src":"./a.png","properties":{` + manyJSONProperties(maxEvidenceProperties+1) + `}}]}`,
+		"too_long_string": `{"title":"X","items":[{"src":"./a.png","properties":{"log":"` + strings.Repeat("a", maxEvidencePropertyStringLen+1) + `"}}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseEvidence([]byte(payload))
+			if err == nil || !strings.Contains(err.Error(), "properties") {
+				t.Fatalf("expected properties type error, got %v", err)
+			}
+		})
+	}
+}
+
+func manyJSONProperties(n int) string {
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = fmt.Sprintf("%q:%q", "k"+strconv.Itoa(i), "v")
+	}
+	return strings.Join(parts, ",")
+}
+
 func TestParseEvidence_RejectsUnknownTopLevel(t *testing.T) {
 	_, err := ParseEvidence([]byte(`{
 	  "title": "X",
@@ -479,8 +533,8 @@ func TestValidate_IssueURLRequiresHTTP(t *testing.T) {
 // miniSchemaValidate below) per templates.go design principle 1. The
 // validator implements the subset of keywords actually used by
 // EvidenceSchema: type, required, additionalProperties, properties,
-// minLength, maxLength, minItems, maxItems, items, integer, pattern,
-// not, and anyOf. That's enough to verify the parity claim — every
+// propertyNames, minLength, maxLength, minItems, maxItems, maxProperties,
+// items, integer, pattern, not, and anyOf. That's enough to verify the parity claim — every
 // positive payload validates against the schema AND parses, every
 // negative payload fails both.
 
@@ -534,19 +588,20 @@ func TestEvidenceSchema_NegativeExamplesParityWithParser(t *testing.T) {
 // minimal-but-valid variants. Each must validate AND parse.
 func positivePayloads() map[string]string {
 	return map[string]string{
-		"spec_canonical":      specExampleJSON,
-		"single_image":        `{"title":"X","items":[{"src":"./a.png"}]}`,
-		"image_with_seq_zero": `{"title":"X","items":[{"src":"./a.png","sequence":0}]}`,
-		"video_mp4":           `{"title":"X","items":[{"src":"./clip.mp4","title":"clip","description":"d"}]}`,
-		"video_webm":          `{"title":"X","items":[{"src":"./clip.webm"}]}`,
-		"video_mov":           `{"title":"X","items":[{"src":"./clip.mov"}]}`,
-		"image_jpg":           `{"title":"X","items":[{"src":"./a.jpg"}]}`,
-		"image_jpeg":          `{"title":"X","items":[{"src":"./a.jpeg"}]}`,
-		"image_webp":          `{"title":"X","items":[{"src":"./a.webp"}]}`,
-		"image_gif":           `{"title":"X","items":[{"src":"./a.gif"}]}`,
-		"with_optional_alt":   `{"title":"X","subtitle":"sub","summary":"s","items":[{"src":"./a.png","alt":"alt text"}]}`,
-		"with_issue_metadata": `{"title":"X","metadata":{"issue_url":"https://jira.example.com/browse/ABC-123","issue_id":"ABC-123","issue_title":"Ship proof"},"items":[{"src":"./a.png","metadata":{"issue_url":"https://linear.app/acme/issue/ENG-456","issue_id":"ENG-456","issue_title":"Capture screenshot"}}]}`,
-		"deep_relative_path":  `{"title":"X","items":[{"src":"./screenshots/sub/a.png"}]}`,
+		"spec_canonical":       specExampleJSON,
+		"single_image":         `{"title":"X","items":[{"src":"./a.png"}]}`,
+		"image_with_seq_zero":  `{"title":"X","items":[{"src":"./a.png","sequence":0}]}`,
+		"video_mp4":            `{"title":"X","items":[{"src":"./clip.mp4","title":"clip","description":"d"}]}`,
+		"video_webm":           `{"title":"X","items":[{"src":"./clip.webm"}]}`,
+		"video_mov":            `{"title":"X","items":[{"src":"./clip.mov"}]}`,
+		"image_jpg":            `{"title":"X","items":[{"src":"./a.jpg"}]}`,
+		"image_jpeg":           `{"title":"X","items":[{"src":"./a.jpeg"}]}`,
+		"image_webp":           `{"title":"X","items":[{"src":"./a.webp"}]}`,
+		"image_gif":            `{"title":"X","items":[{"src":"./a.gif"}]}`,
+		"with_optional_alt":    `{"title":"X","subtitle":"sub","summary":"s","items":[{"src":"./a.png","alt":"alt text"}]}`,
+		"with_issue_metadata":  `{"title":"X","metadata":{"issue_url":"https://jira.example.com/browse/ABC-123","issue_id":"ABC-123","issue_title":"Ship proof"},"items":[{"src":"./a.png","metadata":{"issue_url":"https://linear.app/acme/issue/ENG-456","issue_id":"ENG-456","issue_title":"Capture screenshot"}}]}`,
+		"with_item_properties": `{"title":"X","items":[{"src":"./a.png","properties":{"commit":"abc123","build_number":42,"details":{"branch":"main"}}}]}`,
+		"deep_relative_path":   `{"title":"X","items":[{"src":"./screenshots/sub/a.png"}]}`,
 	}
 }
 
@@ -576,6 +631,8 @@ func negativePayloads() map[string]string {
 		"items_wrong_type":    `{"title":"X","items":"oops"}`,
 		"sequence_wrong_type": `{"title":"X","items":[{"src":"./a.png","sequence":"first"}]}`,
 		"bad_issue_url":       `{"title":"X","metadata":{"issue_url":"javascript:alert(1)"},"items":[{"src":"./a.png"}]}`,
+		"bad_property_type":   `{"title":"X","items":[{"src":"./a.png","properties":{"ok":true}}]}`,
+		"empty_property_name": `{"title":"X","items":[{"src":"./a.png","properties":{"":"x"}}]}`,
 	}
 }
 
@@ -636,8 +693,10 @@ const specExampleJSON = `{
 //   - required (array of strings)
 //   - additionalProperties (false)
 //   - properties (object)
+//   - propertyNames (object)
 //   - minLength / maxLength
 //   - minItems / maxItems
+//   - maxProperties
 //   - items (single subschema; tuple form not used)
 //   - pattern (Go regexp)
 //   - not + anyOf (just enough to express "no scheme prefix")
@@ -689,6 +748,18 @@ func msvCheck(schema, data any, path string) error {
 
 	switch d := data.(type) {
 	case map[string]any:
+		if mx, ok := s["maxProperties"]; ok {
+			if n := msvAsInt(mx); len(d) > n {
+				return msvErr(path, "more than maxProperties")
+			}
+		}
+		if propertyNames, ok := s["propertyNames"].(map[string]any); ok {
+			for k := range d {
+				if err := msvCheck(propertyNames, k, path+".<propertyName>"); err != nil {
+					return err
+				}
+			}
+		}
 		// required
 		if req, ok := s["required"].([]any); ok {
 			for _, r := range req {
@@ -698,13 +769,26 @@ func msvCheck(schema, data any, path string) error {
 				}
 			}
 		}
-		// additionalProperties: false
+		// additionalProperties: false or a single schema for arbitrary keys.
 		props, _ := s["properties"].(map[string]any)
 		if ap, exists := s["additionalProperties"]; exists {
-			if allow, isBool := ap.(bool); isBool && !allow {
+			switch allow := ap.(type) {
+			case bool:
+				if allow {
+					break
+				}
 				for k := range d {
 					if _, declared := props[k]; !declared {
 						return msvErr(path, "additional property not allowed: "+k)
+					}
+				}
+			case map[string]any:
+				for k, v := range d {
+					if _, declared := props[k]; declared {
+						continue
+					}
+					if err := msvCheck(allow, v, path+"."+k); err != nil {
+						return err
 					}
 				}
 			}
@@ -782,6 +866,10 @@ func msvCheckType(t string, data any, path string) error {
 		}
 		if f != float64(int64(f)) {
 			return msvErr(path, "expected integer (got fraction)")
+		}
+	case "number":
+		if _, ok := data.(float64); !ok {
+			return msvErr(path, "expected number")
 		}
 	}
 	return nil

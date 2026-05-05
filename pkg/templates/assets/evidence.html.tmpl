@@ -21,26 +21,20 @@
 <body>
 <a class="ev-skip" href="#ev-gallery">Skip to gallery</a>
 <div class="ev-app">
-  <header class="ev-topbar">
-    <div class="ev-title-row">
-      <div class="ev-title-stack">
-        {{if .Subtitle}}<p class="ev-kicker">{{.Subtitle}}</p>{{end}}
-        <h1 class="ev-title" id="ev-page-title">{{.Title}}</h1>
-      </div>
-      <button class="ev-meta-toggle" type="button" data-ev-meta-toggle aria-expanded="false" aria-controls="ev-meta-panel">
-        <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
-        <span>Metadata</span>
-      </button>
+  <header class="ev-topbar" aria-label="Evidence metadata bar">
+    <div class="ev-brand" aria-label="ButVerify Evidence">
+      <span class="ev-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 12.5 9.5 17 19 7"></path><path d="M4 4h16v16H4z"></path></svg>
+      </span>
+      <span class="ev-brand-copy">
+        <span class="ev-brand-title">Evidence</span>
+        <span class="ev-brand-subtitle">ButVerify</span>
+      </span>
     </div>
-    <div class="ev-meta-strip" aria-label="Evidence metadata">
+    <div class="ev-meta-strip" aria-label="Publication metadata">
       <span class="ev-meta-chip">{{len .Items}} items</span>
-      <span class="ev-meta-chip">template=evidence</span>
       {{if .GeneratorVersion}}<span class="ev-meta-chip">bv {{.GeneratorVersion}}</span>{{end}}
-      <button class="ev-theme-toggle" type="button" data-ev-theme-toggle aria-label="Switch color theme" aria-pressed="false">
-        <svg class="ev-button-icon" data-ev-theme-icon="sun" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
-        <svg class="ev-button-icon" data-ev-theme-icon="moon" aria-hidden="true" viewBox="0 0 24 24"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a7 7 0 1 0 11 11Z"></path></svg>
-        <span data-ev-theme-label>Theme</span>
-      </button>
+      <span class="ev-meta-chip">Published <time datetime="{{.PublishedAt}}" data-ev-published-at>{{.PublishedAt}}</time></span>
       {{if .Metadata.HasIssue}}
         {{if .Metadata.IssueURL}}
           <a class="ev-meta-chip ev-meta-link" href="{{.Metadata.IssueURL}}" target="_blank" rel="noopener noreferrer">
@@ -68,9 +62,20 @@
         </label>
       </fieldset>
     </div>
+    <div class="ev-topbar-actions">
+      <button class="ev-theme-toggle" type="button" data-ev-theme-toggle aria-label="Switch color theme" aria-pressed="false">
+        <svg class="ev-button-icon" data-ev-theme-icon="sun" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+        <svg class="ev-button-icon" data-ev-theme-icon="moon" aria-hidden="true" viewBox="0 0 24 24"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a7 7 0 1 0 11 11Z"></path></svg>
+        <span data-ev-theme-label>Theme</span>
+      </button>
+      <button class="ev-meta-toggle ev-slide-toggle" type="button" data-ev-meta-toggle aria-expanded="false" aria-controls="ev-meta-panel">
+        <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M9 9h6"></path><path d="M9 13h4"></path></svg>
+        <span>Metadata panel</span>
+      </button>
+    </div>
   </header>
   <main class="ev-main">
-    <aside class="ev-metadata-sidebar" id="ev-meta-panel" aria-labelledby="ev-meta-heading" hidden>
+    <aside class="ev-metadata-sidebar ev-slide-panel" id="ev-meta-panel" aria-labelledby="ev-meta-heading" hidden>
       <div class="ev-sidebar-head">
         <h2 id="ev-meta-heading">Metadata</h2>
         <button class="ev-icon-button" type="button" data-ev-meta-close aria-label="Close metadata">
@@ -78,30 +83,33 @@
           <span>Close</span>
         </button>
       </div>
-      <dl class="ev-meta-list">
-        <div><dt>Title</dt><dd>{{.Title}}</dd></div>
-        {{if .Subtitle}}<div><dt>Subtitle</dt><dd>{{.Subtitle}}</dd></div>{{end}}
-        {{if .Metadata.IssueID}}<div><dt>Issue ID</dt><dd>{{.Metadata.IssueID}}</dd></div>{{end}}
-        {{if .Metadata.IssueTitle}}<div><dt>Issue Title</dt><dd>{{.Metadata.IssueTitle}}</dd></div>{{end}}
-        {{if .Metadata.IssueURL}}<div><dt>Issue URL</dt><dd><a href="{{.Metadata.IssueURL}}" target="_blank" rel="noopener noreferrer">{{.Metadata.IssueURL}}</a></dd></div>{{end}}
-        <div><dt>Items</dt><dd>{{len .Items}}</dd></div>
-        <div><dt>Template</dt><dd>evidence</dd></div>
-        {{if .GeneratorVersion}}<div><dt>Generator</dt><dd>bv {{.GeneratorVersion}}</dd></div>{{end}}
-      </dl>
-      {{if .Summary}}
-        <section class="ev-meta-summary" aria-labelledby="ev-summary-heading">
-          <h3 id="ev-summary-heading">Summary</h3>
-          <p>{{.Summary}}</p>
-        </section>
-      {{end}}
-      <p class="ev-generated">Generated by <a href="https://butverify.dev">butverify.dev</a></p>
+      <div class="ev-sidebar-body">
+        <dl class="ev-meta-list">
+          <div><dt>Title</dt><dd>{{.Title}}</dd></div>
+          {{if .Subtitle}}<div><dt>Subtitle</dt><dd>{{.Subtitle}}</dd></div>{{end}}
+          {{if .Metadata.IssueID}}<div><dt>Issue ID</dt><dd>{{.Metadata.IssueID}}</dd></div>{{end}}
+          {{if .Metadata.IssueTitle}}<div><dt>Issue Title</dt><dd>{{.Metadata.IssueTitle}}</dd></div>{{end}}
+          {{if .Metadata.IssueURL}}<div><dt>Issue URL</dt><dd><a href="{{.Metadata.IssueURL}}" target="_blank" rel="noopener noreferrer">{{.Metadata.IssueURL}}</a></dd></div>{{end}}
+          <div><dt>Items</dt><dd>{{len .Items}}</dd></div>
+          <div><dt>Template</dt><dd>evidence</dd></div>
+          {{if .GeneratorVersion}}<div><dt>Generator</dt><dd>bv {{.GeneratorVersion}}</dd></div>{{end}}
+          <div><dt>Published</dt><dd><time datetime="{{.PublishedAt}}" data-ev-published-at>{{.PublishedAt}}</time></dd></div>
+        </dl>
+        {{if .Summary}}
+          <section class="ev-meta-summary" aria-labelledby="ev-summary-heading">
+            <h3 id="ev-summary-heading">Summary</h3>
+            <p>{{.Summary}}</p>
+          </section>
+        {{end}}
+        <p class="ev-generated">Generated by <a href="https://butverify.dev">butverify.dev</a></p>
+      </div>
     </aside>
     <section class="ev-content-panel" id="ev-gallery" aria-labelledby="ev-page-title">
-      <aside class="ev-outline" data-ev-outline aria-label="Evidence outline">
+      <aside class="ev-outline ev-slide-panel" data-ev-outline aria-label="Evidence outline">
         <div class="ev-outline-head">
-          <button class="ev-outline-toggle" type="button" data-ev-outline-toggle aria-expanded="true" aria-controls="ev-outline-list">
+          <button class="ev-outline-toggle ev-slide-toggle" type="button" data-ev-outline-toggle aria-expanded="true" aria-controls="ev-outline-list">
             <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h16"></path></svg>
-            <span class="ev-outline-label">Outline</span>
+            <span class="ev-outline-label">Outline panel</span>
           </button>
         </div>
         <nav class="ev-outline-nav" id="ev-outline-list">
@@ -115,9 +123,12 @@
       </aside>
       <section class="ev-gallery-panel" aria-label="Evidence items">
         <div class="ev-panel-toolbar">
-          <h2>Evidence</h2>
+          <div class="ev-title-stack">
+            {{if .Subtitle}}<p class="ev-kicker">{{.Subtitle}}</p>{{end}}
+            <h1 class="ev-title" id="ev-page-title">{{.Title}}</h1>
+          </div>
           <div class="ev-carousel-actions" aria-label="Carousel controls">
-            <button class="ev-step-button" type="button" data-ev-prev>
+            <button class="ev-step-button" type="button" data-ev-prev disabled>
               <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"></path></svg>
               <span>Previous</span>
             </button>
@@ -145,24 +156,39 @@
                       <video src="assets/{{$it.SafeName}}" preload="metadata" controls playsinline></video>
                     {{end}}
                   </div>
-                  {{if or $it.Title $it.Description $it.Metadata.HasIssue}}
+                  {{if or $it.Title $it.Description $it.HasDetails}}
                     <figcaption class="ev-caption">
                       <span class="ev-seq" aria-hidden="true">{{add1 $i}}</span>
                       {{if $it.Title}}<h3 class="ev-item-title">{{$it.Title}}</h3>{{end}}
-                      {{if $it.Metadata.HasIssue}}
-                        <p class="ev-item-issue">
-                          <svg class="ev-button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
-                          {{if $it.Metadata.IssueURL}}
-                            <a href="{{$it.Metadata.IssueURL}}" target="_blank" rel="noopener noreferrer">{{$it.Metadata.IssueLabel}}</a>
-                          {{else}}
-                            <span>{{$it.Metadata.IssueLabel}}</span>
-                          {{end}}
-                          {{if and $it.Metadata.IssueID $it.Metadata.IssueTitle}}
-                            <span class="ev-item-issue-title">{{$it.Metadata.IssueTitle}}</span>
-                          {{end}}
-                        </p>
-                      {{end}}
                       {{if $it.Description}}<p class="ev-item-desc">{{$it.Description}}</p>{{end}}
+                      {{if $it.HasDetails}}
+                        <details class="ev-item-details">
+                          <summary>More Details</summary>
+                          <div class="ev-item-details-body">
+                            {{if $it.Metadata.HasIssue}}
+                              <dl class="ev-item-detail-list">
+                                {{if $it.Metadata.IssueID}}<div><dt>Issue ID</dt><dd>{{$it.Metadata.IssueID}}</dd></div>{{end}}
+                                {{if $it.Metadata.IssueTitle}}<div><dt>Issue Title</dt><dd>{{$it.Metadata.IssueTitle}}</dd></div>{{end}}
+                                {{if $it.Metadata.IssueURL}}<div><dt>Issue URL</dt><dd><a href="{{$it.Metadata.IssueURL}}" target="_blank" rel="noopener noreferrer">{{$it.Metadata.IssueURL}}</a></dd></div>{{end}}
+                              </dl>
+                            {{end}}
+                            {{if $it.Properties}}
+                              <dl class="ev-item-detail-list ev-property-list">
+                                {{range $prop := $it.Properties}}
+                                  <div class="{{if $prop.IsJSON}}ev-property-json{{end}}">
+                                    <dt>{{$prop.Label}}</dt>
+                                    {{if $prop.IsJSON}}
+                                      <dd><pre class="ev-json-panel"><code>{{$prop.JSON}}</code></pre></dd>
+                                    {{else}}
+                                      <dd>{{$prop.Value}}</dd>
+                                    {{end}}
+                                  </div>
+                                {{end}}
+                              </dl>
+                            {{end}}
+                          </div>
+                        </details>
+                      {{end}}
                     </figcaption>
                   {{end}}
                 </figure>

@@ -62,6 +62,7 @@ type EvidenceItem struct {
 	Sequence    *int             `json:"sequence,omitempty"`
 	Alt         string           `json:"alt,omitempty"`
 	Metadata    EvidenceMetadata `json:"metadata,omitempty"`
+	Properties  map[string]any   `json:"properties,omitempty"`
 }
 
 // EvidenceMetadata describes the work-management item being evidenced.
@@ -76,17 +77,20 @@ type EvidenceMetadata struct {
 // Bounds from §5 / EARS §4. These are parse-time caps; bundle-size
 // enforcement happens server-side (HTTP 413) and is out of scope here.
 const (
-	maxEvidenceTitleLen      = 200
-	maxEvidenceSubtitleLen   = 300
-	maxEvidenceSummaryLen    = 2000
-	maxEvidenceItemTitleLen  = 200
-	maxEvidenceItemDescLen   = 2000
-	maxEvidenceItemAltLen    = 1000 // not in spec table; bounded for safety
-	maxEvidenceIssueURLLen   = 2048
-	maxEvidenceIssueIDLen    = 200
-	maxEvidenceIssueTitleLen = 300
-	maxEvidenceItems         = 500     // EV-N-5
-	evidenceStdinMaxBytes    = 4 << 20 // EV-N-6: 4 MiB
+	maxEvidenceTitleLen          = 200
+	maxEvidenceSubtitleLen       = 300
+	maxEvidenceSummaryLen        = 2000
+	maxEvidenceItemTitleLen      = 200
+	maxEvidenceItemDescLen       = 2000
+	maxEvidenceItemAltLen        = 1000 // not in spec table; bounded for safety
+	maxEvidenceIssueURLLen       = 2048
+	maxEvidenceIssueIDLen        = 200
+	maxEvidenceIssueTitleLen     = 300
+	maxEvidenceProperties        = 50
+	maxEvidencePropertyNameLen   = 100
+	maxEvidencePropertyStringLen = 1000
+	maxEvidenceItems             = 500     // EV-N-5
+	evidenceStdinMaxBytes        = 4 << 20 // EV-N-6: 4 MiB
 )
 
 // rejectedSrcSchemes is the closed set of URL schemes that MUST NOT
@@ -107,6 +111,7 @@ var rejectedSrcSchemes = []string{
 func ParseEvidence(input []byte) (EvidenceInput, error) {
 	var in EvidenceInput
 	dec := json.NewDecoder(bytes.NewReader(input))
+	dec.UseNumber()
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&in); err != nil {
 		return EvidenceInput{}, fmt.Errorf("templates: parse evidence: %w", err)
@@ -185,6 +190,38 @@ func validateItem(i int, it EvidenceItem) error {
 	}
 	if err := validateMetadata(fmt.Sprintf("templates: evidence.items[%d].metadata", i), it.Metadata); err != nil {
 		return err
+	}
+	if err := validateProperties(fmt.Sprintf("templates: evidence.items[%d].properties", i), it.Properties); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateProperties(path string, props map[string]any) error {
+	if len(props) > maxEvidenceProperties {
+		return fmt.Errorf("%s exceeds %d properties (got %d)", path, maxEvidenceProperties, len(props))
+	}
+	for k, v := range props {
+		if strings.TrimSpace(k) == "" {
+			return fmt.Errorf("%s contains an empty property name", path)
+		}
+		if len(k) > maxEvidencePropertyNameLen {
+			return fmt.Errorf("%s.%s property name exceeds %d chars (got %d)", path, k, maxEvidencePropertyNameLen, len(k))
+		}
+		switch val := v.(type) {
+		case string:
+			if len(val) > maxEvidencePropertyStringLen {
+				return fmt.Errorf("%s.%s exceeds %d chars (got %d)", path, k, maxEvidencePropertyStringLen, len(val))
+			}
+		case json.Number:
+			if _, err := val.Float64(); err != nil {
+				return fmt.Errorf("%s.%s must be a valid JSON number", path, k)
+			}
+		case float64:
+		case map[string]any:
+		default:
+			return fmt.Errorf("%s.%s must be a string, number, or object", path, k)
+		}
 	}
 	return nil
 }
@@ -426,6 +463,19 @@ const EvidenceSchema = `{
                 "maxLength": 300,
                 "description": "Work item title/summary from the source system."
               }
+            }
+          },
+          "properties": {
+            "type": "object",
+            "maxProperties": 50,
+            "propertyNames": {"minLength": 1, "maxLength": 100, "pattern": "\\S"},
+            "description": "Optional arbitrary per-item metadata. Property names must be non-empty. String and number values render as label/value rows; object values render as formatted JSON in the item's collapsed More Details panel.",
+            "additionalProperties": {
+              "anyOf": [
+                {"type": "string", "maxLength": 1000},
+                {"type": "number"},
+                {"type": "object"}
+              ]
             }
           }
         }

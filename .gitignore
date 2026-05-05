@@ -6,6 +6,7 @@ dist/
 .astro/
 .wrangler/
 build/
+.butverify/
 
 # Test / coverage
 coverage/

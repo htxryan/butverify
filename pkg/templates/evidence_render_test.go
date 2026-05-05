@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fixedEvidenceInput is the canonical input used by render tests. It
@@ -64,7 +65,7 @@ func fixedEvidenceInput() EvidenceInput {
 
 func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 	in := fixedEvidenceInput()
-	g := Generator{Version: "1.2.3"}
+	g := Generator{Version: "1.2.3", Now: time.Date(2026, 5, 4, 12, 30, 0, 0, time.UTC)}
 
 	dir1 := t.TempDir()
 	if err := renderEvidenceHTML(in, dir1, g); err != nil {
@@ -109,6 +110,31 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 	if string(js1) != string(js2) {
 		t.Errorf("non-deterministic evidence.js — bundles differ across runs")
 	}
+	for _, want := range []string{
+		`--ev-carousel-caption-height`,
+		`body:has(#ev-layout-carousel:checked) .ev-caption`,
+		`max-height: var(--ev-carousel-caption-height)`,
+		`grid-template-columns: auto minmax(0, 1fr)`,
+		`@media (max-width: 36rem)`,
+	} {
+		if !strings.Contains(string(css1), want) {
+			t.Errorf("styles.css missing responsive/carousel marker %q", want)
+		}
+	}
+	for _, want := range []string{
+		`[data-ev-published-at]`,
+		`toLocaleString`,
+		`(max-width: 48rem)`,
+		`setOutlineCollapsed(true)`,
+		`mobileQuery.addEventListener("change"`,
+		`function stepBy(delta)`,
+		`prev.toggleAttribute("disabled"`,
+		`next.toggleAttribute("disabled"`,
+	} {
+		if !strings.Contains(string(js1), want) {
+			t.Errorf("evidence.js missing behavior marker %q", want)
+		}
+	}
 
 	s := string(html1)
 
@@ -123,7 +149,12 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 	for _, want := range []string{
 		`localStorage.getItem("butverify:theme")`,
 		`class="ev-topbar"`,
+		`class="ev-brand"`,
+		`Evidence</span>`,
+		`ButVerify</span>`,
 		`class="ev-meta-strip"`,
+		`data-ev-published-at`,
+		`2026-05-04T12:30:00Z`,
 		`id="ev-meta-panel"`,
 		`hidden`,
 		`data-ev-theme-toggle`,
@@ -133,10 +164,13 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 		`for="ev-layout-stacked"`,
 		`for="ev-layout-carousel"`,
 		`class="ev-content-panel"`,
-		`class="ev-outline"`,
+		`class="ev-outline `,
+		`Outline panel`,
+		`Metadata panel`,
 		`data-ev-outline-toggle`,
 		`data-ev-prev`,
 		`data-ev-next`,
+		`disabled`,
 		`class="ev-track"`,
 		`class="ev-slide"`,
 		`class="ev-pager"`,
@@ -152,6 +186,7 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 		`Issue ID`,
 		`Issue Title`,
 		`DELIVERY-1234`,
+		`More Details`,
 		`class="ev-button-icon"`,
 		`class="ev-page-icon"`,
 	} {
@@ -214,9 +249,58 @@ func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 		t.Errorf("expected explicit alt to be preserved; not found in HTML")
 	}
 
-	// Generator metadata is rendered (Version) but no timestamp (EV-U-7).
+	// Generator and publication metadata are rendered for auditability.
 	if !strings.Contains(s, `bv 1.2.3`) {
 		t.Errorf("expected generator version \"bv 1.2.3\" in output")
+	}
+	if !strings.Contains(s, `Published`) || !strings.Contains(s, `data-ev-published-at`) {
+		t.Errorf("expected published timestamp metadata in output")
+	}
+}
+
+func TestRenderEvidenceHTML_ItemPropertiesDetails(t *testing.T) {
+	seq := 1
+	in := EvidenceInput{
+		Title: "Properties proof",
+		Items: []EvidenceItem{{
+			Src:         "./screenshots/01-empty.png",
+			Title:       "Empty state",
+			Description: "Page loads with no validation errors.",
+			Sequence:    &seq,
+			Properties: map[string]any{
+				"commit":       "abc123",
+				"build_number": json.Number("42"),
+				"details": map[string]any{
+					"branch": "main",
+					"status": "passed",
+				},
+			},
+		}},
+	}
+	dir := t.TempDir()
+	if err := renderEvidenceHTML(in, dir, Generator{Version: "test", Now: time.Date(2026, 5, 4, 12, 30, 0, 0, time.UTC)}); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "index.html"))
+	if err != nil {
+		t.Fatalf("read index: %v", err)
+	}
+	s := string(b)
+	for _, want := range []string{
+		`More Details`,
+		`build_number`,
+		`42`,
+		`commit`,
+		`abc123`,
+		`details`,
+		`ev-json-panel`,
+		`ev-json-key`,
+		`branch`,
+		`main`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("properties render missing %q", want)
+		}
 	}
 }
 
@@ -271,9 +355,10 @@ func TestRenderEvidenceHTML_EscapesScriptTagInputs(t *testing.T) {
 // Bundle size assertion (fitness function).
 // ---------------------------------------------------------------------------
 
-func TestRenderEvidenceHTML_BundleUnder50KB(t *testing.T) {
+func TestRenderEvidenceHTML_BundleUnder100KB(t *testing.T) {
 	// A typical small gallery's index.html + styles.css + evidence.js must
-	// stay well under 50 KB combined. This keeps the static shell small.
+	// stay under 100 KB combined. This keeps the static shell small while
+	// leaving room for readable source assets and richer viewer behavior.
 	dir := t.TempDir()
 	if err := renderEvidenceHTML(fixedEvidenceInput(), dir, Generator{Version: "1"}); err != nil {
 		t.Fatalf("render: %v", err)
@@ -291,7 +376,7 @@ func TestRenderEvidenceHTML_BundleUnder50KB(t *testing.T) {
 		t.Fatalf("stat evidence.js: %v", err)
 	}
 	total := htmlInfo.Size() + cssInfo.Size() + jsInfo.Size()
-	const limit = 50 * 1024
+	const limit = 100 * 1024
 	if total > limit {
 		t.Errorf("bundle (index.html + styles.css + evidence.js) is %d bytes; limit %d", total, limit)
 	}

@@ -26,9 +26,12 @@ package templates
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"fmt"
+	"html"
 	"html/template"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -69,6 +72,7 @@ type evidenceRenderModel struct {
 	Summary          string
 	Metadata         evidenceRenderMetadata
 	GeneratorVersion string
+	PublishedAt      string
 	Items            []evidenceRenderItem
 }
 
@@ -86,8 +90,17 @@ type evidenceRenderItem struct {
 	Title       string
 	Description string
 	Metadata    evidenceRenderMetadata
+	Properties  []evidenceRenderProperty
+	HasDetails  bool
 	IsImage     bool
 	IsVideo     bool
+}
+
+type evidenceRenderProperty struct {
+	Label  string
+	Value  string
+	JSON   template.HTML
+	IsJSON bool
 }
 
 // imageExts and videoExts mirror the closed allowlist documented in
@@ -126,6 +139,108 @@ func toRenderMetadata(meta EvidenceMetadata) evidenceRenderMetadata {
 	}
 }
 
+func toRenderProperties(props map[string]any) []evidenceRenderProperty {
+	if len(props) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	out := make([]evidenceRenderProperty, 0, len(keys))
+	for _, k := range keys {
+		v := props[k]
+		prop := evidenceRenderProperty{Label: k}
+		switch val := v.(type) {
+		case string:
+			prop.Value = val
+		case json.Number:
+			prop.Value = val.String()
+		case float64:
+			prop.Value = fmt.Sprintf("%g", val)
+		case map[string]any:
+			prop.IsJSON = true
+			prop.JSON = highlightJSON(val)
+		default:
+			prop.Value = fmt.Sprint(val)
+		}
+		out = append(out, prop)
+	}
+	return out
+}
+
+func highlightJSON(v any) template.HTML {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return template.HTML(html.EscapeString(fmt.Sprint(v)))
+	}
+	return template.HTML(highlightJSONText(string(b)))
+}
+
+func highlightJSONText(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch {
+		case c == '"':
+			j := i + 1
+			for j < len(s) {
+				if s[j] == '\\' {
+					j += 2
+					continue
+				}
+				if s[j] == '"' {
+					j++
+					break
+				}
+				j++
+			}
+			className := "ev-json-string"
+			for k := j; k < len(s); k++ {
+				if s[k] == ':' {
+					className = "ev-json-key"
+					break
+				}
+				if s[k] != ' ' && s[k] != '\t' && s[k] != '\n' && s[k] != '\r' {
+					break
+				}
+			}
+			writeJSONSpan(&b, className, s[i:j])
+			i = j
+		case c == '-' || (c >= '0' && c <= '9'):
+			j := i + 1
+			for j < len(s) && strings.ContainsRune("0123456789.eE+-", rune(s[j])) {
+				j++
+			}
+			writeJSONSpan(&b, "ev-json-number", s[i:j])
+			i = j
+		case strings.HasPrefix(s[i:], "true"):
+			writeJSONSpan(&b, "ev-json-literal", "true")
+			i += 4
+		case strings.HasPrefix(s[i:], "false"):
+			writeJSONSpan(&b, "ev-json-literal", "false")
+			i += 5
+		case strings.HasPrefix(s[i:], "null"):
+			writeJSONSpan(&b, "ev-json-literal", "null")
+			i += 4
+		default:
+			b.WriteString(html.EscapeString(s[i : i+1]))
+			i++
+		}
+	}
+	return b.String()
+}
+
+func writeJSONSpan(b *strings.Builder, className, text string) {
+	b.WriteString(`<span class="`)
+	b.WriteString(className)
+	b.WriteString(`">`)
+	b.WriteString(html.EscapeString(text))
+	b.WriteString(`</span>`)
+}
+
 // toEvidenceModel maps a validated EvidenceInput (already sorted via
 // SortItems) to the template's render model. Alt-text default rule
 // (per spec §5): item.Alt → fall back to item.Title (NEVER to
@@ -139,12 +254,16 @@ func toEvidenceModel(in EvidenceInput, g Generator) evidenceRenderModel {
 		if alt == "" {
 			alt = it.Title
 		}
+		metadata := toRenderMetadata(it.Metadata)
+		properties := toRenderProperties(it.Properties)
 		items = append(items, evidenceRenderItem{
 			SafeName:    SafeAssetName(it, i),
 			Alt:         alt,
 			Title:       it.Title,
 			Description: it.Description,
-			Metadata:    toRenderMetadata(it.Metadata),
+			Metadata:    metadata,
+			Properties:  properties,
+			HasDetails:  metadata.HasIssue || len(properties) > 0,
 			IsImage:     imageExts[ext],
 			IsVideo:     videoExts[ext],
 		})
@@ -155,6 +274,7 @@ func toEvidenceModel(in EvidenceInput, g Generator) evidenceRenderModel {
 		Summary:          in.Summary,
 		Metadata:         toRenderMetadata(in.Metadata),
 		GeneratorVersion: g.version(),
+		PublishedAt:      g.generatedAt(),
 		Items:            items,
 	}
 }
@@ -168,9 +288,8 @@ func toEvidenceModel(in EvidenceInput, g Generator) evidenceRenderModel {
 //     function this file calls when building href attributes
 //   - creating outDir
 //
-// Determinism: this function MUST NOT embed any wall-clock timestamp in
-// the output (EV-U-7). Generator.Now is intentionally unused here; only
-// Generator.Version is rendered (into the <meta name="generator"> tag).
+// Tests pin Generator.Now when byte-identical output matters; production
+// renders use it for publication metadata shown in the evidence top bar.
 func renderEvidenceHTML(in EvidenceInput, outDir string, g Generator) error {
 	sorted := SortItems(in.Items)
 	model := toEvidenceModel(EvidenceInput{
