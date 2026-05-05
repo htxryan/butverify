@@ -9,6 +9,9 @@
 //	bv evidence --from in.json --push    # render to ephemeral tmp + push (EV-E-5)
 //	bv evidence --from - --out DIR       # read manifest from stdin
 //
+// Rendered evidence pages include a viewer-side layout switcher; layout is
+// intentionally not a publish-time CLI option.
+//
 // The CLI passes `template=evidence` on POST /v1/sites so the server
 // counts the templated site against the tenant's monthly fairness
 // counter (EV-O-1 / O-3). EV-E-8: the server-side rollout adding
@@ -60,7 +63,6 @@ type evidenceFlags struct {
 	out      *string
 	push     *bool
 	schema   *bool
-	layout   *string
 	uploadID *string
 	ttl      *int64
 	quality  *int
@@ -77,7 +79,6 @@ func newEvidenceFlagSet() (*flag.FlagSet, evidenceFlags) {
 		out:      values.String("out"),
 		push:     values.Bool("push"),
 		schema:   values.Bool("schema"),
-		layout:   values.String("layout"),
 		uploadID: values.String("upload-id"),
 		ttl:      values.Int64("ttl-seconds"),
 		quality:  values.Int("image-quality"),
@@ -92,7 +93,6 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	out := f.out
 	push := f.push
 	schema := f.schema
-	layout := f.layout
 	uploadIDFlag := f.uploadID
 	ttlFlag := f.ttl
 	imageQuality := f.quality
@@ -113,16 +113,6 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	// EV-E-4: --from required when --schema is not set.
 	if *from == "" {
 		g.w.Error(toErrorEnvelope(usageError("evidence")))
-		return 2
-	}
-
-	// EV-E-7: validate --layout up front so an unknown value fails
-	// before any I/O.
-	switch *layout {
-	case "stacked", "carousel":
-		// ok
-	default:
-		g.w.Error(toErrorEnvelope(fmt.Errorf("unknown --layout %q (supported values: stacked, carousel)", *layout)))
 		return 2
 	}
 
@@ -161,7 +151,6 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	// --out + --push allowed (render to user dir, then push from there).
 	// --out alone: render only. --push alone: ephemeral tmp dir.
 	opts := templates.RenderOptions{
-		Layout:          *layout,
 		OutDir:          *out,
 		ContainmentRoot: containmentRoot,
 	}
@@ -185,7 +174,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	}
 	defer cleanupEphemeral()
 
-	g.w.Status("Rendered evidence (%d items, layout=%s) to %s", len(in.Items), *layout, bundleDir)
+	g.w.Status("Rendered evidence (%d items) to %s", len(in.Items), bundleDir)
 
 	if !*push {
 		// Render-only mode: emit a small JSON summary so a piped
@@ -196,12 +185,11 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 				OutDir   string `json:"out_dir"`
 				Title    string `json:"title"`
 				Items    int    `json:"items"`
-				Layout   string `json:"layout"`
 				Template string `json:"template"`
-			}{true, bundleDir, in.Title, len(in.Items), *layout, "evidence"})
+			}{true, bundleDir, in.Title, len(in.Items), "evidence"})
 			return 0
 		}
-		g.w.Human("Evidence rendered to %s (%d items, layout=%s)", bundleDir, len(in.Items), *layout)
+		g.w.Human("Evidence rendered to %s (%d items)", bundleDir, len(in.Items))
 		g.w.Human("To publish:  bv push %s", bundleDir)
 		return 0
 	}

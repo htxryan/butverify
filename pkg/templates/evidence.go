@@ -623,7 +623,8 @@ func SafeAssetName(item EvidenceItem, idx int) string {
 // long positional arg list) keeps the call site readable as new fields
 // land in v1.x.
 type RenderOptions struct {
-	// Layout is "stacked" (default) or "carousel". Empty == "stacked".
+	// Deprecated: ignored. Evidence pages include a viewer-side layout
+	// switcher, so layout is no longer chosen at render/publish time.
 	Layout string
 	// OutDir is the user-supplied --out target. Empty when --push only:
 	// in that case RenderEvidence creates a CLI-owned temp dir, returns
@@ -688,17 +689,6 @@ func RenderEvidence(input []byte, opts RenderOptions, g Generator) (EvidenceInpu
 		return in, "", errors.New("templates: evidence RenderOptions.ContainmentRoot is required")
 	}
 
-	layout := opts.Layout
-	if layout == "" {
-		layout = "stacked"
-	}
-	switch layout {
-	case "stacked", "carousel":
-		// ok
-	default:
-		return in, "", fmt.Errorf("templates: evidence layout %q not supported (expected stacked or carousel)", layout)
-	}
-
 	// Pre-flight: build dst names for every (sorted) item and detect
 	// collisions BEFORE any I/O (EV-N-2). With the current safe-name
 	// function this guard is defensive — the index prefix uniquifies
@@ -732,9 +722,9 @@ func RenderEvidence(input []byte, opts RenderOptions, g Generator) (EvidenceInpu
 
 	// Branch on --out vs --push-only.
 	if opts.OutDir != "" {
-		return renderToOutDir(in, opts, layout, dstNames, resolvedSrcs, g)
+		return renderToOutDir(in, opts, dstNames, resolvedSrcs, g)
 	}
-	return renderToTempDir(in, layout, dstNames, resolvedSrcs, g)
+	return renderToTempDir(in, dstNames, resolvedSrcs, g)
 }
 
 // errEvidenceAborted signals that the asset-copy loop bailed because
@@ -751,7 +741,7 @@ var errEvidenceAborted = errors.New("templates: evidence render aborted by signa
 // renderToTempDir handles the --push-only path: create a CLI-owned temp
 // dir and return its absolute path. The caller (T5) owns cleanup and
 // signal handling; we install nothing here.
-func renderToTempDir(in EvidenceInput, layout string, dstNames, resolvedSrcs []string, g Generator) (EvidenceInput, string, error) {
+func renderToTempDir(in EvidenceInput, dstNames, resolvedSrcs []string, g Generator) (EvidenceInput, string, error) {
 	tmpName, err := renderTempName()
 	if err != nil {
 		return in, "", fmt.Errorf("templates: evidence tmp name: %w", err)
@@ -765,7 +755,7 @@ func renderToTempDir(in EvidenceInput, layout string, dstNames, resolvedSrcs []s
 	// --push mode: no signal handler at this layer (the caller, T5, owns
 	// process-level signals and tmp cleanup per EV-E-5). Pass a nil
 	// abort channel; writeBundleContents treats nil as "never aborts".
-	if err := writeBundleContents(in, layout, tmpDir, dstNames, resolvedSrcs, g, nil); err != nil {
+	if err := writeBundleContents(in, tmpDir, dstNames, resolvedSrcs, g, nil); err != nil {
 		// Best-effort cleanup on failure; caller would clean up too,
 		// but we own this dir until we return.
 		_ = os.RemoveAll(tmpDir)
@@ -778,7 +768,7 @@ func renderToTempDir(in EvidenceInput, layout string, dstNames, resolvedSrcs []s
 // sibling-tmp build, signal-handler cleanup (sibling-tmp only — never
 // touches opts.OutDir), atomic rename, RENAME_NOREPLACE-ish concurrent
 // guard.
-func renderToOutDir(in EvidenceInput, opts RenderOptions, layout string, dstNames, resolvedSrcs []string, g Generator) (EvidenceInput, string, error) {
+func renderToOutDir(in EvidenceInput, opts RenderOptions, dstNames, resolvedSrcs []string, g Generator) (EvidenceInput, string, error) {
 	absOut, err := filepath.Abs(opts.OutDir)
 	if err != nil {
 		return in, "", fmt.Errorf("templates: evidence --out abs %q: %w", opts.OutDir, err)
@@ -873,7 +863,7 @@ func renderToOutDir(in EvidenceInput, opts RenderOptions, layout string, dstName
 		close(done)
 	}()
 
-	werr := writeBundleContents(in, layout, siblingTmp, dstNames, resolvedSrcs, g, abort)
+	werr := writeBundleContents(in, siblingTmp, dstNames, resolvedSrcs, g, abort)
 	close(writerDone)
 	if werr != nil {
 		// The signal handler may have already initiated cleanup. doCleanup
@@ -920,7 +910,7 @@ func renderToOutDir(in EvidenceInput, opts RenderOptions, layout string, dstName
 // per-asset cap (EV-S-2) — see renderToOutDir's signal-handler comment
 // for the residual race analysis. A nil abort channel means "never
 // aborts" (the --push mode in renderToTempDir uses this).
-func writeBundleContents(in EvidenceInput, layout, outDir string, dstNames, resolvedSrcs []string, g Generator, abort <-chan struct{}) error {
+func writeBundleContents(in EvidenceInput, outDir string, dstNames, resolvedSrcs []string, g Generator, abort <-chan struct{}) error {
 	assetsDir := filepath.Join(outDir, "assets")
 	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
 		return fmt.Errorf("templates: evidence assets dir: %w", err)
@@ -954,5 +944,5 @@ func writeBundleContents(in EvidenceInput, layout, outDir string, dstNames, reso
 	// T4 owns the actual template execution. We pass items already
 	// sorted (per EVSC-10) and dstNames so the template can build the
 	// `assets/<name>` href without re-deriving the safe-name.
-	return renderEvidenceHTML(in, layout, outDir, g)
+	return renderEvidenceHTML(in, outDir, g)
 }

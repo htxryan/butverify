@@ -130,12 +130,6 @@ default to `local`; `bv login` switches the default to `remote`.
 Prints the JSON Schema for `evidence.json` to stdout and exits 0. The
 example payload in this page validates against it.
 
-### `--layout {stacked|carousel}`
-
-Picks the rendered layout. Default is `stacked` (vertical figure-stack).
-`carousel` opts into a CSS-only horizontal snap-scroll variant. Any
-other value exits with a usage error listing the supported set.
-
 ### `--ttl-seconds N`
 
 Paid-plan TTL override for the published site. Free-plan accounts get
@@ -193,18 +187,14 @@ should output PNG/JPEG/WebP.
 
 ## Layouts
 
-### Stacked (default)
+Rendered evidence pages include a CSS-only layout switcher. Viewers can
+swap between a vertical stacked view and a horizontal carousel without
+republishing the site.
 
-A vertical figure-stack. Each item renders as title, asset, and
-description in JSON-resolved order. Best for "here is what changed,
-walked top-to-bottom."
-
-### Carousel (`--layout carousel`)
-
-A CSS-only horizontal snap-scroll. Pager links anchor-jump between
-items; arrow keys scroll natively. No JavaScript — same JSON contract
-as stacked. Both layouts are covered by golden-snapshot tests so
-template edits cannot silently produce the wrong output.
+The stacked view renders each item as title, asset, and description in
+JSON-resolved order. The carousel view uses horizontal snap-scroll with
+pager links that anchor-jump between items. No JavaScript — both views
+share the same HTML and JSON contract.
 
 ## Bundle properties
 

@@ -1424,7 +1424,7 @@ func TestWriteBundleContents_AbortChannelStopsLoopBetweenCopies(t *testing.T) {
 	// iteration check and never copy any asset.
 	abort := make(chan struct{})
 	close(abort)
-	err := writeBundleContents(in, "stacked", outDir, dstNames, resolvedSrcs, Generator{}, abort)
+	err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, abort)
 	if err == nil {
 		t.Fatal("expected abort error, got nil")
 	}
@@ -1463,7 +1463,7 @@ func TestWriteBundleContents_NilAbortChannelNeverAborts(t *testing.T) {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeBundleContents(in, "stacked", outDir, dstNames, resolvedSrcs, Generator{}, nil); err != nil {
+	if err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, nil); err != nil {
 		t.Fatalf("nil abort channel: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "assets", dstNames[0])); err != nil {
@@ -1506,7 +1506,7 @@ func TestWriteBundleContents_AbortMidLoopStopsRemainingCopies(t *testing.T) {
 	// expect zero asset copies AND errEvidenceAborted.
 	abort := make(chan struct{})
 	close(abort)
-	err := writeBundleContents(in, "stacked", outDir, dstNames, resolvedSrcs, Generator{}, abort)
+	err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, abort)
 	if !errors.Is(err, errEvidenceAborted) {
 		t.Fatalf("expected errEvidenceAborted, got %v", err)
 	}
@@ -1897,26 +1897,32 @@ func TestRenderEvidence_RejectsEmptyContainmentRoot(t *testing.T) {
 	}
 }
 
-// EV-E-7 / unknown layout flagged at RenderEvidence (not just at flag
-// parse): defense-in-depth so a programmatic caller can't sneak past
-// the cmd_evidence.go layout switch.
-func TestRenderEvidence_RejectsUnknownLayout(t *testing.T) {
+// RenderOptions.Layout is retained as a deprecated compatibility field
+// but ignored: evidence pages now include a viewer-side layout switcher.
+func TestRenderEvidence_IgnoresDeprecatedLayoutOption(t *testing.T) {
 	dir := t.TempDir()
 	contRoot := filepath.Join(dir, "root")
 	if err := os.MkdirAll(contRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(contRoot, "a.png"), makePNG(t), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	body := []byte(`{"title":"X","items":[{"src":"./a.png"}]}`)
-	_, _, err := RenderEvidence(body, RenderOptions{
-		Layout:          "diorama", // not stacked or carousel
+	_, outDir, err := RenderEvidence(body, RenderOptions{
+		Layout:          "diorama", // ignored, not validated
 		OutDir:          filepath.Join(dir, "out"),
 		ContainmentRoot: contRoot,
 	}, Generator{})
-	if err == nil {
-		t.Fatal("expected unknown-layout error")
+	if err != nil {
+		t.Fatalf("RenderEvidence: %v", err)
 	}
-	if !strings.Contains(err.Error(), "diorama") {
-		t.Errorf("error should name the bad layout: %v", err)
+	idx, err := os.ReadFile(filepath.Join(outDir, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(idx), `id="ev-layout-carousel"`) {
+		t.Errorf("expected switchable layout UI despite deprecated Layout option")
 	}
 }
 
@@ -2100,7 +2106,7 @@ func TestWriteBundleContents_PostLoopAbortCheck(t *testing.T) {
 	in := EvidenceInput{Title: "X", Items: nil} // zero items deliberately
 	abort := make(chan struct{})
 	close(abort)
-	err := writeBundleContents(in, "stacked", outDir, nil, nil, Generator{}, abort)
+	err := writeBundleContents(in, outDir, nil, nil, Generator{}, abort)
 	if !errors.Is(err, errEvidenceAborted) {
 		t.Fatalf("expected errEvidenceAborted from post-loop check; got %v", err)
 	}

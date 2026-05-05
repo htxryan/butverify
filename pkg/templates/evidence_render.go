@@ -1,6 +1,6 @@
 // Evidence template rendering: produces index.html + styles.css from a
-// validated EvidenceInput, in either the default stacked layout or the
-// CSS-only carousel variant.
+// validated EvidenceInput. The rendered page includes a CSS-only control
+// for switching between stacked and carousel layouts.
 //
 // This file is the wave-1 minimal-shell renderer (E12-T4). Asset copy,
 // MIME sniffing, path containment, atomic --out, and tmp-dir cleanup
@@ -8,7 +8,7 @@
 //
 //   - T3 owns asset placement: assets land at outDir/assets/<safe-name>
 //     before this code runs. T3's RenderEvidence calls
-//     renderEvidenceHTML(in, layout, outDir, g) at the end. The
+//     renderEvidenceHTML(in, outDir, g) at the end. The
 //     canonical safe-name algorithm — used both for on-disk filenames
 //     AND for `<img src="assets/...">` hrefs in the HTML — lives in
 //     evidence.go as the exported `SafeAssetName`. This file calls it
@@ -25,30 +25,26 @@ package templates
 import (
 	"bytes"
 	"embed"
-	"errors"
 	"fmt"
 	"html/template"
 	"path/filepath"
 	"strings"
 )
 
-//go:embed assets/evidence.html.tmpl assets/evidence-carousel.html.tmpl assets/evidence.css
+//go:embed assets/evidence.html.tmpl assets/evidence.css
 var evidenceFS embed.FS
 
-// evidenceFuncs are the template helpers we need for the carousel variant
-// (1-based pager labels). Kept tiny on purpose — every helper is a chance
-// for a typo to break the layout.
+// evidenceFuncs are the template helpers we need for 1-based item labels.
+// Kept tiny on purpose — every helper is a chance for a typo to break the
+// layout.
 var evidenceFuncs = template.FuncMap{
 	"add1": func(i int) int { return i + 1 },
 }
 
-// evidenceStackedTmpl and evidenceCarouselTmpl are parsed once at init.
-// Parse failure is a programmer error (templates ship in the binary), so
-// we panic — there's no runtime fallback.
-var (
-	evidenceStackedTmpl  = mustParseEvidence("assets/evidence.html.tmpl")
-	evidenceCarouselTmpl = mustParseEvidence("assets/evidence-carousel.html.tmpl")
-)
+// evidenceTmpl is parsed once at init. Parse failure is a programmer
+// error (templates ship in the binary), so we panic — there's no runtime
+// fallback.
+var evidenceTmpl = mustParseEvidence("assets/evidence.html.tmpl")
 
 func mustParseEvidence(name string) *template.Template {
 	b, err := evidenceFS.ReadFile(name)
@@ -145,23 +141,7 @@ func toEvidenceModel(in EvidenceInput, g Generator) evidenceRenderModel {
 // Determinism: this function MUST NOT embed any wall-clock timestamp in
 // the output (EV-U-7). Generator.Now is intentionally unused here; only
 // Generator.Version is rendered (into the <meta name="generator"> tag).
-//
-// layout MUST be either "stacked" or "carousel". Any other value
-// returns an error — defense in depth; the CLI (T5) is the primary
-// gate per EV-E-7.
-func renderEvidenceHTML(in EvidenceInput, layout string, outDir string, g Generator) error {
-	var tmpl *template.Template
-	switch layout {
-	case "stacked":
-		tmpl = evidenceStackedTmpl
-	case "carousel":
-		tmpl = evidenceCarouselTmpl
-	case "":
-		return errors.New("templates: renderEvidenceHTML: layout is required (\"stacked\" or \"carousel\")")
-	default:
-		return fmt.Errorf("templates: renderEvidenceHTML: unknown layout %q (must be \"stacked\" or \"carousel\")", layout)
-	}
-
+func renderEvidenceHTML(in EvidenceInput, outDir string, g Generator) error {
 	sorted := SortItems(in.Items)
 	model := toEvidenceModel(EvidenceInput{
 		Title:    in.Title,
@@ -171,8 +151,8 @@ func renderEvidenceHTML(in EvidenceInput, layout string, outDir string, g Genera
 	}, g)
 
 	var html bytes.Buffer
-	if err := tmpl.Execute(&html, model); err != nil {
-		return fmt.Errorf("templates: render evidence (%s): %w", layout, err)
+	if err := evidenceTmpl.Execute(&html, model); err != nil {
+		return fmt.Errorf("templates: render evidence: %w", err)
 	}
 	if err := writeFile(outDir, "index.html", html.Bytes()); err != nil {
 		return err

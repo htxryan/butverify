@@ -1,9 +1,8 @@
 /* butverify.dev evidence template — design-pass stylesheet (E12-T7).
  *
- * One file covers both layouts. Layout-specific rules are gated on
- * `[data-layout="stacked"]` / `[data-layout="carousel"]` attribute selectors
- * on <body>, keeping the layout contract (EV-U-10) observable from the
- * rendered HTML alone.
+ * One file covers both layouts. The rendered page ships a small CSS-only
+ * segmented control so the viewer can switch between stacked and carousel
+ * without republishing.
  *
  * Design philosophy:
  *   - Constraint-based: spacing/type follow geometric scales (Weber-Fechner).
@@ -12,7 +11,7 @@
  *   - Borders only where spacing/background can't carry the structure.
  *   - System font stack (no network roundtrip) — this is a static bundle
  *     and we will not block first paint on a font request.
- *   - JS-free. Carousel is CSS-only: scroll-snap + :target.
+ *   - JS-free. Layout switching is CSS-only: radios + :has + scroll-snap.
  */
 
 /* ---------- Tokens ---------- */
@@ -190,6 +189,67 @@ a:hover { text-decoration-thickness: 0.12em; }
   text-wrap: pretty;
 }
 
+/* ---------- Layout switch ---------- */
+
+.ev-layout-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ev-s-1);
+  margin: 0 0 var(--ev-s-6) 0;
+  padding: var(--ev-s-1);
+  border: 1px solid var(--ev-border);
+  border-radius: var(--ev-radius);
+  background: var(--ev-surface);
+  box-shadow: var(--ev-shadow-1);
+}
+
+.ev-layout-control legend {
+  padding: 0 var(--ev-s-2);
+  font-size: var(--ev-t-meta);
+  font-weight: 600;
+  color: var(--ev-fg-muted);
+}
+
+.ev-layout-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.ev-layout-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 5.5rem;
+  min-height: 2.25rem;
+  padding: 0 var(--ev-s-4);
+  border-radius: var(--ev-radius-sm);
+  color: var(--ev-fg-muted);
+  font-size: var(--ev-t-small);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ev-layout-label:hover {
+  color: var(--ev-fg-strong);
+  background: var(--ev-surface-2);
+}
+
+.ev-layout-input:focus-visible + .ev-layout-label {
+  outline: 2px solid var(--ev-focus);
+  outline-offset: 2px;
+}
+
+.ev-layout-input:checked + .ev-layout-label {
+  color: var(--ev-fg-strong);
+  background: var(--ev-accent-soft);
+}
+
 /* ---------- Item card (shared by both layouts) ---------- */
 
 .ev-item {
@@ -303,34 +363,41 @@ a:hover { text-decoration-thickness: 0.12em; }
 }
 .ev-footer a:hover { color: var(--ev-accent); }
 
-/* ---------- Stacked layout ---------- */
+/* ---------- Gallery layout ---------- */
 
-[data-layout="stacked"] .ev-gallery {
+.ev-gallery {
+  margin: 0;
+  padding: 0;
+}
+
+.ev-track {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: var(--ev-s-7);
 }
 
+.ev-slide {
+  list-style: none;
+  margin: 0;
+}
+
 /* On wider screens, stacked items can breathe a bit on the sides. */
 @media (min-width: 48rem) {
-  [data-layout="stacked"] .ev-caption {
+  .ev-caption {
     padding: var(--ev-s-5) var(--ev-s-6) var(--ev-s-6) var(--ev-s-6);
   }
 }
 
 /* ---------- Carousel layout ---------- */
 
-[data-layout="carousel"] .carousel {
+body:has(#ev-layout-carousel:checked) .ev-gallery {
   position: relative;
-  margin: 0;
-  padding: 0;
 }
 
-[data-layout="carousel"] .carousel-track {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
+body:has(#ev-layout-carousel:checked) .ev-track {
   flex-direction: row;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
@@ -343,10 +410,10 @@ a:hover { text-decoration-thickness: 0.12em; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-layout="carousel"] .carousel-track { scroll-behavior: auto; }
+  body:has(#ev-layout-carousel:checked) .ev-track { scroll-behavior: auto; }
 }
 
-[data-layout="carousel"] .carousel-item {
+body:has(#ev-layout-carousel:checked) .ev-slide {
   flex: 0 0 100%;
   width: 100%;
   scroll-snap-align: start;
@@ -354,23 +421,27 @@ a:hover { text-decoration-thickness: 0.12em; }
   list-style: none;
 }
 
-[data-layout="carousel"] .carousel-item .ev-item {
+body:has(#ev-layout-carousel:checked) .ev-slide .ev-item {
   height: 100%;
   display: flex;
   flex-direction: column;
 }
 
-[data-layout="carousel"] .carousel-item .ev-media {
+body:has(#ev-layout-carousel:checked) .ev-slide .ev-media {
   flex: 0 0 auto;
 }
 
-[data-layout="carousel"] .carousel-item .ev-caption {
+body:has(#ev-layout-carousel:checked) .ev-slide .ev-caption {
   flex: 1 1 auto;
 }
 
 /* Pager: sticky chip row. The :target pseudo-class lights up the current
  * page indicator without any JS — pure CSS routing on the URL fragment. */
-[data-layout="carousel"] .carousel-pager {
+.ev-pager {
+  display: none;
+}
+
+body:has(#ev-layout-carousel:checked) .ev-pager {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ev-s-2);
@@ -385,7 +456,7 @@ a:hover { text-decoration-thickness: 0.12em; }
   margin-top: var(--ev-s-4);
 }
 
-[data-layout="carousel"] .carousel-pager a {
+body:has(#ev-layout-carousel:checked) .ev-pager a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -404,12 +475,12 @@ a:hover { text-decoration-thickness: 0.12em; }
   transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
 }
 
-[data-layout="carousel"] .carousel-pager a:hover {
+body:has(#ev-layout-carousel:checked) .ev-pager a:hover {
   color: var(--ev-fg-strong);
   border-color: var(--ev-border-strong);
 }
 
-[data-layout="carousel"] .carousel-pager a:active {
+body:has(#ev-layout-carousel:checked) .ev-pager a:active {
   background: var(--ev-accent-soft);
   color: var(--ev-fg-strong);
   border-color: var(--ev-accent);
@@ -418,27 +489,28 @@ a:hover { text-decoration-thickness: 0.12em; }
 /* When the user navigates via pager link the targeted item gets a
  * subtle accent treatment — the visible affordance for "you are here"
  * without needing JS or hardcoded item counts. */
-[data-layout="carousel"] .carousel-item:target .ev-item {
+body:has(#ev-layout-carousel:checked) .ev-slide:target .ev-item {
   border-color: var(--ev-accent);
   box-shadow: var(--ev-shadow-2), 0 0 0 1px var(--ev-accent);
 }
 
 /* On tablet+ the carousel item caption pads a touch more. */
 @media (min-width: 48rem) {
-  [data-layout="carousel"] .carousel-track { gap: var(--ev-s-6); }
+  body:has(#ev-layout-carousel:checked) .ev-track { gap: var(--ev-s-6); }
 }
 
 /* ---------- Print ---------- */
 
 @media print {
   .ev-skip,
-  [data-layout="carousel"] .carousel-pager { display: none; }
+  .ev-layout-control,
+  .ev-pager { display: none; }
   .ev-page { max-width: none; padding: 0; }
-  [data-layout="carousel"] .carousel-track {
+  .ev-track {
     display: block;
     overflow: visible;
   }
-  [data-layout="carousel"] .carousel-item {
+  .ev-slide {
     width: 100%;
     page-break-inside: avoid;
     margin-bottom: var(--ev-s-5);

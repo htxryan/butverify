@@ -48,20 +48,20 @@ func fixedEvidenceInput() EvidenceInput {
 }
 
 // ---------------------------------------------------------------------------
-// Stacked layout golden snapshot test (EV-U-7 determinism + EV-U-10
-// data-layout + EV-U-9 lazy/decoding/controls + EV-U-2 no script).
+// Switchable layout golden snapshot test (EV-U-7 determinism +
+// EV-U-9 lazy/decoding/controls + EV-U-2 no script).
 // ---------------------------------------------------------------------------
 
-func TestRenderEvidenceHTML_StackedSnapshot(t *testing.T) {
+func TestRenderEvidenceHTML_SwitchableLayoutSnapshot(t *testing.T) {
 	in := fixedEvidenceInput()
 	g := Generator{Version: "1.2.3"}
 
 	dir1 := t.TempDir()
-	if err := renderEvidenceHTML(in, "stacked", dir1, g); err != nil {
+	if err := renderEvidenceHTML(in, dir1, g); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	dir2 := t.TempDir()
-	if err := renderEvidenceHTML(in, "stacked", dir2, g); err != nil {
+	if err := renderEvidenceHTML(in, dir2, g); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 
@@ -74,7 +74,7 @@ func TestRenderEvidenceHTML_StackedSnapshot(t *testing.T) {
 		t.Fatalf("read index2: %v", err)
 	}
 	if string(html1) != string(html2) {
-		t.Errorf("non-deterministic stacked render — bundles differ across runs")
+		t.Errorf("non-deterministic render — bundles differ across runs")
 	}
 
 	css1, err := os.ReadFile(filepath.Join(dir1, "styles.css"))
@@ -91,14 +91,29 @@ func TestRenderEvidenceHTML_StackedSnapshot(t *testing.T) {
 
 	s := string(html1)
 
-	// EV-U-10: exact body data-layout match.
-	if !strings.Contains(s, `<body data-layout="stacked">`) {
-		t.Errorf("missing/wrong <body data-layout=\"stacked\">; got:\n%s", firstFewLines(s, 12))
+	if strings.Contains(s, `data-layout=`) {
+		t.Errorf("render should not hard-code layout in the HTML; got:\n%s", firstFewLines(s, 16))
 	}
 
 	// EV-U-2: no <script> ANYWHERE.
 	if strings.Contains(s, "<script") {
 		t.Errorf("rendered HTML contains <script> tag (EV-U-2 violation)")
+	}
+
+	for _, want := range []string{
+		`id="ev-layout-stacked"`,
+		`id="ev-layout-carousel"`,
+		`for="ev-layout-stacked"`,
+		`for="ev-layout-carousel"`,
+		`class="ev-track"`,
+		`class="ev-slide"`,
+		`class="ev-pager"`,
+		`href="#item-1"`,
+		`href="#item-3"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing switchable layout marker %q", want)
+		}
 	}
 
 	// EV-U-9: every <img> has loading=lazy + decoding=async + non-empty alt.
@@ -154,83 +169,6 @@ func TestRenderEvidenceHTML_StackedSnapshot(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Carousel layout golden snapshot test.
-// ---------------------------------------------------------------------------
-
-func TestRenderEvidenceHTML_CarouselSnapshot(t *testing.T) {
-	in := fixedEvidenceInput()
-	g := Generator{Version: "1.2.3"}
-
-	dir1 := t.TempDir()
-	if err := renderEvidenceHTML(in, "carousel", dir1, g); err != nil {
-		t.Fatalf("render: %v", err)
-	}
-	dir2 := t.TempDir()
-	if err := renderEvidenceHTML(in, "carousel", dir2, g); err != nil {
-		t.Fatalf("render: %v", err)
-	}
-
-	html1, err := os.ReadFile(filepath.Join(dir1, "index.html"))
-	if err != nil {
-		t.Fatalf("read index1: %v", err)
-	}
-	html2, err := os.ReadFile(filepath.Join(dir2, "index.html"))
-	if err != nil {
-		t.Fatalf("read index2: %v", err)
-	}
-	if string(html1) != string(html2) {
-		t.Errorf("non-deterministic carousel render")
-	}
-
-	s := string(html1)
-
-	// EV-U-10: carousel data-layout exact match.
-	if !strings.Contains(s, `<body data-layout="carousel">`) {
-		t.Errorf("missing/wrong <body data-layout=\"carousel\">; got:\n%s", firstFewLines(s, 12))
-	}
-
-	// EV-U-2: no <script> ANYWHERE.
-	if strings.Contains(s, "<script") {
-		t.Errorf("carousel HTML contains <script> tag (EV-U-2 violation)")
-	}
-
-	// Carousel structure: track + items + pager.
-	if !strings.Contains(s, `class="carousel-track"`) {
-		t.Errorf("missing .carousel-track")
-	}
-	if !strings.Contains(s, `class="carousel-item"`) {
-		t.Errorf("missing .carousel-item")
-	}
-	if !strings.Contains(s, `id="item-1"`) {
-		t.Errorf("missing id=\"item-1\" on first carousel item")
-	}
-	if !strings.Contains(s, `id="item-3"`) {
-		t.Errorf("missing id=\"item-3\" on third carousel item")
-	}
-	if !strings.Contains(s, `href="#item-1"`) || !strings.Contains(s, `href="#item-3"`) {
-		t.Errorf("missing pager anchor links")
-	}
-
-	// Same EV-U-9 attribute requirements as stacked.
-	imgRe := regexp.MustCompile(`<img\s+([^>]+)>`)
-	for _, m := range imgRe.FindAllStringSubmatch(s, -1) {
-		attrs := m[1]
-		if !strings.Contains(attrs, `loading="lazy"`) ||
-			!strings.Contains(attrs, `decoding="async"`) {
-			t.Errorf("carousel img missing lazy/async: %q", attrs)
-		}
-	}
-	videoRe := regexp.MustCompile(`<video\s+([^>]*)>`)
-	for _, m := range videoRe.FindAllStringSubmatch(s, -1) {
-		attrs := m[1]
-		if !strings.Contains(attrs, `preload="metadata"`) ||
-			!regexp.MustCompile(`\bcontrols\b`).MatchString(attrs) {
-			t.Errorf("carousel video missing preload/controls: %q", attrs)
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
 // HTML-escape test (EV-U-4).
 // ---------------------------------------------------------------------------
 
@@ -251,31 +189,29 @@ func TestRenderEvidenceHTML_EscapesScriptTagInputs(t *testing.T) {
 		}},
 	}
 
-	for _, layout := range []string{"stacked", "carousel"} {
-		dir := t.TempDir()
-		if err := renderEvidenceHTML(in, layout, dir, Generator{}); err != nil {
-			t.Fatalf("%s render: %v", layout, err)
-		}
-		b, err := os.ReadFile(filepath.Join(dir, "index.html"))
-		if err != nil {
-			t.Fatalf("%s read index: %v", layout, err)
-		}
-		s := string(b)
+	dir := t.TempDir()
+	if err := renderEvidenceHTML(in, dir, Generator{}); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "index.html"))
+	if err != nil {
+		t.Fatalf("read index: %v", err)
+	}
+	s := string(b)
 
-		// Case-sensitive: an attacker-controlled `<script>` substring must
-		// NOT appear unescaped anywhere.
-		if strings.Contains(s, "<script>") {
-			t.Errorf("[%s] unescaped <script> in output (EV-U-4 violation)", layout)
-		}
-		// Escaped form must appear.
-		if !strings.Contains(s, "&lt;script&gt;") {
-			t.Errorf("[%s] expected escaped &lt;script&gt; in output; got:\n%s",
-				layout, firstFewLines(s, 30))
-		}
-		// `<b>bold</b>` description must be escaped too.
-		if strings.Contains(s, "<b>bold</b>") {
-			t.Errorf("[%s] description HTML not escaped", layout)
-		}
+	// Case-sensitive: an attacker-controlled `<script>` substring must
+	// NOT appear unescaped anywhere.
+	if strings.Contains(s, "<script>") {
+		t.Errorf("unescaped <script> in output (EV-U-4 violation)")
+	}
+	// Escaped form must appear.
+	if !strings.Contains(s, "&lt;script&gt;") {
+		t.Errorf("expected escaped &lt;script&gt; in output; got:\n%s",
+			firstFewLines(s, 30))
+	}
+	// `<b>bold</b>` description must be escaped too.
+	if strings.Contains(s, "<b>bold</b>") {
+		t.Errorf("description HTML not escaped")
 	}
 }
 
@@ -288,52 +224,22 @@ func TestRenderEvidenceHTML_BundleUnder50KB(t *testing.T) {
 	// under 50 KB combined. The minimal-shell CSS + flat HTML easily fits;
 	// this test exists so a future polish pass (T7) doesn't accidentally
 	// blow the bundle out by inlining hero images or fonts in CSS.
-	for _, layout := range []string{"stacked", "carousel"} {
-		dir := t.TempDir()
-		if err := renderEvidenceHTML(fixedEvidenceInput(), layout, dir, Generator{Version: "1"}); err != nil {
-			t.Fatalf("%s render: %v", layout, err)
-		}
-		htmlInfo, err := os.Stat(filepath.Join(dir, "index.html"))
-		if err != nil {
-			t.Fatalf("%s stat html: %v", layout, err)
-		}
-		cssInfo, err := os.Stat(filepath.Join(dir, "styles.css"))
-		if err != nil {
-			t.Fatalf("%s stat css: %v", layout, err)
-		}
-		total := htmlInfo.Size() + cssInfo.Size()
-		const limit = 50 * 1024
-		if total > limit {
-			t.Errorf("[%s] bundle (index.html + styles.css) is %d bytes; limit %d",
-				layout, total, limit)
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Defensive layout validation (EV-E-7 belt + braces).
-// ---------------------------------------------------------------------------
-
-func TestRenderEvidenceHTML_RejectsUnknownLayout(t *testing.T) {
 	dir := t.TempDir()
-	err := renderEvidenceHTML(fixedEvidenceInput(), "bogus", dir, Generator{})
-	if err == nil {
-		t.Fatal("expected error for unknown layout")
+	if err := renderEvidenceHTML(fixedEvidenceInput(), dir, Generator{Version: "1"}); err != nil {
+		t.Fatalf("render: %v", err)
 	}
-	if !strings.Contains(err.Error(), "bogus") {
-		t.Errorf("expected error to mention bad layout, got: %v", err)
+	htmlInfo, err := os.Stat(filepath.Join(dir, "index.html"))
+	if err != nil {
+		t.Fatalf("stat html: %v", err)
 	}
-	// On error we must NOT have written index.html or styles.css.
-	if _, err := os.Stat(filepath.Join(dir, "index.html")); err == nil {
-		t.Errorf("index.html was written despite layout error")
+	cssInfo, err := os.Stat(filepath.Join(dir, "styles.css"))
+	if err != nil {
+		t.Fatalf("stat css: %v", err)
 	}
-}
-
-func TestRenderEvidenceHTML_RejectsEmptyLayout(t *testing.T) {
-	dir := t.TempDir()
-	err := renderEvidenceHTML(fixedEvidenceInput(), "", dir, Generator{})
-	if err == nil {
-		t.Fatal("expected error for empty layout")
+	total := htmlInfo.Size() + cssInfo.Size()
+	const limit = 50 * 1024
+	if total > limit {
+		t.Errorf("bundle (index.html + styles.css) is %d bytes; limit %d", total, limit)
 	}
 }
 
