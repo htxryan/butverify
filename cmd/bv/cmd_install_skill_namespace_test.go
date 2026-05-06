@@ -50,6 +50,51 @@ func TestInstall_AliasCarriesDeprecatedNotice(t *testing.T) {
 	if !strings.Contains(string(body), "/butverify:prove-it") {
 		t.Errorf("alias SKILL.md should mention /butverify:prove-it as the replacement: %s", body[:min(len(body), 400)])
 	}
+	// disable-model-invocation: true on the alias prevents Claude Code
+	// from auto-invoking the deprecated skill while still allowing
+	// humans to type `/butverify`. This stops dual-name confusion
+	// during the deprecation window (review feedback S2).
+	if !strings.Contains(string(body), "disable-model-invocation: true") {
+		t.Errorf("alias SKILL.md must set disable-model-invocation: true to suppress auto-invocation: %s", body[:min(len(body), 400)])
+	}
+}
+
+// Reverse polarity: prove-it MUST stay enabled for model invocation,
+// otherwise the new skill is unreachable.
+func TestInstall_ProveItRemainsModelInvocable(t *testing.T) {
+	home := setupTempHome(t)
+	if rc, _, _ := runInstall(t, "claude"); rc != 0 {
+		t.Fatal("install failed")
+	}
+	body := mustReadFile(t, filepath.Join(home, ".claude", "skills", "butverify", "prove-it", "SKILL.md"))
+	if !strings.Contains(string(body), "disable-model-invocation: false") {
+		t.Errorf("prove-it SKILL.md must keep disable-model-invocation: false: %s", body[:min(len(body), 400)])
+	}
+}
+
+// EV2-E-9: legacy flat-install upgrade triggers a clearer error that
+// names the migration mechanic ("backed up to .bak" + "namespace").
+// Standard drift messaging is too generic for this path.
+func TestInstall_LegacyFlatInstall_GivesMigrationMessage(t *testing.T) {
+	home := setupTempHome(t)
+	dir := filepath.Join(home, ".claude", "skills", "butverify")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := []byte("---\nname: butverify\ndescription: legacy\n---\n# /butverify\nOld body.\n")
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), legacy, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rc, stdout, _ := runInstall(t, "claude")
+	if rc == 0 {
+		t.Fatalf("legacy flat install should require --force; rc=0 stdout=%s", stdout)
+	}
+	if !strings.Contains(stdout, "pre-namespace flat install") {
+		t.Errorf("expected migration phrasing in error: %s", stdout)
+	}
+	if !strings.Contains(stdout, "namespace") {
+		t.Errorf("error should mention the namespace migration: %s", stdout)
+	}
 }
 
 func TestInstall_ProveItAndReviewAreDistinctSkills(t *testing.T) {
@@ -311,6 +356,63 @@ func TestInstall_EnableHook_PreservesOtherHooks(t *testing.T) {
 	}
 }
 
+// settings.json may carry secrets (auth tokens, API keys); a user who
+// has tightened the file to 0600 must not see it widened to 0644 by
+// our merge. Review feedback S2.
+func TestInstall_PreservesSettingsFileMode(t *testing.T) {
+	home := setupTempHome(t)
+	dotClaude := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(dotClaude, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	priorJSON := []byte(`{"hooks": {"Stop": [{"hooks": [{"type":"command","command":"echo other"}]}]}}` + "\n")
+	if err := os.WriteFile(filepath.Join(dotClaude, "settings.json"), priorJSON, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if rc, _, _ := runInstall(t, "claude", "--enable-hook"); rc != 0 {
+		t.Fatal("install failed")
+	}
+	info, err := os.Stat(settingsPath(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("settings.json mode should be preserved at 0600 after merge; got %o", info.Mode().Perm())
+	}
+}
+
+// Defense-in-depth: a wrongly-typed `hooks` field (e.g. a user who
+// hand-edited settings.json and set `hooks: []` by mistake) must not
+// be silently overwritten — review feedback S2.
+func TestInstall_RefusesMalformedHooksField(t *testing.T) {
+	home := setupTempHome(t)
+	dotClaude := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(dotClaude, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// `hooks` should be an object; here it's an array.
+	priorJSON := []byte(`{"hooks": ["unexpected"]}` + "\n")
+	if err := os.WriteFile(filepath.Join(dotClaude, "settings.json"), priorJSON, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rc, stdout, _ := runInstall(t, "claude", "--enable-hook")
+	// Install succeeds (skills land); hook outcome reports an error.
+	if rc != 0 {
+		t.Fatalf("install should succeed even when hook merge errors; rc=%d stdout=%s", rc, stdout)
+	}
+	if !strings.Contains(stdout, `"error"`) || !strings.Contains(strings.ToLower(stdout), "settings.hooks is not") {
+		t.Errorf("hook outcome should report settings.hooks malformed: %s", stdout)
+	}
+	// Original settings.json must be untouched.
+	got, err := os.ReadFile(settingsPath(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(priorJSON) {
+		t.Errorf("settings.json should be untouched on hook merge refusal; got=%s", got)
+	}
+}
+
 func TestInstall_NoHookFlag_BlocksConsent(t *testing.T) {
 	home := setupTempHome(t)
 	rc, stdout, _ := runInstall(t, "claude", "--no-hook")
@@ -402,24 +504,55 @@ func TestUninstall_RemovesHooksAndPreservesOthers(t *testing.T) {
 // ---- Hook command shape (EV2-N-5: IDs only, no comment text) ----
 
 func TestHookShellCommand_NeverLeaksContent(t *testing.T) {
-	cmd := bvHookShellCommand()
-	// EV2-N-5: hook output only emits IDs and a count. The shell guard
-	// must call bv with --format=ids (no JSON, no comment text).
-	if !strings.Contains(cmd, "--format=ids") {
-		t.Errorf("hook shell command must use --format=ids: %s", cmd)
+	for _, phase := range []string{"pending", "still pending"} {
+		phase := phase
+		t.Run(phase, func(t *testing.T) {
+			cmd := bvHookShellCommand(phase)
+			// EV2-N-5: hook output only emits IDs and a count. The shell
+			// guard must call bv with --format=ids (no JSON, no content).
+			if !strings.Contains(cmd, "--format=ids") {
+				t.Errorf("hook shell command must use --format=ids: %s", cmd)
+			}
+			for _, forbidden := range []string{"--format=json", "comment", "annotation"} {
+				if strings.Contains(cmd, forbidden) {
+					t.Errorf("hook shell command must not surface %q (EV2-N-5): %s", forbidden, cmd)
+				}
+			}
+			if !strings.Contains(cmd, bvHookSentinel) {
+				t.Errorf("hook shell command missing sentinel: %s", cmd)
+			}
+			if !strings.Contains(cmd, "exit 0") {
+				t.Errorf("hook shell command must exit 0 unconditionally: %s", cmd)
+			}
+			// `command -v` guard must precede the bv call so a missing
+			// binary on PATH never errors out.
+			if !strings.Contains(cmd, "command -v bv") {
+				t.Errorf("hook shell command must guard with `command -v bv`: %s", cmd)
+			}
+			// Phase wording must match the spec for the given event.
+			if !strings.Contains(cmd, phase+":") {
+				t.Errorf("hook shell command for phase %q missing wording in printf: %s", phase, cmd)
+			}
+		})
 	}
-	for _, forbidden := range []string{"--format=json", "comment", "annotation"} {
-		if strings.Contains(cmd, forbidden) {
-			t.Errorf("hook shell command must not surface %q (EV2-N-5): %s", forbidden, cmd)
-		}
+}
+
+// EV2-E-9b vs EV2-E-9c: the SessionStart entry says "pending" while
+// the Stop entry says "still pending" so the human reads the Stop hook
+// as a reminder of unfinished work. Pin both wordings via the actual
+// settings.json that gets written.
+func TestInstall_HookWordingDiffersByEvent(t *testing.T) {
+	home := setupTempHome(t)
+	if rc, _, _ := runInstall(t, "claude", "--enable-hook"); rc != 0 {
+		t.Fatal("install with hooks failed")
 	}
-	// Sentinel must be present so future install/uninstall can match.
-	if !strings.Contains(cmd, bvHookSentinel) {
-		t.Errorf("hook shell command missing sentinel: %s", cmd)
+	raw := mustReadFile(t, settingsPath(home))
+	body := string(raw)
+	if !strings.Contains(body, "pending: %s") {
+		t.Errorf("SessionStart hook should print '... pending: <ids>': %s", body)
 	}
-	// Final exit must be 0 — hooks never block sessions.
-	if !strings.Contains(cmd, "exit 0") {
-		t.Errorf("hook shell command must exit 0 unconditionally: %s", cmd)
+	if !strings.Contains(body, "still pending: %s") {
+		t.Errorf("Stop hook should print '... still pending: <ids>' (EV2-E-9c): %s", body)
 	}
 }
 

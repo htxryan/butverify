@@ -143,6 +143,11 @@ type hookCommand struct {
 // SessionStart and Stop arrays, appends fresh entries, and writes the
 // merged settings back atomically. The merge is robust to a settings.json
 // that already contains other tools' hooks (e.g. compound-agent).
+//
+// The SessionStart entry uses the "pending" wording (EV2-E-9b) and the
+// Stop entry uses "still pending" (EV2-E-9c) — at session end the
+// human is meant to read this as a reminder that they have not yet
+// dealt with the queued review.
 func installHooks(root string) error {
 	sp := settingsPath(root)
 	settings, err := readSettings(sp)
@@ -150,10 +155,15 @@ func installHooks(root string) error {
 		return err
 	}
 
-	hooks, _ := getHooksMap(settings)
-	for _, event := range []string{"SessionStart", "Stop"} {
-		hooks[event] = appendHook(stripSentinelEntries(getEventArray(hooks, event)), buildHookEntry())
+	hooksRaw, ok := settings["hooks"]
+	if ok {
+		if _, isMap := hooksRaw.(map[string]any); !isMap {
+			return fmt.Errorf("install-skill: refusing to install hooks; settings.hooks is not a JSON object (got %T) — please review %s manually", hooksRaw, sp)
+		}
 	}
+	hooks, _ := getHooksMap(settings)
+	hooks["SessionStart"] = appendHook(stripSentinelEntries(getEventArray(hooks, "SessionStart")), buildHookEntry("pending"))
+	hooks["Stop"] = appendHook(stripSentinelEntries(getEventArray(hooks, "Stop")), buildHookEntry("still pending"))
 	settings["hooks"] = hooks
 
 	return writeSettings(sp, settings)
@@ -228,7 +238,10 @@ func readSettings(path string) (map[string]any, error) {
 }
 
 // writeSettings writes the merged settings back via the atomic-rename
-// pattern shared with skill writes. 0644 mode, parent dir 0755.
+// pattern shared with skill writes. Preserves the existing file's mode
+// when present (so a user-tightened 0600 settings.json carrying tokens
+// is not silently widened to 0644 by our merge); falls back to 0644
+// for a fresh write where no prior file exists.
 func writeSettings(path string, settings map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("install-skill: mkdir settings parent: %w", err)
@@ -238,7 +251,12 @@ func writeSettings(path string, settings map[string]any) error {
 		return fmt.Errorf("install-skill: marshal settings: %w", err)
 	}
 	encoded = append(encoded, '\n')
-	if err := atomicWrite(path, encoded); err != nil {
+
+	mode := os.FileMode(0o644)
+	if info, statErr := os.Stat(path); statErr == nil {
+		mode = info.Mode().Perm()
+	}
+	if err := atomicWriteMode(path, encoded, mode); err != nil {
 		return fmt.Errorf("install-skill: write settings %q: %w", path, err)
 	}
 	return nil
@@ -328,16 +346,17 @@ func appendHook(arr []any, entry hookEntry) []any {
 	return append(arr, generic)
 }
 
-// buildHookEntry constructs the SessionStart / Stop hook payload. The
-// shell command uses `bv` from PATH (we do not bake an absolute path
-// because the bv binary may be moved by package managers between
-// install and session-start). The output line format matches EV2-E-8.
+// buildHookEntry constructs a SessionStart or Stop hook payload. The
+// `phase` argument carries either "pending" (Start) or "still pending"
+// (Stop) so EV2-E-9b/c surface distinct human-facing wording. The
+// shell command resolves `bv` via `command -v` so a user whose PATH
+// briefly drops the binary still sees a clean exit-0 instead of a
+// missing-command error.
 //
-// The sentinel string is embedded as a comment that the shell ignores
-// (`#bv-skill-hook=v1`) so our installer can recognize and replace
-// these entries on re-install / uninstall.
-func buildHookEntry() hookEntry {
-	cmd := bvHookShellCommand()
+// The sentinel string is embedded as a shell comment so our installer
+// can recognize and replace these entries on re-install / uninstall.
+func buildHookEntry(phase string) hookEntry {
+	cmd := bvHookShellCommand(phase)
 	return hookEntry{
 		Matcher: "",
 		Hooks: []hookCommand{
@@ -347,18 +366,15 @@ func buildHookEntry() hookEntry {
 }
 
 // bvHookShellCommand returns the literal shell snippet stored in
-// settings.json for SessionStart and Stop. Kept as a separate function
-// so tests can reach it directly without parsing JSON.
-func bvHookShellCommand() string {
-	// The trailing `# bv-skill-hook=v1` is a shell comment that lets
-	// our installer match-and-replace this exact entry. The body uses
-	// command substitution + a short awk to format the [butverify] line
-	// without depending on tools beyond a POSIX shell, awk, and bv
-	// itself. Errors are swallowed so the hook never blocks a session.
-	return `out=$(bv review list --unacknowledged --format=ids 2>/dev/null) || exit 0; ` +
+// settings.json for the given phase ("pending" for SessionStart,
+// "still pending" for Stop). Kept as a separate function so tests can
+// reach it directly without parsing JSON.
+func bvHookShellCommand(phase string) string {
+	return `command -v bv >/dev/null 2>&1 || exit 0; ` +
+		`out=$(bv review list --unacknowledged --format=ids 2>/dev/null) || exit 0; ` +
 		`[ -z "$out" ] && exit 0; ` +
 		`n=$(printf '%s\n' "$out" | wc -l | tr -d ' '); ` +
 		`ids=$(printf '%s\n' "$out" | tr '\n' ' ' | sed 's/ $//'); ` +
-		`printf '[butverify] %s review(s) pending: %s\n' "$n" "$ids"; ` +
+		`printf '[butverify] %s review(s) ` + phase + `: %s\n' "$n" "$ids"; ` +
 		`exit 0 # ` + bvHookSentinel
 }

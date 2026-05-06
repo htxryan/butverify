@@ -438,7 +438,7 @@ func TestEmbeddedSkillContent_AC5_NonPrescriptiveLanguage(t *testing.T) {
 // cmd/bv/embedded_skills/claude_butverify.md) that affects the
 // canonical hash domain MUST fail this test.
 func TestBVSU9_HashDeterminism(t *testing.T) {
-	const wantHash = "d9630dbbc3ca"
+	const wantHash = "46a6be62f837"
 
 	hash := skillVersionHash(embeddedSkillBytes)
 	if hash == "" {

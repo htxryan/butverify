@@ -495,23 +495,51 @@ type installOneOutcome struct {
 	Status  string `json:"status"` // "installed", "force_overwrote", "already_current"
 }
 
+// installPrep captures the per-skill state collected before any
+// filesystem write. Lifted out of doInstall so helpers (e.g. flat-
+// legacy migration detection) can range over it without aliasing a
+// function-scoped type.
+type installPrep struct {
+	entry       skillEntry
+	path        string
+	hash        string
+	stamped     []byte
+	installed   bool
+	instVer     string
+	instContent string
+}
+
+// isFlatLegacyMigration reports whether the install is a "pre-namespace
+// flat install" upgrade: the alias SKILL.md exists with no
+// bv-skill-version metadata (instVer is empty), AND none of the
+// namespaced skills (prove-it / review) are installed yet. When true,
+// the drift error message switches to the migration-call-out variant
+// so the user understands --force will move them onto the new layout
+// rather than just clobbering one file.
+func isFlatLegacyMigration(preps []installPrep) bool {
+	flatExistsWithoutMetadata := false
+	subdirInstalled := false
+	for _, p := range preps {
+		if len(p.entry.LeafSegments) == 0 {
+			if p.installed && p.instVer == "" {
+				flatExistsWithoutMetadata = true
+			}
+			continue
+		}
+		if p.installed {
+			subdirInstalled = true
+		}
+	}
+	return flatExistsWithoutMetadata && !subdirInstalled
+}
+
 // doInstall installs every skill in `skills` under `root`. BVS-E-2's
 // drift contract still applies: if ANY installed skill differs from the
 // embedded one and --force is not set, the whole run aborts before any
 // write. This keeps the install set atomic from the user's POV — either
 // the new namespace is fully landed, or the old state is preserved.
 func doInstall(g globalContext, opts installSkillOptions, root string, skills []skillEntry) int {
-	type prep struct {
-		entry      skillEntry
-		path       string
-		hash       string
-		stamped    []byte
-		installed  bool
-		instVer    string
-		instContent string
-	}
-
-	preps := make([]prep, 0, len(skills))
+	preps := make([]installPrep, 0, len(skills))
 	for _, e := range skills {
 		path := claudeSkillPathFor(root, e)
 		hash := skillVersionHash(e.Embedded)
@@ -531,7 +559,7 @@ func doInstall(g globalContext, opts installSkillOptions, root string, skills []
 			}
 			instContent = skillVersionHash(b)
 		}
-		preps = append(preps, prep{
+		preps = append(preps, installPrep{
 			entry:       e,
 			path:        path,
 			hash:        hash,
@@ -544,8 +572,13 @@ func doInstall(g globalContext, opts installSkillOptions, root string, skills []
 
 	// First pass: drift detection across all skills. Any drift with no
 	// --force aborts the run with a single combined error envelope so
-	// the user sees the full picture.
+	// the user sees the full picture. Special case: an existing flat
+	// SKILL.md from a pre-namespace `bv` release has no bv-skill-version
+	// metadata (instVer == "") and no peer prove-it/review SKILL.md;
+	// surface the migration call-out so the user knows what --force
+	// will actually do.
 	if !opts.Force {
+		flatLegacyMigration := isFlatLegacyMigration(preps)
 		for _, p := range preps {
 			if !p.installed {
 				continue
@@ -560,10 +593,18 @@ func doInstall(g globalContext, opts installSkillOptions, root string, skills []
 			if p.instContent != "" && p.instContent != p.instVer {
 				shown = fmt.Sprintf("%s, current_content=%s", shown, p.instContent)
 			}
-			msg := fmt.Sprintf(
-				"/butverify skill at %s has a different version than the embedded one (installed=%s, embedded=%s); re-run with --force to overwrite (a .bak will be written) or --uninstall to remove",
-				p.path, shown, p.hash,
-			)
+			var msg string
+			if flatLegacyMigration {
+				msg = fmt.Sprintf(
+					"/butverify skill at %s is a pre-namespace flat install (installed=%s, embedded=%s). Re-run with --force to migrate: the current SKILL.md will be backed up to %s.bak and replaced by a deprecated alias, and the new /butverify:prove-it and /butverify:review skills will be installed under the butverify/ namespace. Use --uninstall to remove instead.",
+					p.path, shown, p.hash, p.path,
+				)
+			} else {
+				msg = fmt.Sprintf(
+					"/butverify skill at %s has a different version than the embedded one (installed=%s, embedded=%s); re-run with --force to overwrite (a .bak will be written) or --uninstall to remove",
+					p.path, shown, p.hash,
+				)
+			}
 			g.w.Error(toErrorEnvelope(errors.New(msg)))
 			logInstallSkillError(g, opts.Agent, "DRIFT", p.path)
 			return 1
@@ -707,6 +748,13 @@ func printInstallSkillUsageError(g globalContext) {
 // guarantee here makes the test redundant for a code-inspection level
 // of confidence.
 func atomicWrite(dstPath string, data []byte) error {
+	return atomicWriteMode(dstPath, data, 0o644)
+}
+
+// atomicWriteMode writes data to dstPath with the supplied mode. Hook
+// settings.json may carry an existing 0600 mode that we must preserve
+// to avoid widening file permissions on a user-tightened file.
+func atomicWriteMode(dstPath string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(dstPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("mkdir %q: %w", dir, err)
@@ -717,7 +765,7 @@ func atomicWrite(dstPath string, data []byte) error {
 	}
 	tmpPath := filepath.Join(dir, tmpName)
 	// O_EXCL so two racing renames don't both write the same tmp.
-	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 	if err != nil {
 		return fmt.Errorf("create tmp %q: %w", tmpPath, err)
 	}

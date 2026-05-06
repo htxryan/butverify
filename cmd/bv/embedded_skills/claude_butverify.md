@@ -1,7 +1,7 @@
 ---
 name: butverify
 description: "[DEPRECATED — use /butverify:prove-it] Publish proof of recent work as a private gallery on butverify.dev"
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 # /butverify (deprecated alias for /butverify:prove-it)
