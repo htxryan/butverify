@@ -150,9 +150,15 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 
 	// --out + --push allowed (render to user dir, then push from there).
 	// --out alone: render only. --push alone: ephemeral tmp dir.
+	//
+	// UseBundleV2: the CDN-bundle render path (Astro/Svelte gallery
+	// served from /assets/evidence/v{ver}/_astro/) is the new default
+	// per spec docs/specs/evidence-v2.md §3.1 (EV2-U-2). The CLI no
+	// longer embeds the gallery JS/CSS — only the version string.
 	opts := templates.RenderOptions{
 		OutDir:          *out,
 		ContainmentRoot: containmentRoot,
+		UseBundleV2:     true,
 	}
 	in, bundleDir, err := templates.RenderEvidence(input, opts, templates.Generator{Version: Version})
 	if err != nil {

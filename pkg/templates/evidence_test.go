@@ -1632,7 +1632,7 @@ func TestWriteBundleContents_AbortChannelStopsLoopBetweenCopies(t *testing.T) {
 	// iteration check and never copy any asset.
 	abort := make(chan struct{})
 	close(abort)
-	err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, abort)
+	err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, abort, false)
 	if err == nil {
 		t.Fatal("expected abort error, got nil")
 	}
@@ -1671,7 +1671,7 @@ func TestWriteBundleContents_NilAbortChannelNeverAborts(t *testing.T) {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, nil); err != nil {
+	if err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, nil, false); err != nil {
 		t.Fatalf("nil abort channel: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "assets", dstNames[0])); err != nil {
@@ -1714,7 +1714,7 @@ func TestWriteBundleContents_AbortMidLoopStopsRemainingCopies(t *testing.T) {
 	// expect zero asset copies AND errEvidenceAborted.
 	abort := make(chan struct{})
 	close(abort)
-	err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, abort)
+	err := writeBundleContents(in, outDir, dstNames, resolvedSrcs, Generator{}, abort, false)
 	if !errors.Is(err, errEvidenceAborted) {
 		t.Fatalf("expected errEvidenceAborted, got %v", err)
 	}
@@ -2314,7 +2314,7 @@ func TestWriteBundleContents_PostLoopAbortCheck(t *testing.T) {
 	in := EvidenceInput{Title: "X", Items: nil} // zero items deliberately
 	abort := make(chan struct{})
 	close(abort)
-	err := writeBundleContents(in, outDir, nil, nil, Generator{}, abort)
+	err := writeBundleContents(in, outDir, nil, nil, Generator{}, abort, false)
 	if !errors.Is(err, errEvidenceAborted) {
 		t.Fatalf("expected errEvidenceAborted from post-loop check; got %v", err)
 	}
