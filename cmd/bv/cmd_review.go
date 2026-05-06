@@ -60,6 +60,13 @@ func runReview(ctx context.Context, g globalContext, args []string) int {
 
 const reviewListIDsTimeout = 2 * time.Second
 
+// exitReviewerUnresolvable is the bv exit code for an EV2-N-7
+// `reviewer_email_unknown` 422 — the request was processed but the
+// reviewer has no resolvable email, so the agent must share manually.
+// Distinct from the generic "1 = API error" so a script can branch on
+// "request emitted, just notify out-of-band" vs "actually failed".
+const exitReviewerUnresolvable = 1
+
 // reviewSubFlagSet builds a stdlib FlagSet that prints `bv review`
 // usage on -h. We don't route through cliref.NewFlagSet because that
 // is keyed on top-level command names.
@@ -131,8 +138,9 @@ func runReviewList(ctx context.Context, g globalContext, args []string) int {
 	// Default human format: emit JSON document on stdout for agent
 	// ergonomics. The spec (§8) defines `bv review list` as a
 	// JSON-returning command; humans still get readable indented output
-	// without needing --json.
-	enc := json.NewEncoder(reviewStdoutForHuman(g))
+	// without needing --json. Stream straight to os.Stdout, matching
+	// the `bv manifest` pattern (callers pipe into `jq`).
+	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(resp)
 	return 0
@@ -161,7 +169,7 @@ func runReviewGet(ctx context.Context, g globalContext, args []string) int {
 		_ = g.w.JSON(resp)
 		return 0
 	}
-	enc := json.NewEncoder(reviewStdoutForHuman(g))
+	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(resp)
 	return 0
@@ -265,21 +273,12 @@ func runReviewRequest(ctx context.Context, g globalContext, args []string) int {
 		if jsonErr := json.Unmarshal(ae.Raw, &unresolvable); jsonErr == nil && unresolvable.Error == "reviewer_email_unknown" {
 			if g.w.IsJSON() {
 				_ = g.w.JSON(unresolvable)
-				return 1
+				return exitReviewerUnresolvable
 			}
 			g.w.Human("Could not resolve an email for @%s; share %s manually.", to, unresolvable.SiteURL)
-			return 1
+			return exitReviewerUnresolvable
 		}
 	}
 	return reportError(g.w, err)
 }
 
-// reviewStdoutForHuman returns the stdout sink for non-JSON-mode review
-// output. We match bv manifest's pattern (write directly to os.Stdout)
-// because the `bv review list/get` contract is JSON regardless of mode —
-// the human reading this is piping into `jq`, not staring at the raw
-// bytes.
-func reviewStdoutForHuman(g globalContext) io.Writer {
-	_ = g
-	return os.Stdout
-}

@@ -219,6 +219,116 @@ func TestReview_Get_JSON(t *testing.T) {
 	}
 }
 
+// EV2-U-9 (explicit typed columns): `bv review get` must surface the
+// region_*, char_*, text_scope, text_snippet typed columns the server
+// emits — not collapse them into a metadata blob. Exercises both
+// image_region and text_highlight annotation types.
+func TestReview_Get_TypedColumns(t *testing.T) {
+	srv := newFakeServer(t)
+	srv.getReview = func(w http.ResponseWriter, r *http.Request, reviewID string) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"review_id":        reviewID,
+			"site_id":          "abcd1234",
+			"reviewer_login":   "alice",
+			"submitted_at":     "2026-05-06T10:00:00Z",
+			"acknowledged_at":  nil,
+			"annotation_count": 2,
+			"status":           "submitted",
+			"annotations": []map[string]any{
+				{
+					"annotation_id": "ann_img",
+					"type":          "image_region",
+					"item_index":    2,
+					"comment":       "off-center",
+					"region_shape":  "circle",
+					"region_x":      0.48,
+					"region_y":      0.52,
+					"region_width":  0.08,
+					"region_height": 0.08,
+					"text_scope":    nil,
+					"char_start":    nil,
+					"char_end":      nil,
+					"text_snippet":  nil,
+					"created_at":    "2026-05-06T10:00:00Z",
+				},
+				{
+					"annotation_id": "ann_txt",
+					"type":          "text_highlight",
+					"item_index":    0,
+					"comment":       "misleading",
+					"region_shape":  nil,
+					"region_x":      nil,
+					"region_y":      nil,
+					"region_width":  nil,
+					"region_height": nil,
+					"text_scope":    "item",
+					"char_start":    44,
+					"char_end":      89,
+					"text_snippet":  "all states pass automated tests",
+					"created_at":    "2026-05-06T10:00:00Z",
+				},
+			},
+		})
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	setupConfig(t, server.URL)
+
+	w, stdout, _ := newJSONWriter(t)
+	rc := runReview(context.Background(), globalContext{w: w}, []string{"get", "rev_typed"})
+	if rc != 0 {
+		t.Fatalf("rc: %d stdout=%s", rc, stdout.String())
+	}
+	for _, want := range []string{
+		`"region_shape": "circle"`,
+		`"region_x": 0.48`,
+		`"region_height": 0.08`,
+		`"text_scope": "item"`,
+		`"char_start": 44`,
+		`"char_end": 89`,
+		`"text_snippet": "all states pass automated tests"`,
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
+// EV2-E-4 acknowledged_at round-trip: server-sent `null` for an
+// unacknowledged review must round-trip as JSON `null` (not be silently
+// dropped via omitempty). A consumer that branches on key presence would
+// otherwise miss unacknowledged reviews.
+func TestReview_List_AcknowledgedAtNullRoundTrips(t *testing.T) {
+	srv := newFakeServer(t)
+	srv.listReviews = func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"reviews": []map[string]any{
+				{
+					"review_id":        "rev_a",
+					"site_id":          "site1",
+					"reviewer_login":   "alice",
+					"submitted_at":     "2026-05-06T10:00:00Z",
+					"acknowledged_at":  nil,
+					"annotation_count": 1,
+					"status":           "submitted",
+				},
+			},
+		})
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	setupConfig(t, server.URL)
+
+	w, stdout, _ := newJSONWriter(t)
+	rc := runReview(context.Background(), globalContext{w: w}, []string{"list"})
+	if rc != 0 {
+		t.Fatalf("rc: %d", rc)
+	}
+	if !strings.Contains(stdout.String(), `"acknowledged_at": null`) {
+		t.Errorf("expected `\"acknowledged_at\": null` round-trip, got: %s", stdout.String())
+	}
+}
+
 func TestReview_Get_RequiresArg(t *testing.T) {
 	w, _, _ := newJSONWriter(t)
 	rc := runReview(context.Background(), globalContext{w: w}, []string{"get"})
@@ -349,8 +459,8 @@ func TestReview_Request_UnresolvableEmail(t *testing.T) {
 
 	w, stdout, _ := newJSONWriter(t)
 	rc := runReview(context.Background(), globalContext{w: w}, []string{"request", "abcd1234", "--to", "nobody"})
-	if rc == 0 {
-		t.Fatalf("expected non-zero rc for unresolvable email")
+	if rc != exitReviewerUnresolvable {
+		t.Fatalf("rc: %d, want %d (exitReviewerUnresolvable)", rc, exitReviewerUnresolvable)
 	}
 	if !strings.Contains(stdout.String(), `"error": "reviewer_email_unknown"`) {
 		t.Errorf("stdout: %s", stdout.String())

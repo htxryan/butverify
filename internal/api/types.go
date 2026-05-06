@@ -147,14 +147,16 @@ type ManifestFile struct {
 
 // ReviewSummary is one entry in GET /v1/reviews. Mirrors
 // ListReviewsResponse.reviews in apps/control-plane/src/routes/reviews.ts.
+// AcknowledgedAt is *string so a server-sent JSON `null` (unacknowledged)
+// round-trips as `null` rather than being silently dropped via omitempty.
 type ReviewSummary struct {
-	ReviewID        string `json:"review_id"`
-	SiteID          string `json:"site_id"`
-	ReviewerLogin   string `json:"reviewer_login"`
-	SubmittedAt     string `json:"submitted_at"`
-	AcknowledgedAt  string `json:"acknowledged_at,omitempty"`
-	AnnotationCount int    `json:"annotation_count"`
-	Status          string `json:"status"`
+	ReviewID        string  `json:"review_id"`
+	SiteID          string  `json:"site_id"`
+	ReviewerLogin   string  `json:"reviewer_login"`
+	SubmittedAt     string  `json:"submitted_at"`
+	AcknowledgedAt  *string `json:"acknowledged_at"`
+	AnnotationCount int     `json:"annotation_count"`
+	Status          string  `json:"status"`
 }
 
 // ListReviewsResponse is the GET /v1/reviews payload.
