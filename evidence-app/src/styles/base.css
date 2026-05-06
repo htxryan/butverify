@@ -1,0 +1,143 @@
+/* Base / reset / global styles for the evidence gallery. Loaded after
+ * tokens.css. Keep this thin — most styling lives on components.
+ *
+ * Reduced-motion policy: per docs/2026-04-30-reduced-motion-policy.md, a
+ * single blanket rule disables transitions/animations for users that
+ * declare a preference. Components that need motion call
+ * prefersReducedMotion() in JS to pick a no-op code path. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: var(--bv-bg);
+  color: var(--bv-text);
+  font-family: var(--bv-font-sans);
+  font-size: 16px;
+  line-height: var(--bv-line-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100dvh;
+  background: var(--bv-bg);
+  color: var(--bv-text);
+}
+
+img,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: var(--bv-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+a:hover {
+  color: var(--bv-accent-strong);
+}
+a:focus-visible {
+  outline: 2px solid var(--bv-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--bv-accent);
+  outline-offset: 2px;
+  border-radius: var(--bv-radius-sm);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: var(--bv-line-tight);
+}
+
+p {
+  margin: 0;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--bv-font-mono);
+}
+
+/* Reduced-motion blanket. ANY component animation/transition that lasts
+ * longer than a paint frame is disabled. Components that want motion-or-
+ * static code branches should query the matchMedia themselves. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Screen-reader-only content for keyboard-equivalent affordances on
+ * canvas / image-region annotations. */
+.bv-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip-to-content for keyboard users; placed at the very top of the
+ * gallery shell. The link reveals on focus. */
+.bv-skip-link {
+  position: absolute;
+  top: -40px;
+  left: var(--bv-space-2);
+  padding: var(--bv-space-2) var(--bv-space-3);
+  background: var(--bv-accent);
+  color: white;
+  border-radius: var(--bv-radius-sm);
+  z-index: 100;
+  text-decoration: none;
+}
+.bv-skip-link:focus,
+.bv-skip-link:focus-visible {
+  top: var(--bv-space-2);
+}
