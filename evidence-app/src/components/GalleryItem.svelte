@@ -5,6 +5,7 @@
   import ItemDetails from "./ItemDetails.svelte";
   import ReviewTools from "./ReviewTools.svelte";
   import CommentForm from "./CommentForm.svelte";
+  import Lightbox from "./Lightbox.svelte";
   import {
     getReviewSession,
     imageRegionInput,
@@ -40,6 +41,9 @@
   // Drawing mode: 'off', 'circle', or 'rect'. Owned per-item so two
   // items don't share a draw mode.
   let drawMode = $state<"off" | "circle" | "rect">("off");
+
+  // Lightbox state — only images, only when not drawing.
+  let lightboxOpen = $state(false);
 
   // Item-comment popover state.
   let itemCommentOpen = $state(false);
@@ -198,13 +202,31 @@
 
   <div class="bv-item-media">
     {#if isImage}
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
       <img
         src={item.src}
         alt={altText}
         loading={index < 2 ? "eager" : "lazy"}
         decoding="async"
         draggable="false"
+        class:bv-item-img-zoomable={drawMode === "off"}
+        onclick={drawMode === "off" ? () => (lightboxOpen = true) : undefined}
       />
+      {#if drawMode === "off"}
+        <button
+          class="bv-item-expand"
+          type="button"
+          aria-label="View full size"
+          onclick={(e) => { e.stopPropagation(); lightboxOpen = true; }}
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="10,2 14,2 14,6" />
+            <polyline points="6,14 2,14 2,10" />
+            <line x1="14" y1="2" x2="9" y2="7" />
+            <line x1="2" y1="14" x2="7" y2="9" />
+          </svg>
+        </button>
+      {/if}
       {#if session}
         <AnnotationOverlay
           itemIndex={index}
@@ -247,6 +269,10 @@
     <ItemDetails {item} />
   {/if}
 </article>
+
+{#if lightboxOpen && isImage}
+  <Lightbox src={item.src} alt={altText} onClose={() => (lightboxOpen = false)} />
+{/if}
 
 <style>
   .bv-item {
@@ -310,6 +336,39 @@
     width: 100%;
     height: auto;
     display: block;
+  }
+  .bv-item-img-zoomable {
+    cursor: zoom-in;
+  }
+
+  .bv-item-expand {
+    position: absolute;
+    top: var(--bv-space-2);
+    right: var(--bv-space-2);
+    z-index: 3;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--bv-radius-md);
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--bv-duration-quick) var(--bv-ease-out);
+  }
+  .bv-item-media:hover .bv-item-expand,
+  .bv-item-expand:focus-visible {
+    opacity: 1;
+  }
+  .bv-item-expand:hover {
+    background: rgba(0, 0, 0, 0.7);
+  }
+  .bv-item-expand:focus-visible {
+    outline: 2px solid var(--bv-accent);
+    outline-offset: 2px;
   }
   .bv-item-unsupported {
     padding: var(--bv-space-6);

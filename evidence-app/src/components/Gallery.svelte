@@ -7,7 +7,6 @@
   import StackedLayout from "./StackedLayout.svelte";
   import CarouselLayout from "./CarouselLayout.svelte";
   import GalleryHeader from "./GalleryHeader.svelte";
-  import LayoutSwitcher from "./LayoutSwitcher.svelte";
   import EmptyState from "./EmptyState.svelte";
   import ReviewPanel from "./ReviewPanel.svelte";
   import CommentForm from "./CommentForm.svelte";
@@ -149,7 +148,7 @@
   class:bv-gallery-shell--with-review={reviewsEnabled}
 >
   <div class="bv-gallery-main">
-    <GalleryHeader {manifest} />
+    <GalleryHeader {manifest} bind:layout />
 
     {#if reviewsEnabled}
       <div class="bv-site-comment-region">
@@ -175,10 +174,6 @@
     {#if manifest.items.length === 0}
       <EmptyState />
     {:else}
-      <div class="bv-gallery-toolbar">
-        <LayoutSwitcher bind:value={layout} />
-      </div>
-
       <main id="bv-gallery-content" class="bv-gallery-content" tabindex="-1">
         {#if layout === "stacked"}
           <StackedLayout items={manifest.items} />
@@ -256,15 +251,6 @@
     color: var(--bv-text);
     background: var(--bv-surface-2);
     border-style: solid;
-  }
-
-  .bv-gallery-toolbar {
-    max-width: var(--bv-max-content);
-    width: 100%;
-    margin: 0 auto;
-    padding: 0 var(--bv-space-5) var(--bv-space-3);
-    display: flex;
-    justify-content: flex-end;
   }
 
   .bv-gallery-content {
