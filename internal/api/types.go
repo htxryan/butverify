@@ -144,3 +144,86 @@ type ManifestFile struct {
 	SHA256      string `json:"sha256"`
 	ContentType string `json:"content_type"`
 }
+
+// ReviewSummary is one entry in GET /v1/reviews. Mirrors
+// ListReviewsResponse.reviews in apps/control-plane/src/routes/reviews.ts.
+type ReviewSummary struct {
+	ReviewID        string `json:"review_id"`
+	SiteID          string `json:"site_id"`
+	ReviewerLogin   string `json:"reviewer_login"`
+	SubmittedAt     string `json:"submitted_at"`
+	AcknowledgedAt  string `json:"acknowledged_at,omitempty"`
+	AnnotationCount int    `json:"annotation_count"`
+	Status          string `json:"status"`
+}
+
+// ListReviewsResponse is the GET /v1/reviews payload.
+type ListReviewsResponse struct {
+	Reviews []ReviewSummary `json:"reviews"`
+}
+
+// Annotation mirrors one annotation row returned by GET /v1/reviews/:id.
+// Optional columns are *T so JSON `null` round-trips as nil rather than
+// the zero value (a 0.0 region_x is not the same as "no region").
+type Annotation struct {
+	AnnotationID string   `json:"annotation_id"`
+	Type         string   `json:"type"`
+	ItemIndex    *int     `json:"item_index"`
+	Comment      string   `json:"comment"`
+	RegionShape  *string  `json:"region_shape"`
+	RegionX      *float64 `json:"region_x"`
+	RegionY      *float64 `json:"region_y"`
+	RegionWidth  *float64 `json:"region_width"`
+	RegionHeight *float64 `json:"region_height"`
+	TextScope    *string  `json:"text_scope"`
+	CharStart    *int     `json:"char_start"`
+	CharEnd      *int     `json:"char_end"`
+	TextSnippet  *string  `json:"text_snippet"`
+	CreatedAt    string   `json:"created_at"`
+}
+
+// GetReviewResponse is the GET /v1/reviews/:id payload — full review +
+// annotations.
+type GetReviewResponse struct {
+	ReviewID        string       `json:"review_id"`
+	SiteID          string       `json:"site_id"`
+	ReviewerLogin   string       `json:"reviewer_login"`
+	SubmittedAt     string       `json:"submitted_at"`
+	AcknowledgedAt  *string      `json:"acknowledged_at"`
+	AnnotationCount int          `json:"annotation_count"`
+	Status          string       `json:"status"`
+	Annotations     []Annotation `json:"annotations"`
+}
+
+// AcknowledgeReviewResponse is the PATCH /v1/reviews/:id/acknowledge payload.
+// `already_acknowledged` distinguishes a fresh ack from an idempotent retry
+// so the CLI can keep its exit code at 0 (per EV2-S-2) while still telling
+// the human which path they took.
+type AcknowledgeReviewResponse struct {
+	ReviewID            string `json:"review_id"`
+	Status              string `json:"status"`
+	AcknowledgedAt      string `json:"acknowledged_at"`
+	AlreadyAcknowledged bool   `json:"already_acknowledged"`
+}
+
+// RequestReviewBody is the POST /v1/sites/:id/review-requests body.
+type RequestReviewBody struct {
+	ReviewerLogin string `json:"reviewer_login"`
+}
+
+// RequestReviewSuccess is the 201 success body for a review request.
+type RequestReviewSuccess struct {
+	Requested     bool   `json:"requested"`
+	ReviewerLogin string `json:"reviewer_login"`
+	Notification  string `json:"notification"`
+}
+
+// RequestReviewUnresolvable is the 422 body when the reviewer's email
+// can't be resolved. The control plane returns it directly (NOT inside
+// the standard error envelope) so the CLI surfaces site_url for manual
+// sharing per EV2-N-7.
+type RequestReviewUnresolvable struct {
+	Requested bool   `json:"requested"`
+	Error     string `json:"error"`
+	SiteURL   string `json:"site_url"`
+}

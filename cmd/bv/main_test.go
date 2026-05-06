@@ -30,19 +30,23 @@ import (
 // fakeServer routes a small subset of the control-plane API. Each test
 // sets the response handlers it cares about; unsupported routes 404.
 type fakeServer struct {
-	t         *testing.T
-	whoami    func(http.ResponseWriter, *http.Request)
-	listSites func(http.ResponseWriter, *http.Request)
-	getSite   func(http.ResponseWriter, *http.Request, string)
-	delete    func(http.ResponseWriter, *http.Request, string)
-	pin       func(http.ResponseWriter, *http.Request, string)
-	unpin     func(http.ResponseWriter, *http.Request, string)
-	manifest  func(http.ResponseWriter, *http.Request, string)
-	files     func(http.ResponseWriter, *http.Request, string)
-	getFile   func(http.ResponseWriter, *http.Request, string, string)
-	create    func(http.ResponseWriter, *http.Request)
-	finalize  func(http.ResponseWriter, *http.Request, string)
-	put       func(http.ResponseWriter, *http.Request)
+	t             *testing.T
+	whoami        func(http.ResponseWriter, *http.Request)
+	listSites     func(http.ResponseWriter, *http.Request)
+	getSite       func(http.ResponseWriter, *http.Request, string)
+	delete        func(http.ResponseWriter, *http.Request, string)
+	pin           func(http.ResponseWriter, *http.Request, string)
+	unpin         func(http.ResponseWriter, *http.Request, string)
+	manifest      func(http.ResponseWriter, *http.Request, string)
+	files         func(http.ResponseWriter, *http.Request, string)
+	getFile       func(http.ResponseWriter, *http.Request, string, string)
+	create        func(http.ResponseWriter, *http.Request)
+	finalize      func(http.ResponseWriter, *http.Request, string)
+	put           func(http.ResponseWriter, *http.Request)
+	listReviews   func(http.ResponseWriter, *http.Request)
+	getReview     func(http.ResponseWriter, *http.Request, string)
+	ackReview     func(http.ResponseWriter, *http.Request, string)
+	requestReview func(http.ResponseWriter, *http.Request, string)
 }
 
 func newFakeServer(t *testing.T) *fakeServer {
@@ -109,6 +113,39 @@ func (f *fakeServer) handler() http.Handler {
 		case r.URL.Path == "/staging-put" && r.Method == "PUT":
 			if f.put != nil {
 				f.put(w, r)
+				return
+			}
+		case r.URL.Path == "/v1/reviews" && (r.Method == "GET" || r.Method == "HEAD"):
+			if f.listReviews != nil {
+				f.listReviews(w, r)
+				return
+			}
+		case strings.HasPrefix(r.URL.Path, "/v1/reviews/"):
+			rest := strings.TrimPrefix(r.URL.Path, "/v1/reviews/")
+			parts := strings.SplitN(rest, "/", 2)
+			reviewID := parts[0]
+			tail := ""
+			if len(parts) == 2 {
+				tail = parts[1]
+			}
+			switch {
+			case tail == "" && r.Method == "GET" && f.getReview != nil:
+				f.getReview(w, r, reviewID)
+				return
+			case tail == "acknowledge" && r.Method == "PATCH" && f.ackReview != nil:
+				f.ackReview(w, r, reviewID)
+				return
+			}
+		}
+		// Site-scoped review-requests: POST /v1/sites/<id>/review-requests.
+		// Handled outside the existing /v1/sites/ switch so a test that
+		// only sets `requestReview` doesn't have to also stub the other
+		// site routes.
+		if strings.HasPrefix(r.URL.Path, "/v1/sites/") && strings.HasSuffix(r.URL.Path, "/review-requests") && r.Method == "POST" {
+			rest := strings.TrimPrefix(r.URL.Path, "/v1/sites/")
+			rest = strings.TrimSuffix(rest, "/review-requests")
+			if f.requestReview != nil {
+				f.requestReview(w, r, rest)
 				return
 			}
 		}

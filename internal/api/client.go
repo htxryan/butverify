@@ -168,7 +168,15 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body any) 
 	if err != nil {
 		return nil, fmt.Errorf("api: parse base URL %q: %w", c.BaseURL, err)
 	}
-	u = u.ResolveReference(&url.URL{Path: path})
+	// `path` may include a query string (e.g. "/v1/reviews?unacknowledged=true").
+	// Parse it as a reference URL so Path and RawQuery split correctly —
+	// otherwise the resolver treats the literal `?` as part of Path and
+	// percent-encodes it, breaking server-side route matching.
+	ref, err := url.Parse(path)
+	if err != nil {
+		return nil, fmt.Errorf("api: parse path %q: %w", path, err)
+	}
+	u = u.ResolveReference(ref)
 	var reader io.Reader
 	if body != nil {
 		switch b := body.(type) {

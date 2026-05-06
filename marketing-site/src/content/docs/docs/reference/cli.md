@@ -182,6 +182,26 @@ Examples:
 - `bv install-skill claude`
 - `bv install-skill claude --project`
 
+## `bv review <list|get|acknowledge|request> [args...]`
+
+Manage reviews on review-enabled evidence sites.
+
+bv review list [--site <id>] [--unacknowledged] [--format json|ids] — list reviews for the calling tenant.
+
+bv review get <review-id> — print a single review with all annotations.
+
+bv review acknowledge <review-id> — mark a review acknowledged (idempotent).
+
+bv review request <site-id> --to <github-login> — invite a GitHub user to review the site.
+
+Examples:
+
+- `bv review list --unacknowledged`
+- `bv review list --unacknowledged --format=ids`
+- `bv review get rev_abc`
+- `bv review acknowledge rev_abc`
+- `bv review request abcd1234 --to ryanh`
+
 ## `bv whoami`
 
 Print the resolved tenant for the configured token.
