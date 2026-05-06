@@ -248,15 +248,17 @@ func TestInstall_EnableHook_WritesSettingsJSON(t *testing.T) {
 			continue
 		}
 		// Every entry should have a hooks[*].command field; at least one
-		// must contain the bv sentinel and the documented bv review
-		// invocation.
+		// must contain the bv sentinel and the documented review
+		// invocation. The bv binary is invoked via its install-time
+		// absolute path (not unqualified `bv`) to defend against PATH
+		// hijack, so we assert on the suffix only.
 		found := false
 		for _, raw := range arr {
 			if entryHasSentinel(raw) {
 				found = true
 				cmd := commandFromEntry(t, raw)
-				if !strings.Contains(cmd, "bv review list --unacknowledged --format=ids") {
-					t.Errorf("hooks[%s] sentinel entry should call bv review list ...; got %s", evt, cmd)
+				if !strings.Contains(cmd, "review list --unacknowledged --format=ids") {
+					t.Errorf("hooks[%s] sentinel entry should call `... review list --unacknowledged --format=ids`; got %s", evt, cmd)
 				}
 				if !strings.Contains(cmd, "[butverify]") {
 					t.Errorf("hooks[%s] entry should print the [butverify] prefix; got %s", evt, cmd)
@@ -504,10 +506,18 @@ func TestUninstall_RemovesHooksAndPreservesOthers(t *testing.T) {
 // ---- Hook command shape (EV2-N-5: IDs only, no comment text) ----
 
 func TestHookShellCommand_NeverLeaksContent(t *testing.T) {
+	// Pin the resolved bv path so the test is deterministic and so we
+	// can assert on the absolute-path embed.
+	prev := bvExecutableFn
+	bvExecutableFn = func() (string, error) { return "/opt/butverify/bin/bv", nil }
+	t.Cleanup(func() { bvExecutableFn = prev })
 	for _, phase := range []string{"pending", "still pending"} {
 		phase := phase
 		t.Run(phase, func(t *testing.T) {
-			cmd := bvHookShellCommand(phase)
+			cmd, err := bvHookShellCommand(phase)
+			if err != nil {
+				t.Fatalf("bvHookShellCommand(%q): %v", phase, err)
+			}
 			// EV2-N-5: hook output only emits IDs and a count. The shell
 			// guard must call bv with --format=ids (no JSON, no content).
 			if !strings.Contains(cmd, "--format=ids") {
@@ -524,16 +534,40 @@ func TestHookShellCommand_NeverLeaksContent(t *testing.T) {
 			if !strings.Contains(cmd, "exit 0") {
 				t.Errorf("hook shell command must exit 0 unconditionally: %s", cmd)
 			}
-			// `command -v` guard must precede the bv call so a missing
-			// binary on PATH never errors out.
-			if !strings.Contains(cmd, "command -v bv") {
-				t.Errorf("hook shell command must guard with `command -v bv`: %s", cmd)
+			// PATH-hijack defense: the snippet must not invoke an
+			// unqualified `bv` from PATH. It must guard on -x against
+			// the install-time absolute path and invoke that path
+			// directly.
+			if strings.Contains(cmd, "command -v bv") {
+				t.Errorf("hook shell command must NOT use `command -v bv` (PATH hijack risk): %s", cmd)
+			}
+			if !strings.Contains(cmd, "'/opt/butverify/bin/bv'") {
+				t.Errorf("hook shell command must embed quoted absolute path of bv: %s", cmd)
+			}
+			if !strings.Contains(cmd, "[ -x '/opt/butverify/bin/bv' ]") {
+				t.Errorf("hook shell command must guard with [ -x <abs-bv> ]: %s", cmd)
 			}
 			// Phase wording must match the spec for the given event.
 			if !strings.Contains(cmd, phase+":") {
 				t.Errorf("hook shell command for phase %q missing wording in printf: %s", phase, cmd)
 			}
 		})
+	}
+}
+
+// PATH-hijack defense: a path containing a single quote must be safely
+// escaped so a malicious filename cannot break out of the quoted span.
+func TestHookShellCommand_QuotesAbsolutePathSafely(t *testing.T) {
+	prev := bvExecutableFn
+	bvExecutableFn = func() (string, error) { return "/tmp/weird'name/bv", nil }
+	t.Cleanup(func() { bvExecutableFn = prev })
+	cmd, err := bvHookShellCommand("pending")
+	if err != nil {
+		t.Fatalf("bvHookShellCommand: %v", err)
+	}
+	// Embedded form must use POSIX `'\''` to escape the single quote.
+	if !strings.Contains(cmd, `'/tmp/weird'\''name/bv'`) {
+		t.Errorf("absolute path with single quote must be POSIX-escaped: %s", cmd)
 	}
 }
 
@@ -583,4 +617,174 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// ---- Hardening regression coverage ----
+
+// Per-event hook arrays must get the same defense-in-depth treatment as
+// the top-level `hooks` field: a wrongly-typed value (e.g. a string or
+// object instead of an array) must not be silently overwritten.
+func TestInstall_RefusesMalformedPerEventHooks(t *testing.T) {
+	home := setupTempHome(t)
+	dotClaude := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(dotClaude, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// `hooks` is an object (good) but SessionStart is a string (bad).
+	priorJSON := []byte(`{"hooks": {"SessionStart": "not-an-array"}}` + "\n")
+	if err := os.WriteFile(filepath.Join(dotClaude, "settings.json"), priorJSON, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rc, stdout, _ := runInstall(t, "claude", "--enable-hook")
+	if rc != 0 {
+		t.Fatalf("install should succeed even when hook merge errors; rc=%d stdout=%s", rc, stdout)
+	}
+	if !strings.Contains(stdout, `"error"`) || !strings.Contains(strings.ToLower(stdout), "hooks.sessionstart is not") {
+		t.Errorf("hook outcome should report per-event field malformed: %s", stdout)
+	}
+	// Original settings.json must be untouched on refusal.
+	got, err := os.ReadFile(settingsPath(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(priorJSON) {
+		t.Errorf("settings.json should be untouched when per-event field malformed; got=%s", got)
+	}
+}
+
+// stripSentinelEntries must remove only the bv sentinel commands, not
+// the entire entry. A user who added a sibling command to the same
+// hook entry must keep that command after re-install or uninstall.
+func TestStripSentinelEntries_PreservesSiblingCommands(t *testing.T) {
+	entry := map[string]any{
+		"matcher": "*",
+		"hooks": []any{
+			map[string]any{"type": "command", "command": "echo user-command"},
+			map[string]any{"type": "command", "command": "echo with " + bvHookSentinel},
+		},
+	}
+	out := stripSentinelEntries([]any{entry})
+	if len(out) != 1 {
+		t.Fatalf("entry with sibling commands should survive; got len=%d %v", len(out), out)
+	}
+	gotEntry, ok := out[0].(map[string]any)
+	if !ok {
+		t.Fatalf("entry should still be a map: %T %v", out[0], out[0])
+	}
+	hooks, ok := gotEntry["hooks"].([]any)
+	if !ok {
+		t.Fatalf("entry.hooks must remain an array; got %T %v", gotEntry["hooks"], gotEntry["hooks"])
+	}
+	if len(hooks) != 1 {
+		t.Fatalf("only the sentinel command should be stripped; remaining=%d %v", len(hooks), hooks)
+	}
+	cmd := hooks[0].(map[string]any)["command"].(string)
+	if cmd != "echo user-command" {
+		t.Errorf("sibling command was lost; got %q", cmd)
+	}
+	// Matcher and other top-level fields preserved.
+	if gotEntry["matcher"] != "*" {
+		t.Errorf("matcher should be preserved; got %v", gotEntry["matcher"])
+	}
+	// Source map must not be mutated (defense-in-depth — callers may
+	// retain references).
+	srcHooks := entry["hooks"].([]any)
+	if len(srcHooks) != 2 {
+		t.Errorf("source entry hooks were mutated; want 2 got %d", len(srcHooks))
+	}
+}
+
+// stripSentinelEntries should drop entries whose only commands were
+// sentinel-tagged (an entry with no commands is meaningless to Claude
+// Code anyway).
+func TestStripSentinelEntries_DropsEntryWhenAllSentinel(t *testing.T) {
+	entry := map[string]any{
+		"hooks": []any{
+			map[string]any{"type": "command", "command": "echo first " + bvHookSentinel},
+			map[string]any{"type": "command", "command": "echo second " + bvHookSentinel},
+		},
+	}
+	out := stripSentinelEntries([]any{entry})
+	if len(out) != 0 {
+		t.Errorf("entry with only sentinel commands should be dropped; got %v", out)
+	}
+}
+
+// Uninstall must surface a hook-removal failure as a partial uninstall
+// with non-zero exit. Simulated by making settings.json unreadable
+// after install via a chmod 0 once we know the path.
+func TestUninstall_HookRemovalFailureSurfacesPartial(t *testing.T) {
+	home := setupTempHome(t)
+	if rc, _, _ := runInstall(t, "claude", "--enable-hook"); rc != 0 {
+		t.Fatal("install with hooks failed")
+	}
+	sp := settingsPath(home)
+	// Chmod settings.json to 0 so the read inside uninstallHooks fails.
+	if err := os.Chmod(sp, 0o000); err != nil {
+		t.Fatalf("chmod settings.json: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sp, 0o600) })
+	rc, stdout, _ := runInstall(t, "claude", "--uninstall")
+	if rc == 0 {
+		t.Errorf("uninstall should exit non-zero when hook removal fails; stdout=%s", stdout)
+	}
+	if !strings.Contains(stdout, `"hook_error"`) {
+		t.Errorf("JSON payload should include hook_error: %s", stdout)
+	}
+	if !strings.Contains(stdout, `"partial"`) {
+		t.Errorf("status should be 'partial' when hook removal fails: %s", stdout)
+	}
+}
+
+// Stamped legacy installs (a flat SKILL.md written by an older
+// pre-namespace bv release that already carried bv-skill-version
+// metadata) must trigger the migration call-out, not the generic drift
+// message — otherwise a user upgrading from a clean install gets a
+// less helpful error.
+func TestInstall_StampedLegacyFlatInstall_GivesMigrationMessage(t *testing.T) {
+	home := setupTempHome(t)
+	dir := filepath.Join(home, ".claude", "skills", "butverify")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Legacy stamped flat install: front-matter + body + a real-shape
+	// metadata stamp using a fabricated old hash. Drift detection sees
+	// a stamped install whose hash differs from the embedded one.
+	legacy := []byte("---\nname: butverify\ndescription: legacy stamped\n---\n# /butverify\nOld body.\n<!-- bv-skill: release=v0.0.legacy sha256=cafef00dface -->\n")
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), legacy, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rc, stdout, _ := runInstall(t, "claude")
+	if rc == 0 {
+		t.Fatalf("stamped legacy flat install should require --force; rc=0 stdout=%s", stdout)
+	}
+	if !strings.Contains(stdout, "pre-namespace flat install") {
+		t.Errorf("expected migration phrasing in error for stamped legacy install: %s", stdout)
+	}
+}
+
+// Stdin-TTY guard: when stdin is piped (non-TTY) but stderr is a TTY,
+// the consent prompt must NOT read from stdin. The hook is skipped
+// instead, and the pipeline data is preserved for the rest of the
+// process. Test by faking IsHumanTTY=true on the writer (simulating
+// interactive stderr) while leaving stdin as the test's pipe.
+func TestInstall_HooksSkippedWhenStdinNotTTY(t *testing.T) {
+	home := setupTempHome(t)
+	// Force the writer's IsHumanTTY signal true (stderr appears interactive)
+	// but leave stdinIsTTYFn returning false. Without the stdin-TTY guard,
+	// the install would try to Fscanln from os.Stdin and either consume
+	// pipeline input or hang.
+	prev := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return false }
+	t.Cleanup(func() { stdinIsTTYFn = prev })
+	rc, stdout, _ := runInstall(t, "claude")
+	if rc != 0 {
+		t.Fatalf("install rc: %d stdout=%s", rc, stdout)
+	}
+	if _, err := os.Stat(settingsPath(home)); !os.IsNotExist(err) {
+		t.Errorf("install with non-tty stdin should NOT write settings.json (got err=%v)", err)
+	}
+	if !strings.Contains(stdout, `"skipped"`) {
+		t.Errorf("hook outcome should be skipped when stdin is non-tty: %s", stdout)
+	}
 }

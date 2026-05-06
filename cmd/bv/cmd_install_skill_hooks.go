@@ -71,8 +71,11 @@ func maybeInstallHooks(g globalContext, opts installSkillOptions, root string) h
 	case opts.EnableHook:
 		// fall through to install
 	default:
-		// Decide via TTY consent. Non-TTY: skip silently.
-		if !g.w.IsHumanTTY() {
+		// Decide via TTY consent. Both stderr (where the prompt prints)
+		// and stdin (where we read the answer) must be TTYs. If stdin
+		// is piped while stderr is interactive, prompting would silently
+		// consume pipeline data — skip and require --enable-hook.
+		if !g.w.IsHumanTTY() || !isStdinTTY() {
 			return hookInstallOutcome{Status: "skipped", Reason: "non-tty (pass --enable-hook to install hooks non-interactively)"}
 		}
 		ok, err := promptHookConsent(g)
@@ -162,8 +165,28 @@ func installHooks(root string) error {
 		}
 	}
 	hooks, _ := getHooksMap(settings)
-	hooks["SessionStart"] = appendHook(stripSentinelEntries(getEventArray(hooks, "SessionStart")), buildHookEntry("pending"))
-	hooks["Stop"] = appendHook(stripSentinelEntries(getEventArray(hooks, "Stop")), buildHookEntry("still pending"))
+	// Defense-in-depth: a wrongly-typed per-event value (e.g. somebody
+	// hand-edited hooks.SessionStart to be a string or object) must not
+	// be silently overwritten — surface a clear error instead.
+	for _, evt := range []string{"SessionStart", "Stop"} {
+		v, present := hooks[evt]
+		if !present {
+			continue
+		}
+		if _, isArr := v.([]any); !isArr {
+			return fmt.Errorf("install-skill: refusing to install hooks; settings.hooks.%s is not a JSON array (got %T) — please review %s manually", evt, v, sp)
+		}
+	}
+	startCmd, err := bvHookShellCommand("pending")
+	if err != nil {
+		return err
+	}
+	stopCmd, err := bvHookShellCommand("still pending")
+	if err != nil {
+		return err
+	}
+	hooks["SessionStart"] = appendHook(stripSentinelEntries(getEventArray(hooks, "SessionStart")), buildHookEntryFromCommand(startCmd))
+	hooks["Stop"] = appendHook(stripSentinelEntries(getEventArray(hooks, "Stop")), buildHookEntryFromCommand(stopCmd))
 	settings["hooks"] = hooks
 
 	return writeSettings(sp, settings)
@@ -293,20 +316,80 @@ func getEventArray(hooks map[string]any, event string) []any {
 	return arr
 }
 
-// stripSentinelEntries returns a copy of `arr` with any entry whose
-// nested `hooks[*].command` field contains the bv sentinel removed.
-// Any entry we don't recognize is preserved verbatim.
+// stripSentinelEntries returns a copy of `arr` with the bv sentinel
+// commands stripped out. The original implementation dropped the whole
+// entry if any nested `hooks[*].command` carried the sentinel, which
+// would also lose any sibling commands the user added to the same entry
+// (matchers like "*" can group multiple commands). Now it removes only
+// the sentinel-tagged commands; an entry whose `hooks[]` becomes empty
+// is dropped (since an entry with no commands is meaningless), but
+// entries with surviving sibling commands are preserved.
 func stripSentinelEntries(arr []any) []any {
 	out := make([]any, 0, len(arr))
 	for _, raw := range arr {
-		if entryHasSentinel(raw) {
+		filtered, ok := filterSentinelCommands(raw)
+		if !ok {
+			// Unrecognized shape (not a map or no hooks array we can
+			// reason about) — preserve verbatim.
+			out = append(out, raw)
 			continue
 		}
-		out = append(out, raw)
+		if filtered == nil {
+			// All commands in this entry were sentinel-tagged.
+			continue
+		}
+		out = append(out, filtered)
 	}
 	return out
 }
 
+// filterSentinelCommands returns (entry, true) when `raw` is a recognizable
+// hook entry: the entry's `hooks` array is rebuilt with sentinel-tagged
+// commands removed. Returns (nil, true) when stripping leaves no commands
+// (caller drops the entry). Returns (raw, false) when the entry shape is
+// unrecognized so the caller preserves it verbatim.
+func filterSentinelCommands(raw any) (any, bool) {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return raw, false
+	}
+	hooks, ok := m["hooks"].([]any)
+	if !ok {
+		return raw, false
+	}
+	kept := make([]any, 0, len(hooks))
+	stripped := false
+	for _, h := range hooks {
+		hm, isMap := h.(map[string]any)
+		if !isMap {
+			kept = append(kept, h)
+			continue
+		}
+		if cmd, _ := hm["command"].(string); strings.Contains(cmd, bvHookSentinel) {
+			stripped = true
+			continue
+		}
+		kept = append(kept, h)
+	}
+	if !stripped {
+		// Nothing changed; return the original entry untouched.
+		return raw, true
+	}
+	if len(kept) == 0 {
+		return nil, true
+	}
+	// Rebuild a shallow copy of the entry with the filtered hooks list
+	// so we don't mutate the caller's input map.
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	out["hooks"] = kept
+	return out, true
+}
+
+// entryHasSentinel reports whether the entry contains any sentinel-tagged
+// commands. Retained for tests that assert on the bv-owned subset.
 func entryHasSentinel(raw any) bool {
 	m, ok := raw.(map[string]any)
 	if !ok {
@@ -346,17 +429,9 @@ func appendHook(arr []any, entry hookEntry) []any {
 	return append(arr, generic)
 }
 
-// buildHookEntry constructs a SessionStart or Stop hook payload. The
-// `phase` argument carries either "pending" (Start) or "still pending"
-// (Stop) so EV2-E-9b/c surface distinct human-facing wording. The
-// shell command resolves `bv` via `command -v` so a user whose PATH
-// briefly drops the binary still sees a clean exit-0 instead of a
-// missing-command error.
-//
-// The sentinel string is embedded as a shell comment so our installer
-// can recognize and replace these entries on re-install / uninstall.
-func buildHookEntry(phase string) hookEntry {
-	cmd := bvHookShellCommand(phase)
+// buildHookEntryFromCommand wraps a precomputed shell command in the
+// JSON shape Claude Code expects for one hooks-array entry.
+func buildHookEntryFromCommand(cmd string) hookEntry {
 	return hookEntry{
 		Matcher: "",
 		Hooks: []hookCommand{
@@ -365,16 +440,55 @@ func buildHookEntry(phase string) hookEntry {
 	}
 }
 
+// resolveBVExecutable returns the absolute, symlink-resolved path of the
+// running `bv` binary. The hook command embeds this path verbatim so a
+// later PATH change (e.g. an attacker dropping `~/.local/bin/bv` ahead of
+// the real binary) cannot redirect the auto-executing hook to an
+// unrelated binary. Override-friendly for tests via bvExecutableFn.
+var bvExecutableFn = realBVExecutable
+
+func realBVExecutable() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		// Fall back to the unresolved absolute path; better than aborting
+		// install and arguably equivalent for the threat model we care
+		// about (PATH-resolution hijack — not symlink swap on a binary
+		// the attacker already controls).
+		return exe, nil
+	}
+	return resolved, nil
+}
+
+// shellSingleQuote wraps `s` in POSIX single quotes so the resulting
+// token is safe to splice into a /bin/sh command. Single quotes inside
+// `s` close the quoted span and are emitted as `'\''` so the original
+// character survives intact.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // bvHookShellCommand returns the literal shell snippet stored in
 // settings.json for the given phase ("pending" for SessionStart,
-// "still pending" for Stop). Kept as a separate function so tests can
-// reach it directly without parsing JSON.
-func bvHookShellCommand(phase string) string {
-	return `command -v bv >/dev/null 2>&1 || exit 0; ` +
-		`out=$(bv review list --unacknowledged --format=ids 2>/dev/null) || exit 0; ` +
+// "still pending" for Stop). The resolved absolute path of `bv` is
+// embedded at install time so the auto-executing hook cannot be
+// hijacked by a later PATH change. If the file at that path is missing
+// or non-executable at hook time the snippet exits 0 silently — hooks
+// are advisory and MUST NEVER block a session (EV2-N-5).
+func bvHookShellCommand(phase string) (string, error) {
+	exe, err := bvExecutableFn()
+	if err != nil {
+		return "", fmt.Errorf("install-skill: resolve bv executable for hook command: %w", err)
+	}
+	q := shellSingleQuote(exe)
+	return `[ -x ` + q + ` ] || exit 0; ` +
+		`out=$(` + q + ` review list --unacknowledged --format=ids 2>/dev/null) || exit 0; ` +
 		`[ -z "$out" ] && exit 0; ` +
 		`n=$(printf '%s\n' "$out" | wc -l | tr -d ' '); ` +
 		`ids=$(printf '%s\n' "$out" | tr '\n' ' ' | sed 's/ $//'); ` +
 		`printf '[butverify] %s review(s) ` + phase + `: %s\n' "$n" "$ids"; ` +
-		`exit 0 # ` + bvHookSentinel
+		`exit 0 # ` + bvHookSentinel, nil
 }

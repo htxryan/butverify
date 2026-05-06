@@ -510,19 +510,22 @@ type installPrep struct {
 }
 
 // isFlatLegacyMigration reports whether the install is a "pre-namespace
-// flat install" upgrade: the alias SKILL.md exists with no
-// bv-skill-version metadata (instVer is empty), AND none of the
-// namespaced skills (prove-it / review) are installed yet. When true,
-// the drift error message switches to the migration-call-out variant
-// so the user understands --force will move them onto the new layout
+// flat install" upgrade: the alias SKILL.md exists at the namespace dir
+// AND none of the namespaced skills (prove-it / review) are installed
+// yet. The metadata stamp is intentionally NOT consulted — older
+// `bv install-skill` releases stamped a flat SKILL.md before the
+// namespace refactor, so a clean stamped pre-refactor install is just
+// as much a migration as a hand-edited or unstamped one. When true the
+// drift error message switches to the migration-call-out variant so
+// the user understands --force will move them onto the new layout
 // rather than just clobbering one file.
 func isFlatLegacyMigration(preps []installPrep) bool {
-	flatExistsWithoutMetadata := false
+	flatExists := false
 	subdirInstalled := false
 	for _, p := range preps {
 		if len(p.entry.LeafSegments) == 0 {
-			if p.installed && p.instVer == "" {
-				flatExistsWithoutMetadata = true
+			if p.installed {
+				flatExists = true
 			}
 			continue
 		}
@@ -530,7 +533,7 @@ func isFlatLegacyMigration(preps []installPrep) bool {
 			subdirInstalled = true
 		}
 	}
-	return flatExistsWithoutMetadata && !subdirInstalled
+	return flatExists && !subdirInstalled
 }
 
 // doInstall installs every skill in `skills` under `root`. BVS-E-2's
@@ -877,37 +880,50 @@ func doUninstall(g globalContext, opts installSkillOptions, root string, skills 
 	}
 
 	hookRemoved, hookErr := uninstallHooks(root)
+	hookErrMsg := ""
 	if hookErr != nil {
-		// Hooks removal is best-effort; log but don't fail the uninstall.
-		logInstallSkillError(g, opts.Agent, "HOOK_REMOVE", "")
+		// Hooks removal failure is a partial-uninstall: skill files are
+		// gone but the auto-executing SessionStart/Stop hooks remain in
+		// settings.json. Surface the failure and exit non-zero so a
+		// caller (or human) sees that the uninstall is incomplete.
+		hookErrMsg = hookErr.Error()
+		logInstallSkillError(g, opts.Agent, "HOOK_REMOVE", settingsPath(root))
 	}
 
 	logInstallSkill(g, "uninstalled", opts.Agent, primaryPath)
 
+	status := "not_installed"
+	if anyExisted || hookRemoved {
+		status = "uninstalled"
+	}
+	if hookErr != nil {
+		status = "partial"
+	}
+
 	if g.w.IsJSON() {
 		_ = g.w.JSON(struct {
-			OK            bool     `json:"ok"`
-			Agent         string   `json:"agent"`
-			Removed       []string `json:"removed"`
-			DirRemoved    bool     `json:"dir_removed"`
-			HookRemoved   bool     `json:"hook_removed"`
-			Status        string   `json:"status"`
+			OK          bool     `json:"ok"`
+			Agent       string   `json:"agent"`
+			Removed     []string `json:"removed"`
+			DirRemoved  bool     `json:"dir_removed"`
+			HookRemoved bool     `json:"hook_removed"`
+			HookError   string   `json:"hook_error,omitempty"`
+			Status      string   `json:"status"`
 		}{
-			OK:          true,
+			OK:          hookErr == nil,
 			Agent:       opts.Agent,
 			Removed:     removed,
 			DirRemoved:  dirRemoved,
 			HookRemoved: hookRemoved,
-			Status: func() string {
-				if anyExisted || hookRemoved {
-					return "uninstalled"
-				}
-				return "not_installed"
-			}(),
+			HookError:   hookErrMsg,
+			Status:      status,
 		})
+		if hookErr != nil {
+			return 1
+		}
 		return 0
 	}
-	if !anyExisted && !hookRemoved {
+	if !anyExisted && !hookRemoved && hookErr == nil {
 		g.w.Human("/butverify skills are not installed under %s — nothing to remove.", claudeNamespaceDir(root))
 		return 0
 	}
@@ -920,6 +936,13 @@ func doUninstall(g globalContext, opts installSkillOptions, root string, skills 
 	}
 	if hookRemoved {
 		g.w.Human("  removed hooks from %s", settingsPath(root))
+	}
+	if hookErr != nil {
+		g.w.Error(toErrorEnvelope(fmt.Errorf(
+			"install-skill: failed to remove hooks from %s: %w; SessionStart/Stop bv hooks may still be installed — please review manually",
+			settingsPath(root), hookErr,
+		)))
+		return 1
 	}
 	return 0
 }
