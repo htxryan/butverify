@@ -788,6 +788,9 @@ type RenderOptions struct {
 	// v2 bundle rolls out. See docs/specs/evidence-v2.md §3.1 (EV2-U-2)
 	// and docs/2026-05-05-evidence-cdn-pipeline.md (ADR).
 	UseBundleV2 bool
+	// EnableReviews sets enable_reviews:true in the inlined manifest so
+	// the gallery bundle renders the annotation/review UI (paid plan).
+	EnableReviews bool
 }
 
 // renderTempDirPrefix is used by both --push (CLI-owned temp dir) and
@@ -878,7 +881,7 @@ func RenderEvidence(input []byte, opts RenderOptions, g Generator) (EvidenceInpu
 	if opts.OutDir != "" {
 		return renderToOutDir(in, opts, dstNames, resolvedSrcs, g)
 	}
-	return renderToTempDir(in, dstNames, resolvedSrcs, g, opts.UseBundleV2)
+	return renderToTempDir(in, dstNames, resolvedSrcs, g, opts.UseBundleV2, opts.EnableReviews)
 }
 
 // errEvidenceAborted signals that the asset-copy loop bailed because
@@ -895,7 +898,7 @@ var errEvidenceAborted = errors.New("templates: evidence render aborted by signa
 // renderToTempDir handles the --push-only path: create a CLI-owned temp
 // dir and return its absolute path. The caller (T5) owns cleanup and
 // signal handling; we install nothing here.
-func renderToTempDir(in EvidenceInput, dstNames, resolvedSrcs []string, g Generator, useV2 bool) (EvidenceInput, string, error) {
+func renderToTempDir(in EvidenceInput, dstNames, resolvedSrcs []string, g Generator, useV2 bool, enableReviews bool) (EvidenceInput, string, error) {
 	tmpName, err := renderTempName()
 	if err != nil {
 		return in, "", fmt.Errorf("templates: evidence tmp name: %w", err)
@@ -909,7 +912,7 @@ func renderToTempDir(in EvidenceInput, dstNames, resolvedSrcs []string, g Genera
 	// --push mode: no signal handler at this layer (the caller, T5, owns
 	// process-level signals and tmp cleanup per EV-E-5). Pass a nil
 	// abort channel; writeBundleContents treats nil as "never aborts".
-	if err := writeBundleContents(in, tmpDir, dstNames, resolvedSrcs, g, nil, useV2); err != nil {
+	if err := writeBundleContents(in, tmpDir, dstNames, resolvedSrcs, g, nil, useV2, enableReviews); err != nil {
 		// Best-effort cleanup on failure; caller would clean up too,
 		// but we own this dir until we return.
 		_ = os.RemoveAll(tmpDir)
@@ -1017,7 +1020,7 @@ func renderToOutDir(in EvidenceInput, opts RenderOptions, dstNames, resolvedSrcs
 		close(done)
 	}()
 
-	werr := writeBundleContents(in, siblingTmp, dstNames, resolvedSrcs, g, abort, opts.UseBundleV2)
+	werr := writeBundleContents(in, siblingTmp, dstNames, resolvedSrcs, g, abort, opts.UseBundleV2, opts.EnableReviews)
 	close(writerDone)
 	if werr != nil {
 		// The signal handler may have already initiated cleanup. doCleanup
@@ -1065,7 +1068,7 @@ func renderToOutDir(in EvidenceInput, opts RenderOptions, dstNames, resolvedSrcs
 // per-asset cap (EV-S-2) — see renderToOutDir's signal-handler comment
 // for the residual race analysis. A nil abort channel means "never
 // aborts" (the --push mode in renderToTempDir uses this).
-func writeBundleContents(in EvidenceInput, outDir string, dstNames, resolvedSrcs []string, g Generator, abort <-chan struct{}, useV2 bool) error {
+func writeBundleContents(in EvidenceInput, outDir string, dstNames, resolvedSrcs []string, g Generator, abort <-chan struct{}, useV2 bool, enableReviews bool) error {
 	assetsDir := filepath.Join(outDir, "assets")
 	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
 		return fmt.Errorf("templates: evidence assets dir: %w", err)
@@ -1100,7 +1103,7 @@ func writeBundleContents(in EvidenceInput, outDir string, dstNames, resolvedSrcs
 	// live on the customer-site CDN. V1 (legacy): emit index.html +
 	// styles.css + evidence.js with the full in-binary template.
 	if useV2 {
-		return renderEvidenceHTMLV2(in, outDir, dstNames, g)
+		return renderEvidenceHTMLV2(in, outDir, dstNames, g, enableReviews)
 	}
 	// V1 owns the actual template execution. We pass items already
 	// sorted (per EVSC-10); the v1 template re-derives safe-names via

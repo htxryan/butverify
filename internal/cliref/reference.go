@@ -173,6 +173,7 @@ func DefaultReference() Reference {
 					{Name: "--ttl-seconds", Value: "N", Description: "site TTL in seconds; 0 uses the server default", Type: FlagInt64, Default: "0", RuntimeHelp: "site TTL in seconds (paid plan; 0 = use server default)"},
 					{Name: "--image-quality", Value: "N", Description: "image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default", Type: FlagInt, Default: "0", RuntimeHelp: "image optimization quality (1-100; 0 = config/default)"},
 					{Name: "--mode", Value: "local|remote", Description: "publish mode for --push", Type: FlagString, RuntimeHelp: "publish mode for --push: local or remote (default: configured mode)"},
+					{Name: "--enable-reviews", Description: "opt the site into the review/annotation system (paid plan required)", Type: FlagBool, RuntimeHelp: "opt the site into the review/annotation system (paid plan required)"},
 				},
 			},
 			{

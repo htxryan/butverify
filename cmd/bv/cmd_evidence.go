@@ -59,14 +59,15 @@ var stdinIsTTY = func() bool {
 // runEvidence's flag surface ever drifts, the test fails before the
 // binary ships.
 type evidenceFlags struct {
-	from     *string
-	out      *string
-	push     *bool
-	schema   *bool
-	uploadID *string
-	ttl      *int64
-	quality  *int
-	mode     *string
+	from          *string
+	out           *string
+	push          *bool
+	schema        *bool
+	uploadID      *string
+	ttl           *int64
+	quality       *int
+	mode          *string
+	enableReviews *bool
 }
 
 // newEvidenceFlagSet constructs the canonical `bv evidence` flag set.
@@ -75,14 +76,15 @@ type evidenceFlags struct {
 func newEvidenceFlagSet() (*flag.FlagSet, evidenceFlags) {
 	fs, values := newCLIFlagSet("evidence")
 	f := evidenceFlags{
-		from:     values.String("from"),
-		out:      values.String("out"),
-		push:     values.Bool("push"),
-		schema:   values.Bool("schema"),
-		uploadID: values.String("upload-id"),
-		ttl:      values.Int64("ttl-seconds"),
-		quality:  values.Int("image-quality"),
-		mode:     values.String("mode"),
+		from:          values.String("from"),
+		out:           values.String("out"),
+		push:          values.Bool("push"),
+		schema:        values.Bool("schema"),
+		uploadID:      values.String("upload-id"),
+		ttl:           values.Int64("ttl-seconds"),
+		quality:       values.Int("image-quality"),
+		mode:          values.String("mode"),
+		enableReviews: values.Bool("enable-reviews"),
 	}
 	return fs, f
 }
@@ -97,6 +99,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	ttlFlag := f.ttl
 	imageQuality := f.quality
 	modeFlag := f.mode
+	enableReviewsFlag := f.enableReviews
 	if err := fs.Parse(args); err != nil {
 		return handleFlagParseError(g, "evidence", err)
 	}
@@ -216,6 +219,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 		template:           "evidence",
 		imageQuality:       *imageQuality,
 		modeOverride:       *modeFlag,
+		enableReviews:      *enableReviewsFlag,
 		createErrTransform: classifyTemplateRolloutErr,
 	})
 }

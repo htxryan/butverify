@@ -47,6 +47,7 @@ type pushOptions struct {
 	skipGitleaksCheck bool
 	imageQuality      int
 	modeOverride      string
+	enableReviews     bool
 	// createErrTransform optionally rewrites the error returned from
 	// POST /v1/sites BEFORE reportError formats it. Used by `bv
 	// evidence` to surface the EV-E-8 distinctive 400 envelope when
@@ -123,6 +124,7 @@ func runPushFlow(ctx context.Context, g globalContext, opts pushOptions) int {
 		CLIVersion:     Version,
 		PublishCommand: publishCommand,
 		PublishCWD:     publishCWD,
+		EnableReviews:  opts.enableReviews,
 	}
 	if opts.ttlSeconds > 0 {
 		ttl := opts.ttlSeconds

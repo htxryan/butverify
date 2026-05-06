@@ -132,7 +132,7 @@ type EvidenceManifestPayloadItem struct {
 // The `src` in the payload is rewritten to the on-disk safe-name path
 // (e.g. `assets/001-foo.png`) so the bundle's <img src> resolves
 // against the per-site origin without needing path-rewriting at runtime.
-func buildManifestPayload(in EvidenceInput, safeNames []string, g Generator) EvidenceManifestPayload {
+func buildManifestPayload(in EvidenceInput, safeNames []string, g Generator, enableReviews bool) EvidenceManifestPayload {
 	p := EvidenceManifestPayload{
 		Title:            in.Title,
 		Subtitle:         in.Subtitle,
@@ -140,9 +140,8 @@ func buildManifestPayload(in EvidenceInput, safeNames []string, g Generator) Evi
 		GeneratedAt:      g.generatedAt(),
 		GeneratorVersion: g.version(),
 		BundleVersion:    EvidenceBundleVersion,
-		// EnableReviews is left at its zero value (false). E3 will set
-		// this from the site config; this v1 of the bundle ignores it.
-		Items: make([]EvidenceManifestPayloadItem, 0, len(in.Items)),
+		EnableReviews:    enableReviews,
+		Items:            make([]EvidenceManifestPayloadItem, 0, len(in.Items)),
 	}
 	if hasMetadata(in.Metadata) {
 		p.Metadata = toManifestMetadata(in.Metadata)
@@ -194,7 +193,7 @@ func toManifestMetadata(m EvidenceMetadata) *EvidenceManifestMetadata {
 // integration-verification harness can assert against the wire shape
 // without round-tripping through HTML rendering.
 func MarshalEvidenceManifest(in EvidenceInput, safeNames []string, g Generator) ([]byte, error) {
-	p := buildManifestPayload(in, safeNames, g)
+	p := buildManifestPayload(in, safeNames, g, false)
 	// Compact JSON, no indent — the v2 bundle is the canonical reader,
 	// and human inspection is via the dashboard / API rather than View
 	// Source. Keeping the payload compact matters for sites with many
@@ -211,7 +210,7 @@ func MarshalEvidenceManifest(in EvidenceInput, safeNames []string, g Generator) 
 // The dstNames argument is the per-item asset basename (already in
 // post-sort order, matching the canonical SafeAssetName output). The
 // caller passes it so we don't recompute SafeAssetName here.
-func renderEvidenceHTMLV2(in EvidenceInput, outDir string, dstNames []string, g Generator) error {
+func renderEvidenceHTMLV2(in EvidenceInput, outDir string, dstNames []string, g Generator, enableReviews bool) error {
 	// Build the noscript fallback model. Items are already sorted via
 	// the caller; we mirror evidence_render.go's image/video extension
 	// branching so the noscript markup is consistent with what the
@@ -234,7 +233,8 @@ func renderEvidenceHTMLV2(in EvidenceInput, outDir string, dstNames []string, g 
 	}
 
 	// Build the inlined manifest payload.
-	manifestBytes, err := MarshalEvidenceManifest(in, dstNames, g)
+	manifestPayload := buildManifestPayload(in, dstNames, g, enableReviews)
+	manifestBytes, err := json.Marshal(manifestPayload)
 	if err != nil {
 		return fmt.Errorf("templates: marshal evidence manifest: %w", err)
 	}

@@ -53,7 +53,7 @@ func TestRenderEvidenceHTMLV2_WritesIndexHtmlOnly(t *testing.T) {
 	in, dstNames := v2Fixture(t)
 	dir := t.TempDir()
 
-	if err := renderEvidenceHTMLV2(in, dir, dstNames, Generator{Version: "0.1", Now: time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)}); err != nil {
+	if err := renderEvidenceHTMLV2(in, dir, dstNames, Generator{Version: "0.1", Now: time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)}, false); err != nil {
 		t.Fatalf("renderEvidenceHTMLV2: %v", err)
 	}
 
@@ -78,7 +78,7 @@ func TestRenderEvidenceHTMLV2_WritesIndexHtmlOnly(t *testing.T) {
 func TestRenderEvidenceHTMLV2_TemplateContent(t *testing.T) {
 	in, dstNames := v2Fixture(t)
 	dir := t.TempDir()
-	if err := renderEvidenceHTMLV2(in, dir, dstNames, Generator{Version: "0.1", Now: time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)}); err != nil {
+	if err := renderEvidenceHTMLV2(in, dir, dstNames, Generator{Version: "0.1", Now: time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)}, false); err != nil {
 		t.Fatalf("renderEvidenceHTMLV2: %v", err)
 	}
 	bytes, err := os.ReadFile(filepath.Join(dir, "index.html"))
@@ -125,7 +125,7 @@ func TestRenderEvidenceHTMLV2_TemplateContent(t *testing.T) {
 func TestRenderEvidenceHTMLV2_NoscriptFallback(t *testing.T) {
 	in, dstNames := v2Fixture(t)
 	dir := t.TempDir()
-	if err := renderEvidenceHTMLV2(in, dir, dstNames, Generator{}); err != nil {
+	if err := renderEvidenceHTMLV2(in, dir, dstNames, Generator{}, false); err != nil {
 		t.Fatalf("renderEvidenceHTMLV2: %v", err)
 	}
 	bytes, err := os.ReadFile(filepath.Join(dir, "index.html"))

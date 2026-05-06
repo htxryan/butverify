@@ -39,6 +39,8 @@ type CreateSiteRequest struct {
 	// this to bill the request against the templated-site fairness counter
 	// (closes O-3) and stamp the sites row's `template` column for analytics.
 	Template string `json:"template,omitempty"`
+	// EnableReviews opts the site into the review system (paid plan required).
+	EnableReviews bool `json:"enable_reviews,omitempty"`
 }
 
 // CreateSiteResponse is the POST /v1/sites payload.
