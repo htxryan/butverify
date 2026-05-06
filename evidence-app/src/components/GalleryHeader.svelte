@@ -3,261 +3,145 @@
   import LayoutSwitcher from "./LayoutSwitcher.svelte";
 
   type Layout = "stacked" | "carousel";
+  type Page = "evidence" | "details";
 
   let {
     manifest,
     layout = $bindable("stacked"),
-  }: { manifest: EvidenceManifest; layout: Layout } = $props();
-
-  function formatDate(iso: string | undefined): string | null {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    const pad = (n: number) => n.toString().padStart(2, "0");
-    return (
-      `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
-      ` ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`
-    );
-  }
-
-  let issueLabel = $derived(
-    manifest.metadata?.issue_id ??
-      manifest.metadata?.issue_title ??
-      manifest.metadata?.issue_url ??
-      null,
-  );
-  let issueUrl = $derived(manifest.metadata?.issue_url ?? null);
-  let publishedAt = $derived(formatDate(manifest.generated_at));
-
-  // Collapse state — persisted so it survives navigation.
-  let collapsed = $state(false);
-  $effect(() => {
-    try {
-      collapsed = localStorage.getItem("bv-header-collapsed") === "true";
-    } catch {
-      // localStorage unavailable — use default
-    }
-  });
-
-  function toggleCollapsed() {
-    collapsed = !collapsed;
-    try {
-      localStorage.setItem("bv-header-collapsed", String(collapsed));
-    } catch {}
-  }
+    page,
+    onNavigate,
+  }: {
+    manifest: EvidenceManifest;
+    layout: Layout;
+    page: Page;
+    onNavigate: (p: Page) => void;
+  } = $props();
 </script>
 
-<header
-  class="bv-gallery-header"
-  class:bv-gallery-header--collapsed={collapsed}
-  aria-label="Evidence gallery title"
->
-  <div class="bv-gallery-header-inner">
-    <!-- Title row: always visible -->
-    <div class="bv-gallery-header-titlebar">
-      <h1 class="bv-gallery-title">{manifest.title}</h1>
-      <div class="bv-gallery-header-controls">
-        {#if collapsed}
-          <LayoutSwitcher bind:value={layout} />
-        {/if}
+<header class="bv-topbar" aria-label="Site navigation">
+  <div class="bv-topbar-inner">
+    {#if page === "details"}
+      <button
+        class="bv-topbar-back"
+        type="button"
+        onclick={() => onNavigate("evidence")}
+        aria-label="Back to evidence"
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="10,3 5,8 10,13" />
+        </svg>
+        Evidence
+      </button>
+    {/if}
+
+    <h1 class="bv-topbar-title" class:bv-topbar-title--details={page === "details"}>
+      {manifest.title}
+    </h1>
+
+    <div class="bv-topbar-controls">
+      {#if page === "evidence"}
+        <LayoutSwitcher bind:value={layout} />
         <button
-          class="bv-header-toggle"
+          class="bv-topbar-nav"
           type="button"
-          onclick={toggleCollapsed}
-          aria-label={collapsed ? "Expand header" : "Collapse header"}
-          aria-expanded={!collapsed}
+          onclick={() => onNavigate("details")}
         >
-          <svg
-            viewBox="0 0 16 16"
-            width="14"
-            height="14"
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class:bv-chevron-collapsed={collapsed}
-          >
-            <polyline points="3,10 8,5 13,10" />
+          Details
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6,3 11,8 6,13" />
           </svg>
         </button>
-      </div>
+      {/if}
     </div>
-
-    <!-- Expandable body -->
-    {#if !collapsed}
-      {#if manifest.subtitle}
-        <p class="bv-gallery-subtitle">{manifest.subtitle}</p>
-      {/if}
-      {#if manifest.summary}
-        <p class="bv-gallery-summary">{manifest.summary}</p>
-      {/if}
-      {#if issueLabel || publishedAt || manifest.generator_version}
-        <dl class="bv-gallery-meta">
-          {#if issueLabel}
-            <div class="bv-gallery-meta-row">
-              <dt>Issue</dt>
-              <dd>
-                {#if issueUrl}
-                  <a href={issueUrl} rel="noreferrer noopener nofollow" target="_blank"
-                    >{issueLabel}</a
-                  >
-                {:else}
-                  {issueLabel}
-                {/if}
-              </dd>
-            </div>
-          {/if}
-          {#if publishedAt}
-            <div class="bv-gallery-meta-row">
-              <dt>Published</dt>
-              <dd>{publishedAt}</dd>
-            </div>
-          {/if}
-          {#if manifest.generator_version}
-            <div class="bv-gallery-meta-row">
-              <dt>Generator</dt>
-              <dd>bv {manifest.generator_version}</dd>
-            </div>
-          {/if}
-        </dl>
-      {/if}
-      <!-- Toolbar lives inside the expanded header -->
-      <div class="bv-gallery-header-toolbar">
-        <LayoutSwitcher bind:value={layout} />
-      </div>
-    {/if}
   </div>
 </header>
 
 <style>
-  .bv-gallery-header {
-    width: 100%;
-    border-bottom: 1px solid var(--bv-border);
-    background: var(--bv-surface);
-  }
-  .bv-gallery-header--collapsed {
+  .bv-topbar {
     position: sticky;
     top: 0;
     z-index: 20;
+    width: 100%;
+    background: var(--bv-surface);
+    border-bottom: 1px solid var(--bv-border);
   }
-  .bv-gallery-header-inner {
+  .bv-topbar-inner {
     max-width: var(--bv-max-content);
     margin: 0 auto;
-    padding: var(--bv-space-8) var(--bv-space-5) var(--bv-space-6);
+    padding: 0 var(--bv-space-5);
+    height: 3.25rem;
     display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: var(--bv-space-3);
-  }
-  .bv-gallery-header--collapsed .bv-gallery-header-inner {
-    padding: var(--bv-space-3) var(--bv-space-5);
   }
 
-  .bv-gallery-header-titlebar {
-    display: flex;
+  .bv-topbar-back {
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--bv-space-3);
-    min-width: 0;
-  }
-  .bv-gallery-header-controls {
-    display: flex;
-    align-items: center;
-    gap: var(--bv-space-3);
-    flex-shrink: 0;
-  }
-
-  .bv-gallery-title {
-    font-size: var(--bv-text-3xl);
-    line-height: var(--bv-line-tight);
-    color: var(--bv-text);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .bv-gallery-header--collapsed .bv-gallery-title {
-    font-size: var(--bv-text-lg);
-  }
-  .bv-gallery-subtitle {
-    font-size: var(--bv-text-lg);
-    color: var(--bv-text-dim);
-    line-height: var(--bv-line-snug);
-  }
-  .bv-gallery-summary {
-    font-size: var(--bv-text-base);
-    color: var(--bv-text-dim);
-    line-height: var(--bv-line-normal);
-    white-space: pre-wrap;
-    max-width: var(--bv-max-narrow);
-  }
-  .bv-gallery-meta {
-    margin: var(--bv-space-2) 0 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--bv-space-2) var(--bv-space-5);
-  }
-  .bv-gallery-meta-row {
-    display: flex;
-    align-items: center;
-    gap: var(--bv-space-2);
+    gap: var(--bv-space-1);
     font-size: var(--bv-text-sm);
-  }
-  .bv-gallery-meta-row dt {
-    color: var(--bv-text-muted);
-    text-transform: uppercase;
-    font-size: var(--bv-text-xs);
-    letter-spacing: 0.04em;
-  }
-  .bv-gallery-meta-row dd {
-    margin: 0;
     color: var(--bv-text-dim);
-    font-family: var(--bv-font-mono);
-    font-size: var(--bv-text-xs);
-  }
-
-  .bv-gallery-header-toolbar {
-    margin-top: var(--bv-space-2);
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  .bv-header-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: var(--bv-radius-md);
     background: transparent;
-    border: 1px solid var(--bv-border);
-    color: var(--bv-text-muted);
+    border: none;
     cursor: pointer;
+    padding: var(--bv-space-1) var(--bv-space-2);
+    border-radius: var(--bv-radius-sm);
     flex-shrink: 0;
-    transition:
-      background var(--bv-duration-quick) var(--bv-ease-out),
-      color var(--bv-duration-quick) var(--bv-ease-out);
+    transition: color var(--bv-duration-quick) var(--bv-ease-out);
   }
-  .bv-header-toggle:hover {
-    background: var(--bv-surface-2);
+  .bv-topbar-back:hover {
     color: var(--bv-text);
   }
-  .bv-header-toggle:focus-visible {
+  .bv-topbar-back:focus-visible {
     outline: 2px solid var(--bv-accent);
     outline-offset: 2px;
   }
 
-  .bv-chevron-collapsed {
-    transform: rotate(180deg);
+  .bv-topbar-title {
+    flex: 1;
+    font-size: var(--bv-text-sm);
+    font-weight: 600;
+    color: var(--bv-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .bv-topbar-title--details {
+    /* On the details page the title is in the page body — keep it in
+     * the topbar as a breadcrumb label only, slightly muted. */
+    color: var(--bv-text-muted);
+    font-weight: 400;
   }
 
-  @media (min-width: 720px) {
-    .bv-gallery-title {
-      font-size: var(--bv-text-4xl);
-    }
-    .bv-gallery-header--collapsed .bv-gallery-title {
-      font-size: var(--bv-text-xl);
-    }
+  .bv-topbar-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--bv-space-3);
+    flex-shrink: 0;
+  }
+
+  .bv-topbar-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--bv-space-1);
+    font-size: var(--bv-text-sm);
+    color: var(--bv-text-dim);
+    background: transparent;
+    border: 1px solid var(--bv-border);
+    border-radius: var(--bv-radius-md);
+    padding: var(--bv-space-1) var(--bv-space-3);
+    cursor: pointer;
+    transition:
+      color var(--bv-duration-quick) var(--bv-ease-out),
+      background var(--bv-duration-quick) var(--bv-ease-out);
+  }
+  .bv-topbar-nav:hover {
+    color: var(--bv-text);
+    background: var(--bv-surface-2);
+  }
+  .bv-topbar-nav:focus-visible {
+    outline: 2px solid var(--bv-accent);
+    outline-offset: 2px;
   }
 </style>
