@@ -1,0 +1,173 @@
+name: Publish evidence bundle
+
+# Build evidence-app/ and upload dist/_astro/* to R2 at the versioned
+# CDN path `evidence-bundles/v{ver}/_astro/*` for the chosen environment.
+# The version comes from `evidence-app/package.json`.
+#
+# Triggered manually via workflow_dispatch (env input). The customer-site
+# Worker serves the resulting bytes at
+# `https://<any-customer-site>.butverify.dev/assets/evidence/v{ver}/_astro/*`
+# — see docs/2026-05-05-evidence-cdn-pipeline.md (in the service repo).
+#
+# Secrets required (set on htxryan/butverify, per env):
+#   - CLOUDFLARE_API_TOKEN  scoped to R2 Object Read/Write on the
+#                            target bucket(s)
+#   - CLOUDFLARE_ACCOUNT_ID the Cloudflare account id
+#
+# The R2 bucket per env is hardcoded below to match the customer-site
+# Worker's wrangler.toml in the butverify-service repo:
+#   - dev  → butverify-assets-dev
+#   - qa   → butverify-assets-qa
+#   - prod → butverify-assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Target environment"
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - qa
+          - prod
+      dry_run:
+        description: "Build but skip the R2 upload"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # One publish at a time per env. Different envs can run in parallel.
+  group: publish-evidence-bundle-${{ inputs.env }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build + publish (${{ inputs.env }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evidence-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.11.0"
+          cache: pnpm
+          cache-dependency-path: evidence-app/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Read bundle version
+        id: version
+        run: |
+          ver=$(node -p "require('./package.json').version")
+          if [ -z "$ver" ]; then
+            echo "::error::could not read version from package.json"
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Bundle version: v$ver"
+
+      - name: Resolve target R2 bucket
+        id: bucket
+        run: |
+          case "${{ inputs.env }}" in
+            dev)  bucket=butverify-assets-dev ;;
+            qa)   bucket=butverify-assets-qa ;;
+            prod) bucket=butverify-assets ;;
+            *)
+              echo "::error::unknown env ${{ inputs.env }}"
+              exit 1
+              ;;
+          esac
+          echo "bucket=$bucket" >> "$GITHUB_OUTPUT"
+          echo "R2 bucket: $bucket"
+
+      - name: Verify build outputs
+        run: |
+          set -euo pipefail
+          ls -la dist/_astro/
+          # Hard requirement: predictable filenames per
+          # vite.config.ts. The Go CLI hardcodes references to these.
+          test -f dist/_astro/main.js
+          test -f dist/_astro/main.css
+          # Sanity: no hashed entries.
+          if compgen -G "dist/_astro/*-*.js" > /dev/null; then
+            echo "::error::found hashed JS files in dist/_astro; vite.config.ts must keep filenames stable"
+            ls dist/_astro/
+            exit 1
+          fi
+
+      - name: Show what would be uploaded
+        run: |
+          echo "Target prefix: evidence-bundles/v${{ steps.version.outputs.version }}/_astro/"
+          echo "Files to upload:"
+          find dist/_astro -type f -printf '  %p\n'
+
+      - name: Upload to R2
+        if: ${{ !inputs.dry_run }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          version="v${{ steps.version.outputs.version }}"
+          bucket="${{ steps.bucket.outputs.bucket }}"
+          prefix="evidence-bundles/$version/_astro"
+
+          # Per-file content-type hints. Wrangler r2 object put infers from
+          # extension when --content-type is omitted, but explicit is safer
+          # since the customer-site Worker passes through the stored
+          # content-type via R2 object metadata.
+          declare -A ct=(
+            [js]="application/javascript; charset=utf-8"
+            [css]="text/css; charset=utf-8"
+            [woff]="font/woff"
+            [woff2]="font/woff2"
+            [svg]="image/svg+xml"
+            [png]="image/png"
+            [jpg]="image/jpeg"
+            [jpeg]="image/jpeg"
+            [json]="application/json; charset=utf-8"
+          )
+
+          # Iterate every file under dist/_astro/ and upload to the
+          # versioned prefix in R2. Because the version directory is the
+          # cache key, the R2 ContentDisposition + per-file
+          # Cache-Control are owned by the customer-site Worker on read
+          # — we just push raw bytes here.
+          while IFS= read -r -d '' file; do
+            rel="${file#dist/_astro/}"
+            key="$prefix/$rel"
+            ext="${rel##*.}"
+            mime="${ct[$ext]:-application/octet-stream}"
+            echo "→ $bucket/$key  ($mime)"
+            npx --yes wrangler@^4 r2 object put \
+              "$bucket/$key" \
+              --file "$file" \
+              --content-type "$mime" \
+              --remote
+          done < <(find dist/_astro -type f -print0)
+
+          echo "✓ Published evidence bundle $version to $bucket"
