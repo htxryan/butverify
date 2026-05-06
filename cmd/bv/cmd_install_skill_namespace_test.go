@@ -663,7 +663,10 @@ func TestStripSentinelEntries_PreservesSiblingCommands(t *testing.T) {
 			map[string]any{"type": "command", "command": "echo with " + bvHookSentinel},
 		},
 	}
-	out := stripSentinelEntries([]any{entry})
+	out, removed := stripSentinelEntries([]any{entry})
+	if !removed {
+		t.Errorf("removed flag should be true when a sentinel sibling was stripped")
+	}
 	if len(out) != 1 {
 		t.Fatalf("entry with sibling commands should survive; got len=%d %v", len(out), out)
 	}
@@ -704,9 +707,84 @@ func TestStripSentinelEntries_DropsEntryWhenAllSentinel(t *testing.T) {
 			map[string]any{"type": "command", "command": "echo second " + bvHookSentinel},
 		},
 	}
-	out := stripSentinelEntries([]any{entry})
+	out, removed := stripSentinelEntries([]any{entry})
+	if !removed {
+		t.Errorf("removed flag should be true when an entry was dropped")
+	}
 	if len(out) != 0 {
 		t.Errorf("entry with only sentinel commands should be dropped; got %v", out)
+	}
+}
+
+// stripSentinelEntries must report removed=true when a sentinel command
+// is stripped from an entry that keeps its top-level slot due to a
+// surviving sibling. uninstallHooks compares by removed flag (not by
+// top-level slice length) so a mixed entry like this would otherwise be
+// silently retained — leaving the bv command in settings.json after
+// `bv install-skill --uninstall`.
+func TestStripSentinelEntries_FlagsRemovalForMixedEntry(t *testing.T) {
+	entry := map[string]any{
+		"matcher": "*",
+		"hooks": []any{
+			map[string]any{"type": "command", "command": "echo user-command"},
+			map[string]any{"type": "command", "command": "echo with " + bvHookSentinel},
+		},
+	}
+	out, removed := stripSentinelEntries([]any{entry})
+	if !removed {
+		t.Fatalf("removed flag must be true for mixed entry; got false (out=%v)", out)
+	}
+	if len(out) != 1 {
+		t.Fatalf("entry should survive; got len=%d", len(out))
+	}
+}
+
+// uninstallHooks must rewrite settings.json when a bv sentinel command
+// is removed from an entry that keeps its top-level slot. This is the
+// regression test for the bug where len(stripped) == len(arr) caused
+// the writer to skip and leave the bv command behind.
+func TestUninstallHooks_RemovesSentinelFromMixedEntry(t *testing.T) {
+	root := t.TempDir()
+	sp := settingsPath(root)
+	if err := os.MkdirAll(filepath.Dir(sp), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	prior := map[string]any{
+		"hooks": map[string]any{
+			"SessionStart": []any{
+				map[string]any{
+					"matcher": "*",
+					"hooks": []any{
+						map[string]any{"type": "command", "command": "echo user-command"},
+						map[string]any{"type": "command", "command": "/bin/bv review list # " + bvHookSentinel, "timeout": float64(2)},
+					},
+				},
+			},
+		},
+	}
+	encoded, err := json.MarshalIndent(prior, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := os.WriteFile(sp, encoded, 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	removed, err := uninstallHooks(root)
+	if err != nil {
+		t.Fatalf("uninstallHooks: %v", err)
+	}
+	if !removed {
+		t.Fatal("uninstallHooks must report removed=true when a sentinel was stripped from a mixed entry")
+	}
+	got, err := os.ReadFile(sp)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if strings.Contains(string(got), bvHookSentinel) {
+		t.Errorf("settings.json must no longer contain the bv sentinel after uninstall; got %s", got)
+	}
+	if !strings.Contains(string(got), "echo user-command") {
+		t.Errorf("settings.json must preserve the sibling user command; got %s", got)
 	}
 }
 

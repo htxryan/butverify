@@ -185,8 +185,10 @@ func installHooks(root string) error {
 	if err != nil {
 		return err
 	}
-	hooks["SessionStart"] = appendHook(stripSentinelEntries(getEventArray(hooks, "SessionStart")), buildHookEntryFromCommand(startCmd))
-	hooks["Stop"] = appendHook(stripSentinelEntries(getEventArray(hooks, "Stop")), buildHookEntryFromCommand(stopCmd))
+	startStripped, _ := stripSentinelEntries(getEventArray(hooks, "SessionStart"))
+	stopStripped, _ := stripSentinelEntries(getEventArray(hooks, "Stop"))
+	hooks["SessionStart"] = appendHook(startStripped, buildHookEntryFromCommand(startCmd))
+	hooks["Stop"] = appendHook(stopStripped, buildHookEntryFromCommand(stopCmd))
 	settings["hooks"] = hooks
 
 	return writeSettings(sp, settings)
@@ -215,8 +217,8 @@ func uninstallHooks(root string) (bool, error) {
 	removedAny := false
 	for _, event := range []string{"SessionStart", "Stop"} {
 		arr := getEventArray(hooks, event)
-		stripped := stripSentinelEntries(arr)
-		if len(stripped) != len(arr) {
+		stripped, didRemove := stripSentinelEntries(arr)
+		if didRemove {
 			removedAny = true
 		}
 		if len(stripped) == 0 {
@@ -317,22 +319,34 @@ func getEventArray(hooks map[string]any, event string) []any {
 }
 
 // stripSentinelEntries returns a copy of `arr` with the bv sentinel
-// commands stripped out. The original implementation dropped the whole
-// entry if any nested `hooks[*].command` carried the sentinel, which
-// would also lose any sibling commands the user added to the same entry
-// (matchers like "*" can group multiple commands). Now it removes only
-// the sentinel-tagged commands; an entry whose `hooks[]` becomes empty
-// is dropped (since an entry with no commands is meaningless), but
-// entries with surviving sibling commands are preserved.
-func stripSentinelEntries(arr []any) []any {
+// commands stripped out, plus a flag indicating whether any sentinel
+// command was actually removed (across either dropped entries or
+// rewritten entries). The flag is necessary because uninstall must
+// notice the case where an entry kept its top-level slot but had a
+// sentinel-tagged sibling command stripped — comparing only top-level
+// length would miss those mixed entries and skip the write, leaving
+// the bv command behind.
+//
+// The original implementation dropped the whole entry if any nested
+// `hooks[*].command` carried the sentinel, which would also lose any
+// sibling commands the user added to the same entry (matchers like "*"
+// can group multiple commands). Now it removes only the sentinel-tagged
+// commands; an entry whose `hooks[]` becomes empty is dropped (since an
+// entry with no commands is meaningless), but entries with surviving
+// sibling commands are preserved.
+func stripSentinelEntries(arr []any) ([]any, bool) {
 	out := make([]any, 0, len(arr))
+	removed := false
 	for _, raw := range arr {
-		filtered, ok := filterSentinelCommands(raw)
+		filtered, didRemove, ok := filterSentinelCommands(raw)
 		if !ok {
 			// Unrecognized shape (not a map or no hooks array we can
 			// reason about) — preserve verbatim.
 			out = append(out, raw)
 			continue
+		}
+		if didRemove {
+			removed = true
 		}
 		if filtered == nil {
 			// All commands in this entry were sentinel-tagged.
@@ -340,22 +354,29 @@ func stripSentinelEntries(arr []any) []any {
 		}
 		out = append(out, filtered)
 	}
-	return out
+	return out, removed
 }
 
-// filterSentinelCommands returns (entry, true) when `raw` is a recognizable
-// hook entry: the entry's `hooks` array is rebuilt with sentinel-tagged
-// commands removed. Returns (nil, true) when stripping leaves no commands
-// (caller drops the entry). Returns (raw, false) when the entry shape is
-// unrecognized so the caller preserves it verbatim.
-func filterSentinelCommands(raw any) (any, bool) {
+// filterSentinelCommands inspects one hooks-array entry and returns
+// (filteredEntry, removedAny, recognized).
+//
+//   - recognized=false: the entry shape is unrecognized; caller preserves
+//     it verbatim. removedAny is meaningless in this case.
+//   - recognized=true, removedAny=false: no sentinel commands present.
+//     filteredEntry is `raw` unchanged.
+//   - recognized=true, removedAny=true, filteredEntry==nil: all commands
+//     in the entry were sentinel-tagged; caller drops the entry.
+//   - recognized=true, removedAny=true, filteredEntry!=nil: at least one
+//     sentinel command was stripped while sibling commands survived;
+//     caller keeps the rewritten entry.
+func filterSentinelCommands(raw any) (any, bool, bool) {
 	m, ok := raw.(map[string]any)
 	if !ok {
-		return raw, false
+		return raw, false, false
 	}
 	hooks, ok := m["hooks"].([]any)
 	if !ok {
-		return raw, false
+		return raw, false, false
 	}
 	kept := make([]any, 0, len(hooks))
 	stripped := false
@@ -373,10 +394,10 @@ func filterSentinelCommands(raw any) (any, bool) {
 	}
 	if !stripped {
 		// Nothing changed; return the original entry untouched.
-		return raw, true
+		return raw, false, true
 	}
 	if len(kept) == 0 {
-		return nil, true
+		return nil, true, true
 	}
 	// Rebuild a shallow copy of the entry with the filtered hooks list
 	// so we don't mutate the caller's input map.
@@ -385,7 +406,7 @@ func filterSentinelCommands(raw any) (any, bool) {
 		out[k] = v
 	}
 	out["hooks"] = kept
-	return out, true
+	return out, true, true
 }
 
 // entryHasSentinel reports whether the entry contains any sentinel-tagged
