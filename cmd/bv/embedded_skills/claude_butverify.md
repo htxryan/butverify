@@ -1,10 +1,15 @@
 ---
 name: butverify
-description: Publish proof of recent work as a private gallery on butverify.dev
+description: "[DEPRECATED — use /butverify:prove-it] Publish proof of recent work as a private gallery on butverify.dev"
 disable-model-invocation: false
 ---
 
-# /butverify
+# /butverify (deprecated alias for /butverify:prove-it)
+
+> **Deprecated**: This skill is preserved for one release cycle so existing
+> users keep working. Prefer `/butverify:prove-it` going forward; that
+> skill has the same behavior. The `/butverify:review` skill is also
+> available for surfacing human feedback on already-published galleries.
 
 If you have just finished a piece of functional work, you must PROVE IT —
 and publish that proof so the human can review it without scrolling through

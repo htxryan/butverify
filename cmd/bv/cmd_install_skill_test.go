@@ -142,32 +142,56 @@ func TestStampVersion_Idempotent(t *testing.T) {
 // ---- Embed mirror byte-equality + size budget ----
 
 func TestEmbedMirror_MatchesCanonical(t *testing.T) {
-	// Locate the canonical source file relative to this test's
+	// Locate the canonical source files relative to this test's
 	// runtime cwd. Tests run from the package directory (cmd/bv),
 	// so bv-skills lives two directories up at the repo root.
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	canonicalPath := filepath.Join(cwd, "..", "..", "bv-skills", "claude", "butverify.md")
-	canonical, err := os.ReadFile(canonicalPath)
-	if err != nil {
-		t.Fatalf("read canonical %q: %v", canonicalPath, err)
+	cases := []struct {
+		name      string
+		canonical string
+		embedded  []byte
+	}{
+		{name: "butverify (alias)", canonical: filepath.Join(cwd, "..", "..", "bv-skills", "claude", "butverify.md"), embedded: embeddedSkillBytes},
+		{name: "prove-it", canonical: filepath.Join(cwd, "..", "..", "bv-skills", "claude", "prove-it.md"), embedded: embeddedProveItBytes},
+		{name: "review", canonical: filepath.Join(cwd, "..", "..", "bv-skills", "claude", "review.md"), embedded: embeddedReviewBytes},
 	}
-	if string(canonical) != string(embeddedSkillBytes) {
-		t.Errorf("embed mirror has drifted from canonical source (%d vs %d bytes); rerun the build-time mirror copy",
-			len(canonical), len(embeddedSkillBytes))
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			canonical, err := os.ReadFile(c.canonical)
+			if err != nil {
+				t.Fatalf("read canonical %q: %v", c.canonical, err)
+			}
+			if string(canonical) != string(c.embedded) {
+				t.Errorf("embed mirror for %s has drifted from canonical source (%d vs %d bytes); rerun the build-time mirror copy",
+					c.name, len(canonical), len(c.embedded))
+			}
+		})
 	}
 }
 
 func TestEmbeddedSize(t *testing.T) {
-	// Fitness function 2: skill markdown stays under 10 KiB. The
-	// current canonical content is ~2.4 KiB, so this gate gives ~4x
-	// growth headroom before a refactor is forced.
+	// Fitness function: each skill markdown stays under 10 KiB.
 	const cap = 10 * 1024
-	if len(embeddedSkillBytes) >= cap {
-		t.Errorf("embedded skill size %d >= cap %d; trim the markdown or raise the cap with a deliberate decision",
-			len(embeddedSkillBytes), cap)
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{"butverify (alias)", embeddedSkillBytes},
+		{"prove-it", embeddedProveItBytes},
+		{"review", embeddedReviewBytes},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			if len(c.body) >= cap {
+				t.Errorf("embedded skill %s size %d >= cap %d; trim the markdown or raise the cap with a deliberate decision",
+					c.name, len(c.body), cap)
+			}
+		})
 	}
 }
 

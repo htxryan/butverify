@@ -177,14 +177,16 @@ func DefaultReference() Reference {
 			},
 			{
 				Name:        "agent-init",
-				Summary:     "agent-init [--force|--uninstall] [--project]",
-				Usage:       "bv agent-init [--project] [--force] [--uninstall]",
-				Description: "Install the /butverify agent skill for the current agent environment.",
-				Details:     []string{"v1 installs the Claude Code /butverify skill. Future versions may install additional skills, hooks, or MCP servers."},
+				Summary:     "agent-init [--force|--uninstall] [--project] [--enable-hook|--no-hook]",
+				Usage:       "bv agent-init [--project] [--force] [--uninstall] [--enable-hook|--no-hook]",
+				Description: "Install the /butverify agent skills for the current agent environment.",
+				Details:     []string{"v1 installs the Claude Code /butverify:prove-it and /butverify:review skills, plus a deprecated /butverify alias. Future versions may install additional skills, hooks, or MCP servers."},
 				Flags: []Flag{
 					{Name: "--project", Description: "install into ./.claude/skills/butverify/ instead of $HOME/.claude/skills/butverify/", Type: FlagBool, RuntimeHelp: "install into ./.claude/... instead of $HOME/.claude/..."},
 					{Name: "--force", Description: "overwrite an existing install", Type: FlagBool, RuntimeHelp: "overwrite an existing SKILL.md (writes a .bak)"},
 					{Name: "--uninstall", Description: "remove the deterministic install file set", Type: FlagBool, RuntimeHelp: "remove an installed SKILL.md and its sibling artifacts"},
+					{Name: "--enable-hook", Description: "install Claude Code SessionStart and Stop hooks that surface unacknowledged reviews (skip the TTY prompt)", Type: FlagBool, RuntimeHelp: "install review-notification hooks (no prompt)"},
+					{Name: "--no-hook", Description: "skip hook installation regardless of TTY state", Type: FlagBool, RuntimeHelp: "do not install review-notification hooks"},
 				},
 				Examples: []string{
 					"bv agent-init",
@@ -193,18 +195,25 @@ func DefaultReference() Reference {
 			},
 			{
 				Name:        "install-skill",
-				Summary:     "install-skill <agent> [--force|--uninstall] [--project]",
-				Usage:       "bv install-skill [--project] [--force] [--uninstall] <agent>",
-				Description: "Install the /butverify agent skill.",
-				Details:     []string{"Supported agent in v1: claude."},
+				Summary:     "install-skill <agent> [--force|--uninstall] [--project] [--enable-hook|--no-hook]",
+				Usage:       "bv install-skill [--project] [--force] [--uninstall] [--enable-hook|--no-hook] <agent>",
+				Description: "Install the /butverify agent skills (prove-it + review).",
+				Details: []string{
+					"Supported agent in v1: claude.",
+					"Installs three skill files under <root>/.claude/skills/butverify/: SKILL.md (deprecated alias), prove-it/SKILL.md, review/SKILL.md.",
+					"On a TTY, prompts to enable session-start and session-end hooks that surface unacknowledged reviews. --enable-hook forces yes (useful for CI); --no-hook forces no.",
+				},
 				Flags: []Flag{
 					{Name: "--project", Description: "install into ./.claude/skills/<agent>/ instead of $HOME/.claude/skills/<agent>/", Type: FlagBool, RuntimeHelp: "install into ./.claude/... instead of $HOME/.claude/..."},
 					{Name: "--force", Description: "overwrite an existing install", Type: FlagBool, RuntimeHelp: "overwrite an existing SKILL.md (writes a .bak)"},
 					{Name: "--uninstall", Description: "remove the deterministic install file set", Type: FlagBool, RuntimeHelp: "remove an installed SKILL.md and its sibling artifacts"},
+					{Name: "--enable-hook", Description: "install Claude Code SessionStart and Stop hooks that surface unacknowledged reviews (skip the TTY prompt)", Type: FlagBool, RuntimeHelp: "install review-notification hooks (no prompt)"},
+					{Name: "--no-hook", Description: "skip hook installation regardless of TTY state", Type: FlagBool, RuntimeHelp: "do not install review-notification hooks"},
 				},
 				Examples: []string{
 					"bv install-skill claude",
 					"bv install-skill claude --project",
+					"bv install-skill claude --enable-hook",
 				},
 			},
 			{

@@ -55,6 +55,11 @@ func NewWithTTY(mode Mode, stdout, stderr io.Writer) *Writer {
 // IsJSON returns true when the writer is in --json mode.
 func (w *Writer) IsJSON() bool { return w.mode == ModeJSON }
 
+// IsHumanTTY reports whether the writer is in human mode and the stderr
+// sink is an interactive terminal. Used to decide whether to issue
+// interactive prompts (the install-skill hook consent flow uses this).
+func (w *Writer) IsHumanTTY() bool { return w.mode == ModeHuman && w.statusTTY }
+
 // JSON writes a JSON-encoded object to stdout. In human mode this is a no-op
 // — the caller is expected to use Human() instead.
 func (w *Writer) JSON(v any) error {
