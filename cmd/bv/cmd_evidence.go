@@ -162,6 +162,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 		OutDir:          *out,
 		ContainmentRoot: containmentRoot,
 		UseBundleV2:     true,
+		EnableReviews:   *enableReviewsFlag,
 	}
 	in, bundleDir, err := templates.RenderEvidence(input, opts, templates.Generator{Version: Version})
 	if err != nil {

@@ -224,6 +224,7 @@
     font-size: var(--bv-text-sm);
     color: var(--bv-text-dim);
     line-height: var(--bv-line-normal);
+    white-space: pre-wrap;
   }
 
   @media (min-width: 720px) {
