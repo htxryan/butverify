@@ -20,10 +20,6 @@
   }
 </script>
 
-{#if item.description}
-  <p class="bv-item-description">{item.description}</p>
-{/if}
-
 {#if issueLabel || propertyEntries.length > 0}
   <details class="bv-item-details">
     <summary>More details</summary>
@@ -61,13 +57,6 @@
 {/if}
 
 <style>
-  .bv-item-description {
-    font-size: var(--bv-text-base);
-    color: var(--bv-text-dim);
-    line-height: var(--bv-line-normal);
-    white-space: pre-wrap;
-    max-width: var(--bv-max-narrow);
-  }
   .bv-item-details {
     border-top: 1px solid var(--bv-border);
     padding-top: var(--bv-space-3);

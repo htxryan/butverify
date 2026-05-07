@@ -386,6 +386,8 @@
     color: var(--bv-text-dim);
     font-size: var(--bv-text-base);
     line-height: var(--bv-line-normal);
+    white-space: pre-wrap;
+    max-width: var(--bv-max-narrow);
     /* Allow text selection — required for the text_highlight
      * annotation tool. */
     user-select: text;
