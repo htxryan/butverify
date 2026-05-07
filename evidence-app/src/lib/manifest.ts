@@ -125,9 +125,12 @@ export function isVideoItem(item: EvidenceItem): boolean {
 }
 
 function extname(p: string): string {
-  const dot = p.lastIndexOf(".");
+  // Strip query string and fragment before sniffing extension so that
+  // URLs like "https://placehold.co/img.png?w=800" resolve to ".png".
+  const noQuery = (p.split("?")[0] ?? p).split("#")[0] ?? p;
+  const dot = noQuery.lastIndexOf(".");
   if (dot < 0) return "";
-  return p.slice(dot).toLowerCase();
+  return noQuery.slice(dot).toLowerCase();
 }
 
 // Honor `prefers-reduced-motion: reduce` from JS-driven animation
