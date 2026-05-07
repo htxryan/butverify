@@ -146,18 +146,39 @@
     draw = { kind: "idle" };
   }
 
-  // Position the popover below the region, or flip above when the
-  // region sits in the lower half so it doesn't scroll off-screen.
+  // Position the popover below (or flip above) the annotation region.
+  //
+  // Horizontal strategy: snap between left/center/right alignment
+  // so the popover never extends past the image edge.
+  //   cx < 30%  → left-align  (extends rightward, max-width = space to right edge)
+  //   cx > 70%  → right-align (extends leftward,  max-width = space to left edge)
+  //   otherwise → center       (max-width = 2× distance to nearest edge)
+  // This prevents the translated left value from going negative at
+  // narrow viewports where the popover can be wider than the image.
   function popoverStyle(): string {
     if (draw.kind !== "pending") return "";
-    const left = Math.max(10, Math.min(90, (draw.x + draw.width / 2) * 100));
+    const cx = (draw.x + draw.width / 2) * 100;
+
+    let xShift: string;
+    let maxW: string;
+    if (cx < 30) {
+      xShift = "0";
+      maxW = `min(26rem, calc(100% - ${cx.toFixed(1)}%))`;
+    } else if (cx > 70) {
+      xShift = "-100%";
+      maxW = `min(26rem, ${cx.toFixed(1)}%)`;
+    } else {
+      const half = Math.min(cx, 100 - cx);
+      xShift = "-50%";
+      maxW = `min(26rem, ${(2 * half).toFixed(1)}%)`;
+    }
+
     if (draw.y + draw.height / 2 > 0.5) {
-      // Flip above
       const top = draw.y * 100;
-      return `left:${left}%; top:${top}%; transform:translate(-50%,calc(-100% - var(--bv-space-2)));`;
+      return `left:${cx.toFixed(1)}%;top:${top.toFixed(1)}%;max-width:${maxW};transform:translate(${xShift},calc(-100% - var(--bv-space-2)));`;
     }
     const top = (draw.y + draw.height) * 100;
-    return `left:${left}%; top:${top}%;`;
+    return `left:${cx.toFixed(1)}%;top:${top.toFixed(1)}%;max-width:${maxW};transform:translate(${xShift},var(--bv-space-2));`;
   }
 
   // For circles we render a rectangular bounding box during the draw
@@ -291,11 +312,7 @@
 
   .bv-annot-popover {
     position: absolute;
-    transform: translate(-50%, var(--bv-space-2));
     z-index: 4;
     pointer-events: auto;
-    /* Keep the popover inside the viewport — the form is max-width
-     * 26rem so on narrow screens it'll wrap onto its own line. */
-    max-width: min(26rem, calc(100vw - 2rem));
   }
 </style>
