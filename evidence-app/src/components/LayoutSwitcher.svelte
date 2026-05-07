@@ -96,4 +96,13 @@
     color: var(--bv-text);
     box-shadow: var(--bv-shadow-sm);
   }
+
+  @media (max-width: 639px) {
+    .bv-layout-button {
+      padding: var(--bv-space-2);
+    }
+    .bv-layout-button span {
+      display: none;
+    }
+  }
 </style>

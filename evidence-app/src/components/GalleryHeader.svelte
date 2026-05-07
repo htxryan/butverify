@@ -45,11 +45,16 @@
           class="bv-topbar-nav"
           type="button"
           onclick={() => onNavigate("details")}
+          aria-label="Details"
         >
-          Details
-          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6,3 11,8 6,13" />
+          <!-- Info icon: always visible -->
+          <svg class="bv-topbar-nav-icon" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="8" r="6" />
+            <line x1="8" y1="7.5" x2="8" y2="11" />
+            <circle cx="8" cy="5.25" r="0.5" fill="currentColor" stroke="none" />
           </svg>
+          <!-- Text label: hidden on mobile -->
+          <span class="bv-topbar-nav-label">Details</span>
         </button>
       {/if}
     </div>
@@ -143,5 +148,14 @@
   .bv-topbar-nav:focus-visible {
     outline: 2px solid var(--bv-accent);
     outline-offset: 2px;
+  }
+
+  @media (max-width: 639px) {
+    .bv-topbar-nav {
+      padding: var(--bv-space-1) var(--bv-space-2);
+    }
+    .bv-topbar-nav-label {
+      display: none;
+    }
   }
 </style>

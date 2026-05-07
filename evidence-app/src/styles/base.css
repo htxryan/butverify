@@ -125,19 +125,34 @@ kbd {
 }
 
 /* Skip-to-content for keyboard users; placed at the very top of the
- * gallery shell. The link reveals on focus. */
+ * gallery shell. The link reveals on focus. Uses sr-only clip when
+ * not focused so it doesn't bleed into the topbar on mobile. */
 .bv-skip-link {
   position: absolute;
-  top: -40px;
-  left: var(--bv-space-2);
-  padding: var(--bv-space-2) var(--bv-space-3);
-  background: var(--bv-accent);
-  color: white;
-  border-radius: var(--bv-radius-sm);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
   z-index: 100;
   text-decoration: none;
 }
 .bv-skip-link:focus,
 .bv-skip-link:focus-visible {
+  position: fixed;
   top: var(--bv-space-2);
+  left: var(--bv-space-2);
+  width: auto;
+  height: auto;
+  padding: var(--bv-space-2) var(--bv-space-3);
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  background: var(--bv-accent);
+  color: white;
+  border-radius: var(--bv-radius-sm);
 }
