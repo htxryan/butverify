@@ -68,19 +68,26 @@
     list-style: none;
     user-select: none;
     padding: var(--bv-space-1) 0;
+    display: flex;
+    align-items: center;
+    gap: var(--bv-space-1);
+    transition: color var(--bv-duration-quick) var(--bv-ease-out);
+  }
+  .bv-item-details summary:hover {
+    color: var(--bv-text-dim);
   }
   .bv-item-details summary::marker,
   .bv-item-details summary::-webkit-details-marker {
     display: none;
   }
   .bv-item-details summary::before {
-    content: "▸ ";
-    color: var(--bv-text-muted);
-    transition: transform var(--bv-duration-quick) var(--bv-ease-out);
+    content: "▸";
     display: inline-block;
+    transform-origin: center;
+    transition: transform var(--bv-duration-quick) var(--bv-ease-out);
   }
   .bv-item-details[open] summary::before {
-    content: "▾ ";
+    transform: rotate(90deg);
   }
   .bv-item-meta {
     display: grid;

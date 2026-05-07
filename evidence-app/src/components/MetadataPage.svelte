@@ -76,7 +76,6 @@
 
     {#if manifest.items.length > 0}
       <section class="bv-meta-items">
-        <h2 class="bv-meta-items-heading">Evidence items</h2>
         <ol class="bv-meta-item-list">
           {#each manifest.items as item, i}
             <li class="bv-meta-item">
@@ -173,13 +172,7 @@
     flex-direction: column;
     gap: var(--bv-space-4);
   }
-  .bv-meta-items-heading {
-    font-size: var(--bv-text-sm);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--bv-text-muted);
-  }
-  .bv-meta-item-list {
+.bv-meta-item-list {
     list-style: none;
     padding: 0;
     margin: 0;

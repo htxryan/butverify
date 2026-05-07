@@ -239,6 +239,9 @@
     cursor: pointer;
     padding: 2px var(--bv-space-1);
     border-radius: var(--bv-radius-sm);
+    transition:
+      color var(--bv-duration-quick) var(--bv-ease-out),
+      background-color var(--bv-duration-quick) var(--bv-ease-out);
   }
   .bv-review-panel__remove:hover:not(:disabled),
   .bv-review-panel__remove:focus-visible {
@@ -259,7 +262,8 @@
     font-size: var(--bv-text-base);
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 80ms;
+    min-height: 44px;
+    transition: background-color var(--bv-duration-quick) var(--bv-ease-out);
   }
   .bv-review-panel__submit:hover:not(:disabled),
   .bv-review-panel__submit:focus-visible {

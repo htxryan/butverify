@@ -91,15 +91,17 @@
     ></textarea>
   </label>
   <footer class="bv-comment-form__footer">
-    <span class="bv-comment-form__hint">
-      <kbd>⌘</kbd> + <kbd>Enter</kbd> to save
-    </span>
     <div class="bv-comment-form__actions">
-      <button type="button" class="bv-btn-secondary" onclick={onCancel} disabled={busy}>
-        Cancel
+      <button type="button" class="bv-btn-icon bv-btn-cancel" onclick={onCancel} disabled={busy} aria-label="Cancel">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="3" y1="3" x2="13" y2="13" />
+          <line x1="13" y1="3" x2="3" y2="13" />
+        </svg>
       </button>
-      <button type="button" class="bv-btn-primary" onclick={save} disabled={!canSave}>
-        Save
+      <button type="button" class="bv-btn-icon bv-btn-save" onclick={save} disabled={!canSave} aria-label="Save">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="2,8.5 6,12.5 14,4" />
+        </svg>
       </button>
     </div>
   </footer>
@@ -150,23 +152,8 @@
 
   .bv-comment-form__footer {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    gap: var(--bv-space-3);
-    flex-wrap: wrap;
-  }
-
-  .bv-comment-form__hint {
-    font-size: var(--bv-text-xs);
-    color: var(--bv-text-muted);
-  }
-  .bv-comment-form__hint kbd {
-    background: var(--bv-surface-2);
-    border: 1px solid var(--bv-border);
-    border-radius: 3px;
-    padding: 1px 4px;
-    font-family: var(--bv-font-mono);
-    font-size: 0.85em;
   }
 
   .bv-comment-form__actions {
@@ -174,38 +161,44 @@
     gap: var(--bv-space-2);
   }
 
-  .bv-btn-primary,
-  .bv-btn-secondary {
+  .bv-btn-icon {
+    width: 2.25rem;
+    height: 2.25rem;
     border-radius: var(--bv-radius-sm);
-    padding: var(--bv-space-2) var(--bv-space-3);
-    font-size: var(--bv-text-sm);
-    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    border: 1px solid transparent;
+    border: 1px solid var(--bv-border);
+    background: transparent;
+    transition: background var(--bv-duration-quick) var(--bv-ease-out),
+                color var(--bv-duration-quick) var(--bv-ease-out),
+                border-color var(--bv-duration-quick) var(--bv-ease-out);
   }
-  .bv-btn-primary {
-    background: var(--bv-accent);
+  .bv-btn-cancel {
+    color: var(--bv-text-muted);
+  }
+  .bv-btn-cancel:hover:not(:disabled),
+  .bv-btn-cancel:focus-visible {
+    background: var(--bv-surface-2);
+    color: var(--bv-text);
+  }
+  .bv-btn-save {
     color: #ffffff;
+    background: var(--bv-accent);
+    border-color: var(--bv-accent);
   }
-  .bv-btn-primary:hover:not(:disabled),
-  .bv-btn-primary:focus-visible {
+  .bv-btn-save:hover:not(:disabled),
+  .bv-btn-save:focus-visible {
     background: var(--bv-accent-strong);
+    border-color: var(--bv-accent-strong);
   }
-  .bv-btn-primary:disabled {
+  .bv-btn-save:disabled {
     background: var(--bv-border-strong);
+    border-color: var(--bv-border-strong);
     cursor: not-allowed;
   }
-
-  .bv-btn-secondary {
-    background: transparent;
-    color: var(--bv-text);
-    border-color: var(--bv-border);
-  }
-  .bv-btn-secondary:hover:not(:disabled),
-  .bv-btn-secondary:focus-visible {
-    background: var(--bv-surface-2);
-  }
-  .bv-btn-secondary:disabled {
+  .bv-btn-cancel:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }

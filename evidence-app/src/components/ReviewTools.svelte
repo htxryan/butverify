@@ -90,11 +90,11 @@
     padding: var(--bv-space-1) var(--bv-space-3);
     font-size: var(--bv-text-sm);
     cursor: pointer;
-    transition: background-color 80ms;
-    /* Mobile-friendly hit target. The control-plane spec calls for
-     * ≥40px touch targets on touch devices; this floors at 36px and
-     * the padding scales naturally on larger viewports. */
-    min-height: 36px;
+    transition:
+      background-color var(--bv-duration-quick) var(--bv-ease-out),
+      border-color var(--bv-duration-quick) var(--bv-ease-out),
+      color var(--bv-duration-quick) var(--bv-ease-out);
+    min-height: 44px;
   }
   .bv-review-tools__btn:hover:not(:disabled),
   .bv-review-tools__btn:focus-visible {

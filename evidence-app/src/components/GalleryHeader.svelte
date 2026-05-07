@@ -34,7 +34,7 @@
       </button>
     {/if}
 
-    <h1 class="bv-topbar-title" class:bv-topbar-title--details={page === "details"}>
+    <h1 class="bv-topbar-title" class:bv-topbar-title--details={page === "details"} title={manifest.title}>
       {manifest.title}
     </h1>
 
@@ -67,7 +67,9 @@
     top: 0;
     z-index: 20;
     width: 100%;
-    background: var(--bv-surface);
+    background: color-mix(in srgb, var(--bv-surface) 85%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--bv-border);
   }
   .bv-topbar-inner {
@@ -92,6 +94,7 @@
     padding: var(--bv-space-1) var(--bv-space-2);
     border-radius: var(--bv-radius-sm);
     flex-shrink: 0;
+    min-height: 44px;
     transition: color var(--bv-duration-quick) var(--bv-ease-out);
   }
   .bv-topbar-back:hover {
@@ -137,13 +140,16 @@
     border-radius: var(--bv-radius-md);
     padding: var(--bv-space-1) var(--bv-space-3);
     cursor: pointer;
+    min-height: 44px;
     transition:
       color var(--bv-duration-quick) var(--bv-ease-out),
-      background var(--bv-duration-quick) var(--bv-ease-out);
+      background var(--bv-duration-quick) var(--bv-ease-out),
+      border-color var(--bv-duration-quick) var(--bv-ease-out);
   }
   .bv-topbar-nav:hover {
     color: var(--bv-text);
     background: var(--bv-surface-2);
+    border-color: var(--bv-border-strong);
   }
   .bv-topbar-nav:focus-visible {
     outline: 2px solid var(--bv-accent);

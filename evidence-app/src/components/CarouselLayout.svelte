@@ -174,16 +174,20 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: var(--bv-radius-pill);
     border: 1px solid var(--bv-border);
     background: var(--bv-surface);
     color: var(--bv-text);
-    transition: background var(--bv-duration-quick) var(--bv-ease-out);
+    transition:
+      background var(--bv-duration-quick) var(--bv-ease-out),
+      border-color var(--bv-duration-quick) var(--bv-ease-out),
+      color var(--bv-duration-quick) var(--bv-ease-out);
   }
   .bv-carousel-button:hover:not(:disabled) {
     background: var(--bv-surface-2);
+    border-color: var(--bv-border-strong);
   }
   .bv-carousel-button:disabled {
     opacity: 0.4;
@@ -238,11 +242,17 @@
     width: 8px;
     height: 8px;
     padding: 0;
+    /* Larger touch target via outline; visual size stays 8px. */
+    outline: 10px solid transparent;
     border-radius: 50%;
     background: var(--bv-border-strong);
     border: 0;
-    transition: background var(--bv-duration-quick) var(--bv-ease-out),
+    transition:
+      background var(--bv-duration-quick) var(--bv-ease-out),
       transform var(--bv-duration-quick) var(--bv-ease-out);
+  }
+  .bv-carousel-dot:hover:not(.bv-active) {
+    background: var(--bv-text-muted);
   }
   .bv-carousel-dot.bv-active {
     background: var(--bv-accent);

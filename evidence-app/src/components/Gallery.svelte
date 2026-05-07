@@ -258,11 +258,17 @@
     padding: var(--bv-space-2) var(--bv-space-4);
     font-size: var(--bv-text-sm);
     cursor: pointer;
+    min-height: 44px;
+    transition:
+      color var(--bv-duration-quick) var(--bv-ease-out),
+      background-color var(--bv-duration-quick) var(--bv-ease-out),
+      border-color var(--bv-duration-quick) var(--bv-ease-out);
   }
   .bv-site-comment-trigger:hover,
   .bv-site-comment-trigger:focus-visible {
     color: var(--bv-text);
     background: var(--bv-surface-2);
+    border-color: var(--bv-accent);
     border-style: solid;
   }
 

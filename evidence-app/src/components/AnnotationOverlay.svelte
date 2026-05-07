@@ -146,11 +146,16 @@
     draw = { kind: "idle" };
   }
 
-  // Position the popover next to the pending region, or centered on
-  // mobile if the region is near the bottom edge.
+  // Position the popover below the region, or flip above when the
+  // region sits in the lower half so it doesn't scroll off-screen.
   function popoverStyle(): string {
     if (draw.kind !== "pending") return "";
-    const left = (draw.x + draw.width / 2) * 100;
+    const left = Math.max(10, Math.min(90, (draw.x + draw.width / 2) * 100));
+    if (draw.y + draw.height / 2 > 0.5) {
+      // Flip above
+      const top = draw.y * 100;
+      return `left:${left}%; top:${top}%; transform:translate(-50%,calc(-100% - var(--bv-space-2)));`;
+    }
     const top = (draw.y + draw.height) * 100;
     return `left:${left}%; top:${top}%;`;
   }
