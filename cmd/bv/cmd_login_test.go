@@ -420,6 +420,82 @@ func TestRunLogin_DirectTokenFlagWinsOverGHToken(t *testing.T) {
 	}
 }
 
+// TestRunLogin_PreservesExistingAPIURL asserts that running `bv login`
+// without --api-url does NOT reset a previously configured non-default
+// api_url back to the production default. This is the regression test for
+// the "re-auth after token expiry overwrites dev api_url" bug.
+func TestRunLogin_PreservesExistingAPIURL(t *testing.T) {
+	withCleanGHEnv(t)
+
+	// Pre-seed a config file with a non-default API URL (simulating a dev
+	// installation). The test server will stand in for dev-api.butverify.dev.
+	cfgPath := isolatedConfigPath(t)
+
+	// We need to write the config AFTER isolatedConfigPath redirects the env
+	// var, so config.Save lands at the temp path.
+	preSeedCfg := &config.Config{
+		APIURL:            "PLACEHOLDER", // filled in once srv is up
+		InstallationToken: "ghs_old_expired_token",
+		TenantID:          "t_alice",
+		AccountLogin:      "alice",
+		InstallationID:    42,
+		Mode:              config.ModeRemote,
+	}
+	// Write a minimal JSON blob directly so we can set a fake URL before
+	// the test server is running — we'll overwrite with the real srv.URL
+	// after it starts.
+
+	// Spin up the fake server that represents dev-api.butverify.dev.
+	var srvURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/auth/login" {
+			http.Error(w, `{"error":{"code":"NOT_FOUND","message":"no route"}}`, 404)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"token":           "ghs_fresh_token",
+			"expires_at":      "2026-06-01T00:00:00Z",
+			"tenant_id":       "t_alice",
+			"account_login":   "alice",
+			"installation_id": 42,
+			"account_type":    "User",
+		})
+	}))
+	defer srv.Close()
+	srvURL = srv.URL
+
+	// Write the pre-seeded config pointing at the test server URL.
+	preSeedCfg.APIURL = srvURL
+	if err := config.Save(preSeedCfg); err != nil {
+		t.Fatalf("pre-seed config: %v", err)
+	}
+
+	// Verify the config file was written where we expect it.
+	if _, err := os.Stat(cfgPath); err != nil {
+		t.Fatalf("pre-seeded config not at expected path %s: %v", cfgPath, err)
+	}
+
+	// Run login with GH_TOKEN but NO --api-url and NO apiURLOverride.
+	t.Setenv("GH_TOKEN", "ghu_user_token")
+	w, _, _ := newJSONWriter(t)
+	g := globalContext{w: w} // no apiURLOverride — key to this test
+	rc := runLogin(context.Background(), g, nil)
+	if rc != 0 {
+		t.Fatalf("rc=%d (login failed)", rc)
+	}
+
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatalf("load config after re-login: %v", err)
+	}
+	if loaded.APIURL != srvURL {
+		t.Errorf("api_url after re-login = %q, want existing %q — bv login must not overwrite api_url when --api-url is not given", loaded.APIURL, srvURL)
+	}
+	if loaded.InstallationToken != "ghs_fresh_token" {
+		t.Errorf("expected fresh token, got %q", loaded.InstallationToken)
+	}
+}
+
 // ---------------- main.go cohesion ----------------
 
 func TestLoginWiredIntoMainSwitch(t *testing.T) {
