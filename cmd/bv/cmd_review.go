@@ -281,4 +281,3 @@ func runReviewRequest(ctx context.Context, g globalContext, args []string) int {
 	}
 	return reportError(g.w, err)
 }
-

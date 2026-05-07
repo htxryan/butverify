@@ -678,13 +678,13 @@ func doInstall(g globalContext, opts installSkillOptions, root string, skills []
 func emitInstallSuccess(g globalContext, opts installSkillOptions, skillPath, version, status string, outcomes []installOneOutcome, hook hookInstallOutcome) {
 	if g.w.IsJSON() {
 		_ = g.w.JSON(struct {
-			OK       bool                 `json:"ok"`
-			Agent    string               `json:"agent"`
-			Path     string               `json:"path"`
-			Version  string               `json:"version"`
-			Status   string               `json:"status"`
-			Skills   []installOneOutcome  `json:"skills,omitempty"`
-			Hook     hookInstallOutcome   `json:"hook"`
+			OK      bool                `json:"ok"`
+			Agent   string              `json:"agent"`
+			Path    string              `json:"path"`
+			Version string              `json:"version"`
+			Status  string              `json:"status"`
+			Skills  []installOneOutcome `json:"skills,omitempty"`
+			Hook    hookInstallOutcome  `json:"hook"`
 		}{true, opts.Agent, skillPath, version, status, outcomes, hook})
 		return
 	}

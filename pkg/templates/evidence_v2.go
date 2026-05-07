@@ -89,14 +89,14 @@ type evidenceV2Item struct {
 // bundle's TypeScript counterpart is `EvidenceManifest` in
 // `evidence-app/src/lib/manifest.ts` — keep both in sync.
 type EvidenceManifestPayload struct {
-	Title            string                       `json:"title"`
-	Subtitle         string                       `json:"subtitle,omitempty"`
-	Summary          string                       `json:"summary,omitempty"`
-	Metadata         *EvidenceManifestMetadata    `json:"metadata,omitempty"`
-	GeneratedAt      string                       `json:"generated_at,omitempty"`
-	GeneratorVersion string                       `json:"generator_version,omitempty"`
-	BundleVersion    string                       `json:"bundle_version,omitempty"`
-	EnableReviews    bool                         `json:"enable_reviews,omitempty"`
+	Title            string                        `json:"title"`
+	Subtitle         string                        `json:"subtitle,omitempty"`
+	Summary          string                        `json:"summary,omitempty"`
+	Metadata         *EvidenceManifestMetadata     `json:"metadata,omitempty"`
+	GeneratedAt      string                        `json:"generated_at,omitempty"`
+	GeneratorVersion string                        `json:"generator_version,omitempty"`
+	BundleVersion    string                        `json:"bundle_version,omitempty"`
+	EnableReviews    bool                          `json:"enable_reviews,omitempty"`
 	Items            []EvidenceManifestPayloadItem `json:"items"`
 }
 
@@ -107,15 +107,15 @@ type EvidenceManifestMetadata struct {
 }
 
 type EvidenceManifestPayloadItem struct {
-	Src         string                       `json:"src"`
-	Title       string                       `json:"title,omitempty"`
-	Description string                       `json:"description,omitempty"`
-	Alt         string                       `json:"alt,omitempty"`
-	Sequence    *int                         `json:"sequence,omitempty"`
-	Metadata    *EvidenceManifestMetadata    `json:"metadata,omitempty"`
-	Properties  map[string]any               `json:"properties,omitempty"`
-	IsImage     bool                         `json:"is_image,omitempty"`
-	IsVideo     bool                         `json:"is_video,omitempty"`
+	Src         string                    `json:"src"`
+	Title       string                    `json:"title,omitempty"`
+	Description string                    `json:"description,omitempty"`
+	Alt         string                    `json:"alt,omitempty"`
+	Sequence    *int                      `json:"sequence,omitempty"`
+	Metadata    *EvidenceManifestMetadata `json:"metadata,omitempty"`
+	Properties  map[string]any            `json:"properties,omitempty"`
+	IsImage     bool                      `json:"is_image,omitempty"`
+	IsVideo     bool                      `json:"is_video,omitempty"`
 }
 
 // buildManifestPayload converts a validated EvidenceInput plus the

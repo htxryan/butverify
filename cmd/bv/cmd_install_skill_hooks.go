@@ -129,8 +129,8 @@ func promptHookConsent(g globalContext) (bool, error) {
 // session start / stop time — a list of `{matcher?, hooks: [{type,
 // command}]}` blocks.
 type hookEntry struct {
-	Matcher string         `json:"matcher,omitempty"`
-	Hooks   []hookCommand  `json:"hooks"`
+	Matcher string        `json:"matcher,omitempty"`
+	Hooks   []hookCommand `json:"hooks"`
 }
 
 type hookCommand struct {
@@ -486,7 +486,7 @@ func realBVExecutable() (string, error) {
 
 // shellSingleQuote wraps `s` in POSIX single quotes so the resulting
 // token is safe to splice into a /bin/sh command. Single quotes inside
-// `s` close the quoted span and are emitted as `'\''` so the original
+// `s` close the quoted span and are emitted as `'\”` so the original
 // character survives intact.
 func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
