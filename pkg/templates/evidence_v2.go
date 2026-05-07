@@ -29,17 +29,8 @@ import (
 	"strings"
 )
 
-// EvidenceBundleVersion is the CDN-versioned bundle this CLI references
-// in generated index.html files. Must match the version field in
-// `evidence-app/package.json` and the R2 path
-// `evidence-bundles/v<EvidenceBundleVersion>/_astro/*`. Bumped by hand
-// when shipping a new bundle release; CI publishes the bundle to R2
-// before a CLI release that references the new version goes out.
-//
-// The leading `v` is NOT included here; the template adds it. (Reason:
-// keeping the version a pure semver string lets it round-trip into JSON
-// metadata without the leading `v` hassle.)
-const EvidenceBundleVersion = "1.0.0"
+// EvidenceBundleVersion is defined in bundle_version_gen.go.
+// It is updated automatically by CI whenever evidence-app/ changes land on main.
 
 // evidenceV2Tmpl is the v2 minimal index.html template. Parsed once at
 // init; parse failure is a programmer error.
