@@ -294,8 +294,8 @@ func TestInstall_EnableHook_WritesSettingsJSON(t *testing.T) {
 	if !strings.Contains(string(scriptBody), bvHookSentinel) {
 		t.Errorf("stop hook script missing sentinel: %s", scriptBody)
 	}
-	if !strings.Contains(string(scriptBody), "git diff") {
-		t.Errorf("stop hook script must check git diff: %s", scriptBody)
+	if !strings.Contains(string(scriptBody), "bv-session-proven") {
+		t.Errorf("stop hook script must check bv-session-proven marker: %s", scriptBody)
 	}
 }
 
@@ -592,6 +592,11 @@ func TestSessionStartHookCommand_NeverLeaksContent(t *testing.T) {
 	if !strings.Contains(cmd, "pending:") {
 		t.Errorf("hook shell command missing 'pending:' wording in printf: %s", cmd)
 	}
+	// SessionStart must clear the session-proven marker so each new session
+	// starts un-proven and the Stop hook enforces prove-it again.
+	if !strings.Contains(cmd, "bv-session-proven") {
+		t.Errorf("SessionStart hook must clear bv-session-proven marker: %s", cmd)
+	}
 }
 
 // PATH-hijack defense: a path containing a single quote must be safely
@@ -610,9 +615,8 @@ func TestHookShellCommand_QuotesAbsolutePathSafely(t *testing.T) {
 	}
 }
 
-// TestStopHookScript_Shape verifies the generated stop hook script content:
-// must contain the sentinel, check git diff, block on uncommitted changes
-// (exit 2 + [butverify] prefix), and never call `bv review list`.
+// TestStopHookScript_Shape verifies the generated stop hook script content.
+// The hook enforces prove-it via a session-proven marker, not git state.
 func TestStopHookScript_Shape(t *testing.T) {
 	content := generateStopHookScript()
 	if !strings.HasPrefix(content, "#!/usr/bin/env bash") {
@@ -624,32 +628,31 @@ func TestStopHookScript_Shape(t *testing.T) {
 	if strings.Contains(content, "review list") {
 		t.Errorf("stop hook script must not call review list (SessionStart-only): %s", content)
 	}
-	// Must scope check to the repo root, not any parent git repo.
-	if !strings.Contains(content, "git rev-parse --show-toplevel") {
-		t.Errorf("stop hook script must check git root with --show-toplevel: %s", content)
+	// Must NOT check git diff — git state is the wrong condition.
+	if strings.Contains(content, "git diff") {
+		t.Errorf("stop hook script must not check git diff (use marker instead): %s", content)
 	}
-	if !strings.Contains(content, `"$git_root" = "$(pwd)"`) {
-		t.Errorf("stop hook script must guard: git root == pwd: %s", content)
+	// Must check the session-proven marker.
+	if !strings.Contains(content, "bv-session-proven") {
+		t.Errorf("stop hook script must check bv-session-proven marker: %s", content)
 	}
-	if !strings.Contains(content, "git diff") {
-		t.Errorf("stop hook script must check git diff: %s", content)
-	}
+	// Must block (exit 2) and print advisory to stderr when marker absent.
 	if !strings.Contains(content, "exit 2") {
-		t.Errorf("stop hook script must exit 2 on uncommitted changes: %s", content)
+		t.Errorf("stop hook script must exit 2 when marker absent: %s", content)
 	}
 	if !strings.Contains(content, "[butverify]") {
 		t.Errorf("stop hook advisory message must use [butverify] prefix: %s", content)
 	}
-	// Advisory must go to STDERR (>&2), not stdout. Claude Code injects the
-	// hook's stderr as the conversation turn for non-zero exits; stdout is
-	// not injected and would cause "No stderr output" to appear instead.
 	if !strings.Contains(content, ">&2") {
 		t.Errorf("stop hook advisory must be written to stderr (>&2): %s", content)
 	}
-	// Silent on clean exit: no printf/echo before the final "exit 0".
-	// The "exit 0" line must exist.
-	if !strings.Contains(content, "\nexit 0\n") {
-		t.Errorf("stop hook script must have a bare 'exit 0' line on clean path: %s", content)
+	// Must remove marker on exit 0 (one-time use).
+	if !strings.Contains(content, `rm -f "$marker"`) {
+		t.Errorf("stop hook script must delete marker on exit 0: %s", content)
+	}
+	// Silent on clean exit (inside the marker-found if block).
+	if !strings.Contains(content, "exit 0") {
+		t.Errorf("stop hook script must have an 'exit 0' on clean path: %s", content)
 	}
 }
 
@@ -691,8 +694,8 @@ func TestInstall_HookWordingDiffersByEvent(t *testing.T) {
 		t.Errorf("Stop hook script must be written during install: %v", err)
 	}
 	scriptBody, _ := os.ReadFile(scriptPath)
-	if !strings.Contains(string(scriptBody), "git diff") {
-		t.Errorf("Stop hook script must check git diff: %s", scriptBody)
+	if !strings.Contains(string(scriptBody), "bv-session-proven") {
+		t.Errorf("Stop hook script must check bv-session-proven marker: %s", scriptBody)
 	}
 }
 
