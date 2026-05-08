@@ -10,6 +10,9 @@
    *
    * pebble-ogho — Always render as the collapsed dropdown trigger,
    * regardless of viewport width.
+   * pebble-qxdc — Render the trigger as a standard icon button:
+   * leading pencil icon, label, trailing chevron. Square-rounded
+   * (not pill) to match other toolbar controls.
    */
   import type { RegionShape } from "../lib/annotations.js";
 
@@ -67,7 +70,37 @@
       aria-label="Annotation tools"
       onclick={() => (dropdownOpen = !dropdownOpen)}
     >
-      {triggerLabel}<span class="bv-chevron" aria-hidden="true">{dropdownOpen ? "▴" : "▾"}</span>
+      <svg
+        class="bv-review-tools__icon"
+        viewBox="0 0 16 16"
+        width="14"
+        height="14"
+        aria-hidden="true"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M11 1.5l3.5 3.5L5 14.5l-3.5.5.5-3.5L11 1.5z" />
+        <path d="M9 3.5l3.5 3.5" />
+      </svg>
+      <span class="bv-review-tools__label">{triggerLabel}</span>
+      <svg
+        class="bv-review-tools__chevron"
+        class:bv-review-tools__chevron--open={dropdownOpen}
+        viewBox="0 0 16 16"
+        width="12"
+        height="12"
+        aria-hidden="true"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polyline points="3,6 8,11 13,6" />
+      </svg>
     </button>
 
     {#if dropdownOpen}
@@ -124,7 +157,7 @@
     background: var(--bv-surface);
     border: 1px solid var(--bv-border);
     color: var(--bv-text);
-    border-radius: var(--bv-radius-pill);
+    border-radius: var(--bv-radius-md);
     padding: var(--bv-space-1) var(--bv-space-3);
     font-size: var(--bv-text-sm);
     cursor: pointer;
@@ -153,10 +186,28 @@
   .bv-review-tools__trigger {
     display: inline-flex;
     align-items: center;
-    gap: var(--bv-space-1);
+    gap: var(--bv-space-2);
   }
-  .bv-chevron {
-    font-size: 0.65em;
+  .bv-review-tools__icon {
+    flex: none;
+    color: var(--bv-text-dim);
+  }
+  .bv-review-tools__btn--active .bv-review-tools__icon {
+    color: inherit;
+  }
+  .bv-review-tools__label {
+    line-height: 1;
+  }
+  .bv-review-tools__chevron {
+    flex: none;
+    color: var(--bv-text-dim);
+    transition: transform var(--bv-duration-quick) var(--bv-ease-out);
+  }
+  .bv-review-tools__chevron--open {
+    transform: rotate(180deg);
+  }
+  .bv-review-tools__btn--active .bv-review-tools__chevron {
+    color: inherit;
   }
 
   /* ── Dropdown menu ──────────────────────────────────────────────── */
