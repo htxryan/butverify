@@ -492,8 +492,13 @@ func generateStopHookScript() string {
 		"# On exit 2 (uncommitted changes), write the advisory to STDERR — Claude Code\n" +
 		"# injects the hook's stderr as the conversation turn for non-zero exits.\n" +
 		"\n" +
-		"# Block on uncommitted changes so the agent runs /butverify:prove-it.\n" +
-		"if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then\n" +
+		"# Only check the repo whose root IS the current directory.\n" +
+		"# This prevents false positives when the session runs inside a parent git\n" +
+		"# repo (e.g. ~/logos/ inside a home-dotfiles repo): the agent's work is\n" +
+		"# in the child repo, not the parent, so the parent's unrelated changes\n" +
+		"# must not block the stop.\n" +
+		"git_root=$(git rev-parse --show-toplevel 2>/dev/null)\n" +
+		"if [ -n \"$git_root\" ] && [ \"$git_root\" = \"$(pwd)\" ]; then\n" +
 		"  if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then\n" +
 		"    printf '[butverify] Uncommitted changes detected \xe2\x80\x94 run /butverify:prove-it or commit before stopping.\\n' >&2\n" +
 		"    exit 2\n" +

@@ -624,6 +624,13 @@ func TestStopHookScript_Shape(t *testing.T) {
 	if strings.Contains(content, "review list") {
 		t.Errorf("stop hook script must not call review list (SessionStart-only): %s", content)
 	}
+	// Must scope check to the repo root, not any parent git repo.
+	if !strings.Contains(content, "git rev-parse --show-toplevel") {
+		t.Errorf("stop hook script must check git root with --show-toplevel: %s", content)
+	}
+	if !strings.Contains(content, `"$git_root" = "$(pwd)"`) {
+		t.Errorf("stop hook script must guard: git root == pwd: %s", content)
+	}
 	if !strings.Contains(content, "git diff") {
 		t.Errorf("stop hook script must check git diff: %s", content)
 	}
