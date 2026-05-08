@@ -33,12 +33,18 @@
     listError,
     listLoading,
     onBack,
+    onOpenReview,
   }: {
     drafts: AnnotationDraft[];
     pastReviews: ViewerReview[];
     listError: string | null;
     listLoading: boolean;
     onBack: () => void;
+    // pebble-6fux — navigates to the Review Details page for the
+    // given review_id. Pending drafts are local-only and have no
+    // server-side review_id, so we don't surface "View" on the
+    // pending card.
+    onOpenReview: (reviewId: string) => void;
   } = $props();
 
   const pendingSummary: PendingDraftSummary = $derived({
@@ -133,6 +139,14 @@
             <span class="bv-review-card-time">
               Submitted {formatTimestamp(r.submitted_at)}
             </span>
+            <button
+              type="button"
+              class="bv-review-card-view"
+              onclick={() => onOpenReview(r.review_id)}
+              aria-label={`View submitted review ${r.review_id}`}
+            >
+              View
+            </button>
           </div>
           <div class="bv-review-card-meta">
             {pluralize(r.annotation_count, "annotation", "annotations")}
@@ -162,6 +176,14 @@
                 ? `Acknowledged ${formatTimestamp(r.acknowledged_at)}`
                 : `Submitted ${formatTimestamp(r.submitted_at)}`}
             </span>
+            <button
+              type="button"
+              class="bv-review-card-view"
+              onclick={() => onOpenReview(r.review_id)}
+              aria-label={`View acknowledged review ${r.review_id}`}
+            >
+              View
+            </button>
           </div>
           <div class="bv-review-card-meta">
             {pluralize(r.annotation_count, "annotation", "annotations")}
@@ -268,6 +290,27 @@
   .bv-review-card-time {
     font-size: var(--bv-text-sm);
     color: var(--bv-text-dim);
+  }
+  /* pebble-6fux — "View" CTA pushed to the right edge so the card
+   * row reads as: badge · timestamp · …spacer… · View. */
+  .bv-review-card-view {
+    margin-left: auto;
+    background: var(--bv-bg);
+    border: 1px solid var(--bv-border);
+    color: var(--bv-text);
+    border-radius: var(--bv-radius-md);
+    padding: var(--bv-space-1) var(--bv-space-3);
+    font-size: var(--bv-text-sm);
+    cursor: pointer;
+    min-height: 32px;
+    transition:
+      background-color var(--bv-duration-quick) var(--bv-ease-out),
+      border-color var(--bv-duration-quick) var(--bv-ease-out);
+  }
+  .bv-review-card-view:hover,
+  .bv-review-card-view:focus-visible {
+    background: var(--bv-surface-2);
+    border-color: var(--bv-border-strong);
   }
   .bv-review-card-meta {
     font-size: var(--bv-text-xs);

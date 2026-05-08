@@ -41,6 +41,13 @@ export interface ReviewSession {
   // render at all. Driven by manifest.enable_reviews and (later) by
   // the customer-site Worker confirming the cookie is present.
   enabled: boolean;
+  // pebble-6fux — when true, this session renders annotations from a
+  // server-fetched review (read-only). Components that show editing
+  // affordances (ReviewTools, CommentForm popovers, the right-rail
+  // ReviewPanel) MUST skip rendering when this is set so the page is
+  // a faithful playback of a past review without mutation paths.
+  // `add`/`remove`/`registerItem`/etc. become no-ops in this mode.
+  readOnly?: boolean;
   // The site id the reviews target. Used by the panel for the POST
   // URL and by the draft-store for namespacing.
   siteId: string;

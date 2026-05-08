@@ -31,6 +31,12 @@
   // getReviewSession returns null when reviews are disabled; we treat
   // that as the no-review fallback path.
   let session = getReviewSession();
+  // pebble-6fux — when the session is read-only (Review Details page)
+  // the item still RENDERS annotation overlays from the session's
+  // drafts() but does NOT register editing handlers or render any
+  // editor UI. The flag is read once (sessions are stable for the
+  // lifetime of a page).
+  let readOnly = session?.readOnly === true;
 
   // Per-item slice of drafts (for the AnnotationOverlay to render
   // already-saved regions without it knowing about the global list).
@@ -39,14 +45,15 @@
   );
 
   // Drawing mode: 'off', 'circle', or 'rect'. Owned per-item so two
-  // items don't share a draw mode.
+  // items don't share a draw mode. In read-only mode this never
+  // leaves "off" — the overlay's drawingEnabled is computed from it.
   let drawMode = $state<"off" | "circle" | "rect">("off");
 
   // pebble-eaku — register handlers with the session so the
   // gallery-level toolbar can drive this item's annotation actions
   // when this is the active carousel item.
   $effect(() => {
-    if (!session) return;
+    if (!session || readOnly) return;
     session.registerItem(index, {
       openComment: () => openItemComment(),
       setDrawMode: (m) => setDrawMode(m),
@@ -179,7 +186,7 @@
     </h2>
   </header>
 
-  {#if session && layout === "stacked" && isImage}
+  {#if session && !readOnly && layout === "stacked" && isImage}
     <ReviewTools
       mode={drawMode}
       onSetMode={setDrawMode}
@@ -187,7 +194,7 @@
       onCaptureHighlight={captureHighlight}
       {canCaptureHighlight}
     />
-  {:else if session && layout === "stacked" && !isImage}
+  {:else if session && !readOnly && layout === "stacked" && !isImage}
     <ReviewTools
       mode="off"
       onSetMode={() => {}}
@@ -197,7 +204,7 @@
     />
   {/if}
 
-  {#if itemCommentOpen}
+  {#if !readOnly && itemCommentOpen}
     <CommentForm
       title={`Comment on item ${index + 1}`}
       placeholder="What about this item do you want to call out?"
@@ -206,7 +213,7 @@
     />
   {/if}
 
-  {#if pendingHighlight.kind === "pending"}
+  {#if !readOnly && pendingHighlight.kind === "pending"}
     <CommentForm
       title="Annotate selected text"
       placeholder={`What about this passage do you want to call out?`}

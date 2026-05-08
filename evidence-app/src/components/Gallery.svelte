@@ -20,6 +20,7 @@
   import CommentForm from "./CommentForm.svelte";
   import EvidenceToolbar from "./EvidenceToolbar.svelte";
   import ReviewsPage from "./ReviewsPage.svelte";
+  import ReviewDetailsPage from "./ReviewDetailsPage.svelte";
   import type { EvidenceManifest } from "../lib/manifest.js";
   import type { AnnotationDraft, AnnotationInput } from "../lib/annotations.js";
   import { createDraftStore } from "../lib/draft-store.js";
@@ -31,37 +32,74 @@
   import { resolveApiBaseFromWindow } from "../lib/api-base.js";
   import { submitReview, type SubmitReviewResult } from "../lib/review-api.js";
   import { listReviewsForViewer, type ViewerReview } from "../lib/review-list.js";
+  import {
+    getReviewDetail,
+    reviewAnnotationsAsDrafts,
+    type ReviewDetail,
+  } from "../lib/review-detail.js";
 
   type Layout = "stacked" | "carousel";
-  type Page = "evidence" | "details" | "reviews";
+  // pebble-6fux — `review-detail` is a fourth page that shares the
+  // gallery shell but renders ReviewDetailsPage with annotations
+  // fetched from the server (read-only). The active review_id is held
+  // in `activeReviewId`; when set we fetch its detail into
+  // `reviewDetailState`.
+  type Page = "evidence" | "details" | "reviews" | "review-detail";
 
   let { manifest }: { manifest: EvidenceManifest } = $props();
 
   // ─── Page routing (hash-based) ────────────────────────────────────
-  function readPage(): Page {
-    if (typeof window === "undefined") return "evidence";
-    if (window.location.hash === "#details") return "details";
-    if (window.location.hash === "#reviews") return "reviews";
-    return "evidence";
+  // pebble-6fux — adds a fourth route shape: `#review/<review_id>`
+  // navigates to the Review Details page for that review. The
+  // review_id is captured in `activeReviewId` and drives the fetch.
+  // We keep the routing read-only here (no validation of the id
+  // shape) — the server returns 404 for malformed ids, which the
+  // page surfaces as a "not found" error state.
+  const REVIEW_HASH_PREFIX = "#review/";
+
+  function readPage(): { page: Page; review_id?: string } {
+    if (typeof window === "undefined") return { page: "evidence" };
+    const h = window.location.hash;
+    if (h === "#details") return { page: "details" };
+    if (h === "#reviews") return { page: "reviews" };
+    if (h.startsWith(REVIEW_HASH_PREFIX)) {
+      const id = decodeURIComponent(h.slice(REVIEW_HASH_PREFIX.length));
+      if (id.length > 0) return { page: "review-detail", review_id: id };
+    }
+    return { page: "evidence" };
   }
 
-  let page = $state<Page>(readPage());
+  const initial = readPage();
+  let page = $state<Page>(initial.page);
+  let activeReviewId = $state<string | null>(initial.review_id ?? null);
 
   $effect(() => {
     if (typeof window === "undefined") return;
     function onHashChange() {
-      page = readPage();
+      const next = readPage();
+      page = next.page;
+      activeReviewId = next.review_id ?? null;
     }
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   });
 
-  function navigateTo(p: Page) {
+  function navigateTo(p: Exclude<Page, "review-detail">) {
     if (typeof window === "undefined") return;
     const hash = p === "details" ? "#details" : p === "reviews" ? "#reviews" : "#";
     history.pushState(null, "", hash);
     page = p;
+    activeReviewId = null;
     // Scroll to top on page change.
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  function navigateToReviewDetail(reviewId: string): void {
+    if (typeof window === "undefined") return;
+    const hash = `${REVIEW_HASH_PREFIX}${encodeURIComponent(reviewId)}`;
+    history.pushState(null, "", hash);
+    page = "review-detail";
+    activeReviewId = reviewId;
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
@@ -112,11 +150,44 @@
   const itemRegistry = new Map<number, ItemHandlers>();
   let registryVersion = $state(0);
 
+  // pebble-6fux — review-detail page state. When the route is
+  // `#review/<id>` we fetch the full review (annotations included)
+  // and swap the session's drafts() callback to surface those
+  // annotations through the same overlay/registry path the editor
+  // uses. The session is set to readOnly so editing affordances are
+  // suppressed in GalleryItem and the right-rail panel is hidden.
+  type ReviewDetailLoadState =
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "ready"; review: ReviewDetail }
+    | { kind: "error"; message: string; cause: "not_found" | "unauthenticated" | "other" };
+
+  let reviewDetailState = $state<ReviewDetailLoadState>({ kind: "idle" });
+  // Pre-converted drafts so the session.drafts() callback returns the
+  // same array reference until the underlying review changes. Saves
+  // re-running reviewAnnotationsAsDrafts on every overlay re-render.
+  let reviewDetailDrafts = $derived<AnnotationDraft[]>(
+    reviewDetailState.kind === "ready"
+      ? reviewAnnotationsAsDrafts(reviewDetailState.review.annotations)
+      : [],
+  );
+
   if (reviewsEnabled) {
     setReviewSession({
       enabled: true,
       siteId,
-      drafts: () => drafts,
+      // pebble-6fux — the session swaps its drafts source based on the
+      // active page. On the editor (`evidence`) it returns the local
+      // draft list; on the Review Details page it returns the
+      // server-fetched review's annotations as AnnotationDrafts.
+      // `readOnly` is also page-derived; GalleryItem reads it once on
+      // mount which is fine because Svelte tears down + remounts
+      // GalleryItem when the page changes (different parent).
+      get readOnly() {
+        return page === "review-detail";
+      },
+      drafts: () =>
+        page === "review-detail" ? reviewDetailDrafts : drafts,
       add: (input: AnnotationInput) => {
         const d = store.add(input);
         drafts = store.load();
@@ -222,6 +293,45 @@
     void refreshPastReviews();
   });
 
+  // pebble-6fux — Review-detail fetch effect. Re-runs whenever
+  // activeReviewId changes (hash navigation). Aborts in-flight
+  // requests when the user navigates away mid-fetch so a stale
+  // response doesn't overwrite a freshly-loaded one.
+  $effect(() => {
+    if (!reviewsEnabled) {
+      reviewDetailState = { kind: "idle" };
+      return;
+    }
+    const reviewId = activeReviewId;
+    if (page !== "review-detail" || !reviewId) {
+      reviewDetailState = { kind: "idle" };
+      return;
+    }
+    const ctrl = new AbortController();
+    reviewDetailState = { kind: "loading" };
+    const apiBase = resolveApiBaseFromWindow();
+    void getReviewDetail({
+      apiBase,
+      siteId,
+      reviewId,
+      signal: ctrl.signal,
+    }).then((res) => {
+      if (ctrl.signal.aborted) return;
+      if (res.ok) {
+        reviewDetailState = { kind: "ready", review: res.review };
+        return;
+      }
+      const cause: "not_found" | "unauthenticated" | "other" =
+        res.kind === "not_found"
+          ? "not_found"
+          : res.kind === "unauthenticated"
+            ? "unauthenticated"
+            : "other";
+      reviewDetailState = { kind: "error", message: res.message, cause };
+    });
+    return () => ctrl.abort();
+  });
+
   // ─── Submit ────────────────────────────────────────────────────────
   let submitting = $state(false);
   let submitResult = $state<SubmitReviewResult | null>(null);
@@ -251,8 +361,13 @@
   class="bv-shell"
   class:bv-shell--with-review={reviewsEnabled && page === "evidence"}
 >
-  <!-- Persistent topbar: sticky across both pages -->
-  <GalleryHeader {manifest} bind:layout {page} onNavigate={navigateTo} />
+  <!-- Persistent topbar: sticky across editor / details / reviews
+       pages. The Review Details page (pebble-6fux) provides its own
+       frame so we suppress the global topbar there to avoid two
+       stacked headers. -->
+  {#if page !== "review-detail"}
+    <GalleryHeader {manifest} bind:layout page={page} onNavigate={navigateTo} />
+  {/if}
 
   {#if page === "details"}
     <MetadataPage {manifest} />
@@ -263,6 +378,13 @@
       listLoading={pastReviewsLoading}
       listError={pastReviewsError}
       onBack={() => navigateTo("evidence")}
+      onOpenReview={navigateToReviewDetail}
+    />
+  {:else if page === "review-detail"}
+    <ReviewDetailsPage
+      {manifest}
+      state={reviewDetailState}
+      onBack={() => navigateTo("reviews")}
     />
   {:else}
     <!-- Evidence page -->
