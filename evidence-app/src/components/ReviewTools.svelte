@@ -2,16 +2,14 @@
   /* pebble-4nwj — Per-item review-tool button bar.
    *
    * Sits above the image of each gallery item when reviews are
-   * enabled, and offers four affordances:
+   * enabled, and offers four affordances behind a single dropdown:
    *   - Add comment (item_comment, no geometry)
    *   - Draw circle  (image_region, shape=circle)
    *   - Draw rect    (image_region, shape=rect)
    *   - Highlight selected text (text_highlight, scope=item)
    *
-   * At wide viewports the four buttons render inline.
-   * At narrow viewports (< 640px) they collapse into a single
-   * "Annotate ▾" trigger that opens a dropdown — prevents the
-   * Highlight button from wrapping to a second line on mobile.
+   * pebble-ogho — Always render as the collapsed dropdown trigger,
+   * regardless of viewport width.
    */
   import type { RegionShape } from "../lib/annotations.js";
 
@@ -46,7 +44,6 @@
   }
 
   function handleFocusOut(e: FocusEvent) {
-    // Close when focus leaves the compact wrapper entirely.
     if (!(e.currentTarget as Element).contains(e.relatedTarget as Node | null)) {
       dropdownOpen = false;
     }
@@ -54,42 +51,6 @@
 </script>
 
 <div class="bv-review-tools" role="toolbar" aria-label="Annotation tools">
-
-  <!-- ── Full button row — hidden below 640 px ──────────────────── -->
-  <div class="bv-review-tools__full" role="presentation">
-    <button
-      type="button"
-      class="bv-review-tools__btn"
-      aria-label="Add a comment about this item"
-      onclick={onAddComment}
-    >Comment</button>
-    <button
-      type="button"
-      class="bv-review-tools__btn"
-      class:bv-review-tools__btn--active={mode === "circle"}
-      aria-pressed={mode === "circle"}
-      aria-label="Draw a circle on the image"
-      onclick={() => onSetMode(mode === "circle" ? "off" : "circle")}
-    >Circle</button>
-    <button
-      type="button"
-      class="bv-review-tools__btn"
-      class:bv-review-tools__btn--active={mode === "rect"}
-      aria-pressed={mode === "rect"}
-      aria-label="Draw a rectangle on the image"
-      onclick={() => onSetMode(mode === "rect" ? "off" : "rect")}
-    >Rectangle</button>
-    <button
-      type="button"
-      class="bv-review-tools__btn"
-      aria-label="Annotate selected text in this item's description"
-      onclick={onCaptureHighlight}
-      disabled={!canCaptureHighlight}
-      title={canCaptureHighlight ? "Annotate the highlighted text" : "Select text in the description first"}
-    >Highlight</button>
-  </div>
-
-  <!-- ── Compact dropdown — shown below 640 px ──────────────────── -->
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="bv-review-tools__compact"
@@ -146,7 +107,6 @@
       </ul>
     {/if}
   </div>
-
 </div>
 
 <style>
@@ -154,22 +114,9 @@
     margin-bottom: var(--bv-space-3);
   }
 
-  /* ── Full button row ────────────────────────────────────────────── */
-  .bv-review-tools__full {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: var(--bv-space-2);
-  }
-
-  /* ── Compact dropdown ───────────────────────────────────────────── */
   .bv-review-tools__compact {
-    display: none;
     position: relative;
-  }
-
-  @media (max-width: 639px) {
-    .bv-review-tools__full    { display: none; }
-    .bv-review-tools__compact { display: block; }
+    display: block;
   }
 
   /* ── Shared button base ─────────────────────────────────────────── */
