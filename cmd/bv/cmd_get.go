@@ -60,7 +60,7 @@ func runGet(ctx context.Context, g globalContext, args []string) int {
 		}
 		written++
 		totalBytes += n
-		g.w.Status("  %s (%d bytes)", f.Path, n)
+		g.w.Status("  %s %s", f.Path, g.w.StderrStyler().Dim(fmt.Sprintf("(%d bytes)", n)))
 	}
 	if g.w.IsJSON() {
 		_ = g.w.JSON(struct {
@@ -71,7 +71,7 @@ func runGet(ctx context.Context, g globalContext, args []string) int {
 		}{siteID, written, totalBytes, dest})
 		return 0
 	}
-	g.w.Human("Downloaded %d files (%d bytes) to %s", written, totalBytes, dest)
+	g.w.Success("Downloaded %d files (%d bytes) to %s", written, totalBytes, dest)
 	return 0
 }
 

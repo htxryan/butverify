@@ -199,9 +199,9 @@ func runReviewAcknowledge(ctx context.Context, g globalContext, args []string) i
 		return 0
 	}
 	if resp.AlreadyAcknowledged {
-		g.w.Human("Review %s was already acknowledged at %s", resp.ReviewID, resp.AcknowledgedAt)
+		g.w.Note("Review %s was already acknowledged at %s", resp.ReviewID, resp.AcknowledgedAt)
 	} else {
-		g.w.Human("Acknowledged %s at %s", resp.ReviewID, resp.AcknowledgedAt)
+		g.w.Success("Acknowledged %s at %s", resp.ReviewID, resp.AcknowledgedAt)
 	}
 	return 0
 }
@@ -258,7 +258,7 @@ func runReviewRequest(ctx context.Context, g globalContext, args []string) int {
 			_ = g.w.JSON(success)
 			return 0
 		}
-		g.w.Human("Requested review from @%s — notification %s", success.ReviewerLogin, success.Notification)
+		g.w.Success("Requested review from @%s — notification %s", success.ReviewerLogin, success.Notification)
 		return 0
 	}
 
@@ -275,7 +275,7 @@ func runReviewRequest(ctx context.Context, g globalContext, args []string) int {
 				_ = g.w.JSON(unresolvable)
 				return exitReviewerUnresolvable
 			}
-			g.w.Human("Could not resolve an email for @%s; share %s manually.", to, unresolvable.SiteURL)
+			g.w.WarnStatus("Could not resolve an email for @%s; share %s manually.", to, unresolvable.SiteURL)
 			return exitReviewerUnresolvable
 		}
 	}

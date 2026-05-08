@@ -59,7 +59,7 @@ var usageText = cliref.UsageText()
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usageText)
+		fmt.Fprint(os.Stderr, styleHelpText(usageText, helpStderrStyler()))
 		os.Exit(2)
 	}
 	// Parse leading global flags. We hand-roll instead of using flag.Parse
@@ -95,7 +95,7 @@ func main() {
 		case strings.HasPrefix(a, "--token="):
 			tokenOverride = strings.TrimPrefix(a, "--token=")
 		case a == "--help" || a == "-h":
-			fmt.Print(usageText)
+			fmt.Print(styleHelpText(usageText, helpStdoutStyler()))
 			os.Exit(0)
 		case a == "--version" || a == "-v":
 			cmd = "version"
@@ -106,7 +106,7 @@ func main() {
 		}
 	}
 	if cmd == "" {
-		fmt.Fprint(os.Stderr, usageText)
+		fmt.Fprint(os.Stderr, styleHelpText(usageText, helpStderrStyler()))
 		os.Exit(2)
 	}
 	if len(cmdArgs) == 1 && (cmdArgs[0] == "--help" || cmdArgs[0] == "-h") {
@@ -191,7 +191,7 @@ func main() {
 		exitCode = runReview(ctx, gctx, cmdArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "bv: unknown command %q\n\n", cmd)
-		fmt.Fprint(os.Stderr, usageText)
+		fmt.Fprint(os.Stderr, styleHelpText(usageText, helpStderrStyler()))
 		exitCode = 2
 	}
 	os.Exit(exitCode)

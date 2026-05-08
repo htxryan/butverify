@@ -26,6 +26,6 @@ func runRemove(ctx context.Context, g globalContext, args []string) int {
 		_ = g.w.JSON(resp)
 		return 0
 	}
-	g.w.Human("Removed %s (status=%s)", resp.SiteID, resp.Status)
+	g.w.Success("Removed %s (status=%s)", resp.SiteID, resp.Status)
 	return 0
 }

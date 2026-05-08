@@ -45,7 +45,7 @@ func writeModeResult(g globalContext, mode string, changed bool) {
 		return
 	}
 	if changed {
-		g.w.Human("Default mode set to %s", mode)
+		g.w.Success("Default mode set to %s", mode)
 		return
 	}
 	g.w.Human("%s", mode)

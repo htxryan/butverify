@@ -125,9 +125,9 @@ func runLogin(ctx context.Context, g globalContext, args []string) int {
 		return 0
 	}
 	path, _ := config.Path()
-	g.w.Human("Logged in as %s (tenant=%s)", resp.AccountLogin, resp.TenantID)
+	g.w.Success("Logged in as %s (tenant=%s)", resp.AccountLogin, resp.TenantID)
 	g.w.Human("Default mode is now remote. Use \"bv mode local\" to switch back.")
-	g.w.Status("Config written to %s", path)
+	g.w.Hint("Config written to %s", path)
 	return 0
 }
 
@@ -168,9 +168,9 @@ func runLoginWithInstallationToken(ctx context.Context, g globalContext, url, to
 		return 0
 	}
 	path, _ := config.Path()
-	g.w.Human("Logged in as %s (tenant=%s)", who.AccountLogin, who.TenantID)
+	g.w.Success("Logged in as %s (tenant=%s)", who.AccountLogin, who.TenantID)
 	g.w.Human("Default mode is now remote. Use \"bv mode local\" to switch back.")
-	g.w.Status("Config written to %s", path)
+	g.w.Hint("Config written to %s", path)
 	return 0
 }
 

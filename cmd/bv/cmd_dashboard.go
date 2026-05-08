@@ -62,8 +62,8 @@ func runDashboard(ctx context.Context, g globalContext, args []string) int {
 			}{true, outDir, rowCount, "dashboard"})
 			return 0
 		}
-		g.w.Human("Dashboard rendered to %s (%d rows)", outDir, rowCount)
-		g.w.Human("To publish:  bv push %s", outDir)
+		g.w.Success("Dashboard rendered to %s (%d rows)", outDir, rowCount)
+		g.w.Hint("To publish:  bv push %s", outDir)
 		return 0
 	}
 

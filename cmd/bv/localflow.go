@@ -168,21 +168,20 @@ func copyLocalSiteFile(srcRoot, dstRoot, rel string, imageQuality int) error {
 }
 
 func writeLocalHumanResult(g globalContext, res pushResult, opts pushOptions) {
-	g.w.Human("Serving local site")
-	g.w.Human("  Open URL:   %s", res.URL)
-	g.w.Human("\n")
-	g.w.Human("Metadata")
-	g.w.Human("  Site ID:    %s", res.SiteID)
-	g.w.Human("  Status:     %s", res.Status)
-	g.w.Human("  Files:      %d", res.FileCount)
-	g.w.Human("  Size:       %d bytes", res.TotalBytes)
+	g.w.Success("Serving local site")
+	g.w.Human("  Open URL:   %s", g.w.StdoutStyler().Cyan(res.URL))
+	g.w.Section("Metadata")
+	g.w.KV("Site ID", res.SiteID)
+	g.w.KV("Status", styledStatus(g, res.Status))
+	g.w.KVf("Files", "%d", res.FileCount)
+	g.w.KV("Size", humanByteSize(res.TotalBytes))
 	if res.Template != "" {
-		g.w.Human("  Template:   %s", res.Template)
+		g.w.KV("Template", res.Template)
 	}
 	if opts.sourcePath != "" {
-		g.w.Human("  Source:     %s", opts.sourcePath)
+		g.w.KV("Source", opts.sourcePath)
 	}
-	g.w.Status("Serving %s locally until interrupted", opts.dir)
+	g.w.Hint("Serving %s locally until interrupted", opts.dir)
 }
 
 func localSiteID(opts pushOptions) string {

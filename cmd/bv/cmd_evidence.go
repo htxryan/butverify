@@ -199,8 +199,8 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 			}{true, bundleDir, in.Title, len(in.Items), "evidence"})
 			return 0
 		}
-		g.w.Human("Evidence rendered to %s (%d items)", bundleDir, len(in.Items))
-		g.w.Human("To publish:  bv push %s", bundleDir)
+		g.w.Success("Evidence rendered to %s (%d items)", bundleDir, len(in.Items))
+		g.w.Hint("To publish:  bv push %s", bundleDir)
 		return 0
 	}
 

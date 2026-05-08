@@ -31,7 +31,7 @@ func runLogout(_ context.Context, g globalContext, args []string) int {
 		}{true, config.ModeLocal})
 		return 0
 	}
-	g.w.Human("Logged out")
+	g.w.Success("Logged out")
 	g.w.Human("Default mode is now local.")
 	return 0
 }

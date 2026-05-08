@@ -256,35 +256,80 @@ func publishSourcePath(source string) string {
 
 const pushProgressSteps = 4
 
+// pushProgress renders one row of the multi-step push pipeline. The plain
+// `[####----]` bar is preserved verbatim so existing log assertions keep
+// matching; in a TTY the bar is colored cyan and the step label bold so
+// the eye lands on the current verb at a glance.
 func pushProgress(g globalContext, step int, label, detail string) {
 	barWidth := 20
 	filled := step * barWidth / pushProgressSteps
 	bar := strings.Repeat("#", filled) + strings.Repeat("-", barWidth-filled)
+	st := g.w.StderrStyler()
+	stepCol := st.Dim(fmt.Sprintf("[%d/%d]", step, pushProgressSteps))
+	barCol := st.Cyan("[" + bar + "]")
+	labelCol := st.Bold(label)
 	if detail == "" {
-		g.w.Progress("[%d/%d] [%s] %s", step, pushProgressSteps, bar, label)
+		g.w.Progress("%s %s %s", stepCol, barCol, labelCol)
 		return
 	}
-	g.w.Progress("[%d/%d] [%s] %s: %s", step, pushProgressSteps, bar, label, detail)
+	g.w.Progress("%s %s %s: %s", stepCol, barCol, labelCol, detail)
 }
 
 func writePushHumanResult(g globalContext, res pushResult) {
-	g.w.Human("Published site")
-	g.w.Human("  Open URL:   %s", res.URL)
-	g.w.Human("\n")
-	g.w.Human("Metadata")
-	g.w.Human("  Site ID:    %s", res.SiteID)
-	g.w.Human("  Status:     %s", res.Status)
-	g.w.Human("  Manifest:   %s", res.ManifestSHA)
-	g.w.Human("  Files:      %d", res.FileCount)
-	g.w.Human("  Size:       %d bytes", res.TotalBytes)
+	g.w.Success("Published site")
+	g.w.Human("  Open URL:   %s", g.w.StdoutStyler().Cyan(res.URL))
+	g.w.Section("Metadata")
+	g.w.KV("Site ID", res.SiteID)
+	g.w.KV("Status", styledStatus(g, res.Status))
+	g.w.KV("Manifest", g.w.StdoutStyler().Dim(res.ManifestSHA))
+	g.w.KVf("Files", "%d", res.FileCount)
+	g.w.KV("Size", humanByteSize(res.TotalBytes))
 	if res.Template != "" {
-		g.w.Human("  Template:   %s", res.Template)
+		g.w.KV("Template", res.Template)
 	}
 	if res.ExpiresAt != "" {
-		g.w.Human("  Expires:    %s", res.ExpiresAt)
+		g.w.KV("Expires", res.ExpiresAt)
 	}
 	if res.Idempotent {
-		g.w.Human("\n")
-		g.w.Human("Idempotent retry: no bytes re-extracted")
+		g.w.Hint("Idempotent retry: no bytes re-extracted")
+	}
+}
+
+// humanByteSize renders a byte count both as the canonical "%d bytes"
+// (preserved for tests + log scrapers) and a human-friendly suffix when
+// the value crosses a kilobyte. Sub-KiB values stay bare so a 47-byte
+// publish doesn't read as "47 bytes (47 B)".
+func humanByteSize(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%d bytes", n)
+	}
+	const (
+		kib = 1024
+		mib = 1024 * 1024
+		gib = 1024 * 1024 * 1024
+	)
+	switch {
+	case n < mib:
+		return fmt.Sprintf("%d bytes (%.1f KiB)", n, float64(n)/kib)
+	case n < gib:
+		return fmt.Sprintf("%d bytes (%.1f MiB)", n, float64(n)/mib)
+	default:
+		return fmt.Sprintf("%d bytes (%.2f GiB)", n, float64(n)/gib)
+	}
+}
+
+// styledStatus colors well-known status strings so a green "active"
+// reads as healthy at a glance. Unknown values pass through unchanged.
+func styledStatus(g globalContext, status string) string {
+	s := g.w.StdoutStyler()
+	switch strings.ToLower(status) {
+	case "active":
+		return s.Green(status)
+	case "expired", "deleted":
+		return s.Red(status)
+	case "creating", "uploading", "pending", "local":
+		return s.Yellow(status)
+	default:
+		return status
 	}
 }

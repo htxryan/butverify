@@ -312,6 +312,95 @@ func TestListSites(t *testing.T) {
 	}
 }
 
+// pebble-r805: bv ls human output keeps a column-aligned header + row
+// in non-TTY mode so existing pipelines (e.g. `bv ls | awk` automations)
+// keep parsing cleanly after the styling refactor. The header is bold
+// in TTY mode and status cells get green/red/yellow, but the literal
+// text in non-TTY captures must stay byte-stable.
+func TestListSitesHumanColumnLayout(t *testing.T) {
+	srv := newFakeServer(t)
+	srv.listSites = func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"sites": []map[string]any{
+				{"site_id": "abcd1234", "tenant_id": "t_u42", "status": "active", "url": "https://abcd1234.butverify.dev", "manifest_url": "x", "bytes_used": 1024, "created_at": "x", "updated_at": "x"},
+				{"site_id": "wxyz7777", "tenant_id": "t_u42", "status": "expired", "url": "https://wxyz7777.butverify.dev", "manifest_url": "x", "bytes_used": 42, "created_at": "x", "updated_at": "x"},
+			},
+		})
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	setupConfig(t, server.URL)
+	w, stdout, _ := newHumanWriter(t)
+	rc := runList(context.Background(), globalContext{w: w}, nil)
+	if rc != 0 {
+		t.Fatalf("rc: %d", rc)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"SITE",
+		"STATUS",
+		"BYTES",
+		"URL",
+		"abcd1234",
+		"active",
+		"https://abcd1234.butverify.dev",
+		"wxyz7777",
+		"expired",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("ls human stdout missing %q:\n%s", want, out)
+		}
+	}
+	// Header line uses fixed-width columns; after the prefix "SITE" the
+	// first 12 chars are reserved for the SITE column. Verify a row with
+	// an 8-char site_id leaves the expected gap before STATUS.
+	if !strings.Contains(out, "abcd1234      active   ") {
+		t.Errorf("ls human row alignment lost in non-TTY mode:\n%s", out)
+	}
+}
+
+// pebble-r805: humanByteSize keeps the legacy "%d bytes" suffix at the
+// front (so existing log scrapers parsing "Size:  X bytes" still match)
+// and only appends a KiB/MiB/GiB hint past the kilobyte boundary.
+func TestHumanByteSizePresentsKibAndMib(t *testing.T) {
+	cases := []struct {
+		in   int64
+		want string
+	}{
+		{0, "0 bytes"},
+		{1023, "1023 bytes"},
+		{1024, "1024 bytes (1.0 KiB)"},
+		{1536, "1536 bytes (1.5 KiB)"},
+		{1024 * 1024, "1048576 bytes (1.0 MiB)"},
+		{2 * 1024 * 1024 * 1024, "2147483648 bytes (2.00 GiB)"},
+	}
+	for _, tc := range cases {
+		if got := humanByteSize(tc.in); got != tc.want {
+			t.Errorf("humanByteSize(%d) = %q; want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// pebble-r805: empty list still produces the (no sites) marker so a
+// scripted caller can branch on its presence.
+func TestListSitesEmpty(t *testing.T) {
+	srv := newFakeServer(t)
+	srv.listSites = func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"sites": []any{}})
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	setupConfig(t, server.URL)
+	w, stdout, _ := newHumanWriter(t)
+	rc := runList(context.Background(), globalContext{w: w}, nil)
+	if rc != 0 {
+		t.Fatalf("rc: %d", rc)
+	}
+	if !strings.Contains(stdout.String(), "(no sites)") {
+		t.Errorf("expected (no sites) marker:\n%s", stdout.String())
+	}
+}
+
 func TestRemove(t *testing.T) {
 	srv := newFakeServer(t)
 	srv.delete = func(w http.ResponseWriter, r *http.Request, siteID string) {

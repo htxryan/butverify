@@ -8,8 +8,9 @@
 //     messages on stderr so a piped consumer (e.g. `bv ls | wc -l`) sees
 //     only the data.
 //
-// Stdlib only — no lipgloss in this layer so the JSON path stays
-// dependency-free. The styled human output lives in the caller (cmd/bv).
+// Stdlib only — the JSON path stays dependency-free and the styled human
+// output uses bare ANSI escape codes via the Styler. No third-party color
+// library so the binary stays tight.
 package output
 
 import (
@@ -33,23 +34,66 @@ type Writer struct {
 	mode           Mode
 	stdout         io.Writer
 	stderr         io.Writer
-	statusTTY      bool
+	humanTTY       bool // true when stdout is an interactive terminal
+	statusTTY      bool // true when stderr is an interactive terminal
 	progressActive bool
+	stdoutStyle    *Styler // styling applied to stdout (Human/Section/KV/Success)
+	statusStyle    *Styler // styling applied to stderr (Status/Hint/WarnStatus)
 }
 
 // New constructs a Writer bound to os.Stdout / os.Stderr.
 func New(mode Mode) *Writer {
-	return &Writer{mode: mode, stdout: os.Stdout, stderr: os.Stderr, statusTTY: isTerminal(os.Stderr)}
+	stdoutTTY := isTerminal(os.Stdout)
+	stderrTTY := isTerminal(os.Stderr)
+	return &Writer{
+		mode:        mode,
+		stdout:      os.Stdout,
+		stderr:      os.Stderr,
+		humanTTY:    stdoutTTY,
+		statusTTY:   stderrTTY,
+		stdoutStyle: newStyler(stdoutTTY),
+		statusStyle: newStyler(stderrTTY),
+	}
 }
 
 // NewWith allows tests to inject custom sinks.
 func NewWith(mode Mode, stdout, stderr io.Writer) *Writer {
-	return &Writer{mode: mode, stdout: stdout, stderr: stderr}
+	return &Writer{
+		mode:        mode,
+		stdout:      stdout,
+		stderr:      stderr,
+		stdoutStyle: newStyler(false),
+		statusStyle: newStyler(false),
+	}
 }
 
 // NewWithTTY allows tests to force terminal-style stderr rendering.
+// stdoutTTY remains false so existing assertions of plain stdout content
+// keep matching; the dedicated push-progress redraw test only inspects
+// stderr.
 func NewWithTTY(mode Mode, stdout, stderr io.Writer) *Writer {
-	return &Writer{mode: mode, stdout: stdout, stderr: stderr, statusTTY: true}
+	return &Writer{
+		mode:        mode,
+		stdout:      stdout,
+		stderr:      stderr,
+		statusTTY:   true,
+		stdoutStyle: newStyler(false),
+		statusStyle: newStyler(true),
+	}
+}
+
+// NewStyled is a test helper that forces both stdout and stderr to be
+// treated as terminals so styling appears in captured buffers.
+func NewStyled(mode Mode, stdout, stderr io.Writer) *Writer {
+	return &Writer{
+		mode:        mode,
+		stdout:      stdout,
+		stderr:      stderr,
+		humanTTY:    true,
+		statusTTY:   true,
+		stdoutStyle: newStyler(true),
+		statusStyle: newStyler(true),
+	}
 }
 
 // IsJSON returns true when the writer is in --json mode.
@@ -59,6 +103,14 @@ func (w *Writer) IsJSON() bool { return w.mode == ModeJSON }
 // sink is an interactive terminal. Used to decide whether to issue
 // interactive prompts (the install-skill hook consent flow uses this).
 func (w *Writer) IsHumanTTY() bool { return w.mode == ModeHuman && w.statusTTY }
+
+// StdoutStyler returns the Styler attached to stdout. Callers that need
+// inline styling for table cells / structured human output reach through
+// this rather than calling the writer methods directly.
+func (w *Writer) StdoutStyler() *Styler { return w.stdoutStyle }
+
+// StderrStyler returns the Styler attached to stderr.
+func (w *Writer) StderrStyler() *Styler { return w.statusStyle }
 
 // JSON writes a JSON-encoded object to stdout. In human mode this is a no-op
 // — the caller is expected to use Human() instead.
@@ -111,6 +163,95 @@ func (w *Writer) Progress(format string, args ...any) {
 	w.Status(format, args...)
 }
 
+// Success prints a single-line "ok" message to stdout. In a TTY it prepends
+// a green check icon; in non-TTY/NO_COLOR contexts it prints the bare
+// message so existing string-match tests keep passing.
+func (w *Writer) Success(format string, args ...any) {
+	if w.mode != ModeHuman {
+		return
+	}
+	w.clearProgressLine()
+	msg := fmt.Sprintf(format, args...)
+	line := w.stdoutStyle.PrefixWithIcon(w.stdoutStyle.IconCheck(), msg)
+	fmt.Fprintln(w.stdout, line)
+}
+
+// Section prints a bold heading on stdout, separated from prior output by
+// a blank line. Mirrors the visual block-grouping used in `git status` /
+// `gh pr view` so multiple groups in one command (e.g. publish summary +
+// metadata) read at a glance.
+func (w *Writer) Section(title string) {
+	if w.mode != ModeHuman {
+		return
+	}
+	w.clearProgressLine()
+	fmt.Fprintln(w.stdout)
+	fmt.Fprintln(w.stdout, w.stdoutStyle.Heading(title))
+}
+
+// kvKeyWidth is the fixed-width label column used by KV — keys plus the
+// trailing colon are left-padded to this many characters so successive KV
+// calls stack vertically. The width matches the historical hand-rolled
+// publish/whoami layouts (e.g. "Open URL:   value", "Site ID:    value")
+// so log-grepping integrations keep matching after the styling refactor.
+const kvKeyWidth = 12
+
+// KV prints an aligned "  Key:    value" line on stdout. The key column
+// (key + ":" left-padded to kvKeyWidth) is dimmed in TTY mode so the eye
+// lands on the value first; in non-TTY mode the line is byte-identical
+// to the previous hand-rolled output.
+func (w *Writer) KV(key, value string) {
+	if w.mode != ModeHuman {
+		return
+	}
+	w.clearProgressLine()
+	col := fmt.Sprintf("%-*s", kvKeyWidth, key+":")
+	keyStyled := w.stdoutStyle.Dim(col)
+	fmt.Fprintf(w.stdout, "  %s%s\n", keyStyled, value)
+}
+
+// KVf is sprintf sugar over KV so callers don't have to wrap fmt.Sprintf
+// at the call site.
+func (w *Writer) KVf(key, format string, args ...any) {
+	w.KV(key, fmt.Sprintf(format, args...))
+}
+
+// Hint prints a dimmed informational line on stderr. Used for next-step
+// pointers like "Run `bv push <dir>` to publish" that are useful but not
+// part of the primary stdout payload.
+func (w *Writer) Hint(format string, args ...any) {
+	if w.mode != ModeHuman {
+		return
+	}
+	w.clearProgressLine()
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintln(w.stderr, w.statusStyle.Dim(msg))
+}
+
+// Note prints a dimmed informational line on stdout. Use sparingly —
+// most informational output should go through Hint() so a piped consumer
+// of stdout sees only data.
+func (w *Writer) Note(format string, args ...any) {
+	if w.mode != ModeHuman {
+		return
+	}
+	w.clearProgressLine()
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintln(w.stdout, w.stdoutStyle.Dim(msg))
+}
+
+// WarnStatus prints a yellow-styled warning line on stderr.
+func (w *Writer) WarnStatus(format string, args ...any) {
+	if w.mode != ModeHuman {
+		return
+	}
+	w.clearProgressLine()
+	msg := fmt.Sprintf(format, args...)
+	icon := w.statusStyle.IconWarn()
+	line := w.statusStyle.PrefixWithIcon(icon, msg)
+	fmt.Fprintln(w.stderr, line)
+}
+
 // ErrorEnvelope mirrors the server's ApiError shape so error output is
 // consistent across the wire and the local CLI.
 type ErrorEnvelope struct {
@@ -123,7 +264,10 @@ type ErrorEnvelope struct {
 }
 
 // Error writes an error envelope. In JSON mode emits a structured object;
-// in human mode prints a formatted error line to stderr.
+// in human mode prints a formatted error line to stderr. The literal text
+// of the human line is identical to the pre-styling format ("bv: error
+// CODE: message") so existing log-grepping integrations keep working; in
+// TTY mode the prefix is colored red so the eye lands on it instantly.
 func (w *Writer) Error(env ErrorEnvelope) {
 	w.clearProgressLine()
 	if w.mode == ModeJSON {
@@ -132,11 +276,13 @@ func (w *Writer) Error(env ErrorEnvelope) {
 		}{Error: env})
 		return
 	}
+	prefix := w.statusStyle.Red("bv: error")
 	if env.RequestID != "" {
-		fmt.Fprintf(w.stderr, "bv: error %s: %s (request_id=%s)\n", env.Code, env.Message, env.RequestID)
+		fmt.Fprintf(w.stderr, "%s %s: %s (request_id=%s)\n",
+			prefix, env.Code, env.Message, env.RequestID)
 		return
 	}
-	fmt.Fprintf(w.stderr, "bv: error %s: %s\n", env.Code, env.Message)
+	fmt.Fprintf(w.stderr, "%s %s: %s\n", prefix, env.Code, env.Message)
 }
 
 func (w *Writer) clearProgressLine() {

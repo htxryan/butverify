@@ -23,7 +23,7 @@ func runWhoami(ctx context.Context, g globalContext, args []string) int {
 		return 0
 	}
 	g.w.Human("Tenant:        %s", who.TenantID)
-	g.w.Human("Account:       %s (%s)", who.AccountLogin, who.AccountType)
+	g.w.Human("Account:       %s (%s)", who.AccountLogin, g.w.StdoutStyler().Dim(who.AccountType))
 	g.w.Human("Installation:  %d", who.InstallationID)
 	g.w.Human("Token expires: %s", who.ExpiresAt)
 	return 0

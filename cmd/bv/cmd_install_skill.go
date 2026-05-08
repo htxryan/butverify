@@ -688,30 +688,29 @@ func emitInstallSuccess(g globalContext, opts installSkillOptions, skillPath, ve
 		}{true, opts.Agent, skillPath, version, status, outcomes, hook})
 		return
 	}
-	g.w.Human("Installed /butverify skills for %s.", opts.Agent)
+	st := g.w.StdoutStyler()
+	g.w.Success("Installed /butverify skills for %s.", opts.Agent)
 	for _, o := range outcomes {
-		g.w.Human("  %s  (%s, version %s)", o.Path, o.Status, o.Version)
+		g.w.Human("  %s  (%s, version %s)", o.Path, st.Dim(o.Status), st.Dim(o.Version))
 	}
-	g.w.Human("  Scope:   %s", scopeLabel(opts))
+	g.w.KV("Scope", scopeLabel(opts))
 	if hook.Status != "" && hook.Status != "skipped" {
-		g.w.Human("  Hooks:   %s (%s)", hook.Status, hook.SettingsPath)
+		g.w.KVf("Hooks", "%s (%s)", hook.Status, hook.SettingsPath)
 	} else if hook.Status == "skipped" && hook.Reason != "" {
-		g.w.Human("  Hooks:   skipped (%s)", hook.Reason)
+		g.w.KVf("Hooks", "skipped (%s)", hook.Reason)
 	}
-	g.w.Human("")
-	g.w.Human("Next steps:")
+	g.w.Section("Next steps")
 	g.w.Human("  1. Open Claude Code in your project.")
-	g.w.Human("  2. After delivering a piece of work, run /butverify:prove-it in chat.")
-	g.w.Human("  3. The agent captures proof and publishes it via `bv evidence --push --mode remote`.")
-	g.w.Human("  4. To check for human feedback later, run /butverify:review.")
+	g.w.Human("  2. After delivering a piece of work, run %s in chat.", st.Cyan("/butverify:prove-it"))
+	g.w.Human("  3. The agent captures proof and publishes it via %s.", st.Dim("`bv evidence --push --mode remote`"))
+	g.w.Human("  4. To check for human feedback later, run %s.", st.Cyan("/butverify:review"))
 	g.w.Human("")
 	if opts.Project {
-		g.w.Human("(To install at user level instead, omit --project; files then live under $HOME/.claude/skills/butverify/.)")
+		g.w.Note("(To install at user level instead, omit --project; files then live under $HOME/.claude/skills/butverify/.)")
 	} else {
-		g.w.Human("(To install only into a specific project instead, use 'bv install-skill %s --project'.)", opts.Agent)
+		g.w.Note("(To install only into a specific project instead, use 'bv install-skill %s --project'.)", opts.Agent)
 	}
-	g.w.Human("")
-	g.w.Human("Docs: https://butverify.dev/docs/reference/install-skill/")
+	g.w.Hint("Docs: https://butverify.dev/docs/reference/install-skill/")
 }
 
 // scopeLabel returns a short human-readable scope name for the
@@ -924,18 +923,19 @@ func doUninstall(g globalContext, opts installSkillOptions, root string, skills 
 		return 0
 	}
 	if !anyExisted && !hookRemoved && hookErr == nil {
-		g.w.Human("/butverify skills are not installed under %s — nothing to remove.", claudeNamespaceDir(root))
+		g.w.Note("/butverify skills are not installed under %s — nothing to remove.", claudeNamespaceDir(root))
 		return 0
 	}
-	g.w.Human("Uninstalled /butverify skills for %s.", opts.Agent)
+	st := g.w.StdoutStyler()
+	g.w.Success("Uninstalled /butverify skills for %s.", opts.Agent)
 	for _, r := range removed {
-		g.w.Human("  removed: %s", r)
+		g.w.Human("  %s %s", st.Dim("removed:"), r)
 	}
 	if dirRemoved {
-		g.w.Human("  removed dir: %s", claudeNamespaceDir(root))
+		g.w.Human("  %s %s", st.Dim("removed dir:"), claudeNamespaceDir(root))
 	}
 	if hookRemoved {
-		g.w.Human("  removed hooks from %s", settingsPath(root))
+		g.w.Human("  %s %s", st.Dim("removed hooks from"), settingsPath(root))
 	}
 	if hookErr != nil {
 		g.w.Error(toErrorEnvelope(fmt.Errorf(

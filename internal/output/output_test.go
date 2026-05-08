@@ -99,8 +99,16 @@ func TestTTYModeClearsBeforeErrorOutput(t *testing.T) {
 	w.Progress("[1/4] first")
 	w.Error(ErrorEnvelope{Code: "BAD_REQUEST", Message: "missing field"})
 
-	if got := stderr.String(); got != "\r\033[2K[1/4] first\r\033[2K\nbv: error BAD_REQUEST: missing field\n" {
-		t.Fatalf("stderr: %q", got)
+	// In TTY mode the "bv: error" prefix is wrapped in red ANSI codes so a
+	// human reader spots failure at a glance; the rest of the line stays
+	// byte-identical to the non-TTY format so log scrapers keep working.
+	const wantStripped = "\r\x1b[2K[1/4] first\r\x1b[2K\nbv: error BAD_REQUEST: missing field\n"
+	got := stderr.String()
+	if !strings.Contains(got, "\x1b[31mbv: error\x1b[0m") {
+		t.Fatalf("expected red 'bv: error' in TTY mode: %q", got)
+	}
+	if stripped := stripANSI(got); stripped != wantStripped {
+		t.Fatalf("stderr stripped: %q", stripped)
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout: %q", stdout.String())
@@ -131,5 +139,105 @@ func TestErrorEnvelopeHuman(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "BAD_REQUEST") {
 		t.Errorf("stderr: %q", stderr.String())
+	}
+}
+
+func TestSuccessHumanPlainNoTTY(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	w := NewWith(ModeHuman, &stdout, &stderr)
+	w.Success("Published %s", "site")
+	// Without a TTY the icon is suppressed so existing grep-based tests
+	// keep matching the bare message.
+	if got := stdout.String(); got != "Published site\n" {
+		t.Fatalf("stdout: %q", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr leaked: %q", stderr.String())
+	}
+}
+
+func TestSuccessHumanTTYAddsCheckIcon(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	w := NewStyled(ModeHuman, &stdout, &stderr)
+	w.Success("Published site")
+	got := stdout.String()
+	if !strings.Contains(got, "✓") {
+		t.Fatalf("expected check icon in TTY mode: %q", got)
+	}
+	if !strings.Contains(got, "Published site") {
+		t.Fatalf("expected message in TTY mode: %q", got)
+	}
+	if stripped := stripANSI(got); stripped != "✓ Published site\n" {
+		t.Fatalf("stripped: %q", stripped)
+	}
+}
+
+func TestSectionAndKVNoTTYAlignsAndStripsStyles(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	w := NewWith(ModeHuman, &stdout, &stderr)
+	w.Section("Metadata")
+	w.KV("Site ID", "abcd1234")
+	w.KV("Status", "active")
+	want := "\nMetadata\n  Site ID:    abcd1234\n  Status:     active\n"
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout mismatch:\nwant=%q\ngot =%q", want, got)
+	}
+	_ = stderr
+}
+
+func TestKVWithTTYDimsKey(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	w := NewStyled(ModeHuman, &stdout, &stderr)
+	w.KV("Site ID", "abcd1234")
+	got := stdout.String()
+	if !strings.Contains(got, "\x1b[2m") {
+		t.Fatalf("expected dim ANSI in TTY mode: %q", got)
+	}
+	if !strings.Contains(stripANSI(got), "Site ID") {
+		t.Fatalf("expected key in stripped output: %q", got)
+	}
+	if !strings.Contains(stripANSI(got), "abcd1234") {
+		t.Fatalf("expected value in stripped output: %q", got)
+	}
+	_ = stderr
+}
+
+func TestHintGoesToStderrAndIsDimInTTY(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	w := NewStyled(ModeHuman, &stdout, &stderr)
+	w.Hint("To publish:  bv push %s", "./out")
+	if stdout.Len() != 0 {
+		t.Fatalf("hints must not write to stdout: %q", stdout.String())
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "\x1b[2m") {
+		t.Fatalf("expected dim ANSI on hint in TTY: %q", got)
+	}
+	if stripped := stripANSI(got); stripped != "To publish:  bv push ./out\n" {
+		t.Fatalf("stripped hint: %q", stripped)
+	}
+}
+
+func TestSuppressedInJSONMode(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	w := NewWith(ModeJSON, &stdout, &stderr)
+	w.Success("ignored")
+	w.Section("ignored")
+	w.KV("ignored", "ignored")
+	w.Hint("ignored")
+	w.Note("ignored")
+	w.WarnStatus("ignored")
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout leaked in JSON mode: %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr leaked in JSON mode: %q", stderr.String())
+	}
+}
+
+func TestStripANSI(t *testing.T) {
+	in := "\x1b[31mred\x1b[0m \x1b[1;36mbold-cyan\x1b[0m plain"
+	if got := stripANSI(in); got != "red bold-cyan plain" {
+		t.Fatalf("strip: %q", got)
 	}
 }

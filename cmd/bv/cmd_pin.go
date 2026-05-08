@@ -35,9 +35,9 @@ func runPinUnpin(ctx context.Context, g globalContext, args []string, op string)
 		return 0
 	}
 	if op == "pin" {
-		g.w.Human("Pinned %s (TTL disabled)", resp.SiteID)
+		g.w.Success("Pinned %s (TTL disabled)", resp.SiteID)
 	} else {
-		g.w.Human("Unpinned %s (expires_at=%s)", resp.SiteID, resp.ExpiresAt)
+		g.w.Success("Unpinned %s (expires_at=%s)", resp.SiteID, resp.ExpiresAt)
 	}
 	return 0
 }

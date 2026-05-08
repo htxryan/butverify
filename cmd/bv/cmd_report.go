@@ -73,8 +73,8 @@ func runReport(ctx context.Context, g globalContext, args []string) int {
 			}{true, outDir, in.Title, len(in.Sections), "report"})
 			return 0
 		}
-		g.w.Human("Report rendered to %s", outDir)
-		g.w.Human("To publish:  bv push %s", outDir)
+		g.w.Success("Report rendered to %s", outDir)
+		g.w.Hint("To publish:  bv push %s", outDir)
 		return 0
 	}
 
