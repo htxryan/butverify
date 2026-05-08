@@ -16,7 +16,7 @@ import (
 
 // ---- Multi-skill install path coverage ----
 
-func TestInstall_WritesAllThreeSkillFiles(t *testing.T) {
+func TestInstall_WritesAllSkillFiles(t *testing.T) {
 	home := setupTempHome(t)
 	rc, _, _ := runInstall(t, "claude")
 	if rc != 0 {
@@ -26,6 +26,7 @@ func TestInstall_WritesAllThreeSkillFiles(t *testing.T) {
 		filepath.Join(home, ".claude", "skills", "butverify", "SKILL.md"),
 		filepath.Join(home, ".claude", "skills", "butverify", "prove-it", "SKILL.md"),
 		filepath.Join(home, ".claude", "skills", "butverify", "review", "SKILL.md"),
+		filepath.Join(home, ".claude", "skills", "launch-monitored-loop", "SKILL.md"),
 	}
 	for _, p := range want {
 		if _, err := os.Stat(p); err != nil {
@@ -175,6 +176,7 @@ func TestUninstall_RemovesEverySkillAndDir(t *testing.T) {
 		filepath.Join(home, ".claude", "skills", "butverify"),
 		filepath.Join(home, ".claude", "skills", "butverify", "prove-it"),
 		filepath.Join(home, ".claude", "skills", "butverify", "review"),
+		filepath.Join(home, ".claude", "skills", "launch-monitored-loop"),
 	}
 	for _, d := range want {
 		if _, err := os.Stat(d); !os.IsNotExist(err) {
@@ -237,37 +239,56 @@ func TestInstall_EnableHook_WritesSettingsJSON(t *testing.T) {
 	if !ok {
 		t.Fatalf("settings.hooks missing: %v", settings)
 	}
-	for _, evt := range []string{"SessionStart", "Stop"} {
-		arr, ok := hooks[evt].([]any)
-		if !ok {
-			t.Errorf("hooks[%s] not an array: %T %v", evt, hooks[evt], hooks[evt])
-			continue
-		}
-		if len(arr) == 0 {
-			t.Errorf("hooks[%s] is empty", evt)
-			continue
-		}
-		// Every entry should have a hooks[*].command field; at least one
-		// must contain the bv sentinel and the documented review
-		// invocation. The bv binary is invoked via its install-time
-		// absolute path (not unqualified `bv`) to defend against PATH
-		// hijack, so we assert on the suffix only.
-		found := false
-		for _, raw := range arr {
-			if entryHasSentinel(raw) {
-				found = true
-				cmd := commandFromEntry(t, raw)
-				if !strings.Contains(cmd, "review list --unacknowledged --format=ids") {
-					t.Errorf("hooks[%s] sentinel entry should call `... review list --unacknowledged --format=ids`; got %s", evt, cmd)
-				}
-				if !strings.Contains(cmd, "[butverify]") {
-					t.Errorf("hooks[%s] entry should print the [butverify] prefix; got %s", evt, cmd)
-				}
+
+	// SessionStart: inline command containing the review list call.
+	startArr, ok := hooks["SessionStart"].([]any)
+	if !ok || len(startArr) == 0 {
+		t.Fatalf("hooks[SessionStart] missing or empty: %v", hooks["SessionStart"])
+	}
+	startFound := false
+	for _, raw := range startArr {
+		if entryHasSentinel(raw) {
+			startFound = true
+			cmd := commandFromEntry(t, raw)
+			if !strings.Contains(cmd, "review list --unacknowledged --format=ids") {
+				t.Errorf("hooks[SessionStart] sentinel entry should call review list: %s", cmd)
+			}
+			if !strings.Contains(cmd, "[butverify]") {
+				t.Errorf("hooks[SessionStart] entry should print [butverify] prefix: %s", cmd)
 			}
 		}
-		if !found {
-			t.Errorf("hooks[%s] missing sentinel entry: %v", evt, arr)
+	}
+	if !startFound {
+		t.Errorf("hooks[SessionStart] missing sentinel entry: %v", startArr)
+	}
+
+	// Stop: script-delegating command that calls bv-stop-hook.sh.
+	stopArr, ok := hooks["Stop"].([]any)
+	if !ok || len(stopArr) == 0 {
+		t.Fatalf("hooks[Stop] missing or empty: %v", hooks["Stop"])
+	}
+	stopFound := false
+	for _, raw := range stopArr {
+		if entryHasSentinel(raw) {
+			stopFound = true
+			cmd := commandFromEntry(t, raw)
+			if !strings.Contains(cmd, "bv-stop-hook.sh") {
+				t.Errorf("hooks[Stop] sentinel entry should call bv-stop-hook.sh: %s", cmd)
+			}
 		}
+	}
+	if !stopFound {
+		t.Errorf("hooks[Stop] missing sentinel entry: %v", stopArr)
+	}
+
+	// The stop hook script must also exist and be executable.
+	scriptPath := stopHookScriptPath(home)
+	info, err := os.Stat(scriptPath)
+	if err != nil {
+		t.Fatalf("stop hook script should exist at %s: %v", scriptPath, err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Errorf("stop hook script should be executable: mode=%o", info.Mode())
 	}
 }
 
@@ -466,8 +487,15 @@ func TestUninstall_RemovesHooksAndPreservesOthers(t *testing.T) {
 	if rc, _, _ := runInstall(t, "claude", "--enable-hook"); rc != 0 {
 		t.Fatal("install with hooks failed")
 	}
+	scriptPath := stopHookScriptPath(home)
+	if _, err := os.Stat(scriptPath); err != nil {
+		t.Fatalf("stop hook script should exist after install: %v", err)
+	}
 	if rc, _, _ := runInstall(t, "claude", "--uninstall"); rc != 0 {
 		t.Fatal("uninstall failed")
+	}
+	if _, err := os.Stat(scriptPath); !os.IsNotExist(err) {
+		t.Errorf("stop hook script should be removed after uninstall: err=%v", err)
 	}
 	raw := mustReadFile(t, settingsPath(home))
 	var settings map[string]any
@@ -505,53 +533,84 @@ func TestUninstall_RemovesHooksAndPreservesOthers(t *testing.T) {
 
 // ---- Hook command shape (EV2-N-5: IDs only, no comment text) ----
 
-func TestHookShellCommand_NeverLeaksContent(t *testing.T) {
-	// Pin the resolved bv path so the test is deterministic and so we
-	// can assert on the absolute-path embed.
+// TestSessionStartHookCommand_NeverLeaksContent covers the SessionStart
+// inline hook (bvHookShellCommand). The Stop hook is script-based and
+// covered by TestStopHookScript_Shape.
+func TestSessionStartHookCommand_NeverLeaksContent(t *testing.T) {
 	prev := bvExecutableFn
 	bvExecutableFn = func() (string, error) { return "/opt/butverify/bin/bv", nil }
 	t.Cleanup(func() { bvExecutableFn = prev })
-	for _, phase := range []string{"pending", "still pending"} {
-		phase := phase
-		t.Run(phase, func(t *testing.T) {
-			cmd, err := bvHookShellCommand(phase)
-			if err != nil {
-				t.Fatalf("bvHookShellCommand(%q): %v", phase, err)
-			}
-			// EV2-N-5: hook output only emits IDs and a count. The shell
-			// guard must call bv with --format=ids (no JSON, no content).
-			if !strings.Contains(cmd, "--format=ids") {
-				t.Errorf("hook shell command must use --format=ids: %s", cmd)
-			}
-			for _, forbidden := range []string{"--format=json", "comment", "annotation"} {
-				if strings.Contains(cmd, forbidden) {
-					t.Errorf("hook shell command must not surface %q (EV2-N-5): %s", forbidden, cmd)
-				}
-			}
-			if !strings.Contains(cmd, bvHookSentinel) {
-				t.Errorf("hook shell command missing sentinel: %s", cmd)
-			}
-			if !strings.Contains(cmd, "exit 0") {
-				t.Errorf("hook shell command must exit 0 unconditionally: %s", cmd)
-			}
-			// PATH-hijack defense: the snippet must not invoke an
-			// unqualified `bv` from PATH. It must guard on -x against
-			// the install-time absolute path and invoke that path
-			// directly.
-			if strings.Contains(cmd, "command -v bv") {
-				t.Errorf("hook shell command must NOT use `command -v bv` (PATH hijack risk): %s", cmd)
-			}
-			if !strings.Contains(cmd, "'/opt/butverify/bin/bv'") {
-				t.Errorf("hook shell command must embed quoted absolute path of bv: %s", cmd)
-			}
-			if !strings.Contains(cmd, "[ -x '/opt/butverify/bin/bv' ]") {
-				t.Errorf("hook shell command must guard with [ -x <abs-bv> ]: %s", cmd)
-			}
-			// Phase wording must match the spec for the given event.
-			if !strings.Contains(cmd, phase+":") {
-				t.Errorf("hook shell command for phase %q missing wording in printf: %s", phase, cmd)
-			}
-		})
+
+	cmd, err := bvHookShellCommand("pending")
+	if err != nil {
+		t.Fatalf("bvHookShellCommand: %v", err)
+	}
+	if !strings.Contains(cmd, "--format=ids") {
+		t.Errorf("hook shell command must use --format=ids: %s", cmd)
+	}
+	for _, forbidden := range []string{"--format=json", "comment", "annotation"} {
+		if strings.Contains(cmd, forbidden) {
+			t.Errorf("hook shell command must not surface %q (EV2-N-5): %s", forbidden, cmd)
+		}
+	}
+	if !strings.Contains(cmd, bvHookSentinel) {
+		t.Errorf("hook shell command missing sentinel: %s", cmd)
+	}
+	if !strings.Contains(cmd, "exit 0") {
+		t.Errorf("SessionStart hook shell command must exit 0: %s", cmd)
+	}
+	if strings.Contains(cmd, "command -v bv") {
+		t.Errorf("hook shell command must NOT use `command -v bv` (PATH hijack risk): %s", cmd)
+	}
+	if !strings.Contains(cmd, "'/opt/butverify/bin/bv'") {
+		t.Errorf("hook shell command must embed quoted absolute path of bv: %s", cmd)
+	}
+	if !strings.Contains(cmd, "[ -x '/opt/butverify/bin/bv' ]") {
+		t.Errorf("hook shell command must guard with [ -x <abs-bv> ]: %s", cmd)
+	}
+	if !strings.Contains(cmd, "pending:") {
+		t.Errorf("hook shell command missing 'pending:' wording in printf: %s", cmd)
+	}
+}
+
+// TestStopHookScript_Shape verifies the generated stop hook script has
+// the expected structure: bv path embedded, advisory review listing,
+// and blocking exit 2 on uncommitted changes.
+func TestStopHookScript_Shape(t *testing.T) {
+	script := generateStopHookScript("/opt/butverify/bin/bv")
+
+	if !strings.Contains(script, "'/opt/butverify/bin/bv'") {
+		t.Errorf("script must embed quoted bv path: %s", script[:min(len(script), 300)])
+	}
+	if !strings.Contains(script, "review list --unacknowledged --format=ids") {
+		t.Errorf("script must call review list: %s", script[:min(len(script), 300)])
+	}
+	if !strings.Contains(script, "still pending:") {
+		t.Errorf("script must print 'still pending:' for reviews: %s", script[:min(len(script), 300)])
+	}
+	if !strings.Contains(script, "exit 2") {
+		t.Errorf("script must exit 2 when uncommitted changes present: %s", script[:min(len(script), 300)])
+	}
+	if !strings.Contains(script, "git diff --quiet") {
+		t.Errorf("script must check for uncommitted changes via git diff: %s", script[:min(len(script), 300)])
+	}
+	if !strings.Contains(script, "/butverify:prove-it") {
+		t.Errorf("script must mention /butverify:prove-it: %s", script[:min(len(script), 300)])
+	}
+	if !strings.Contains(script, bvHookSentinel) {
+		t.Errorf("script must embed sentinel for idempotent uninstall: %s", script[:min(len(script), 300)])
+	}
+}
+
+// TestStopHookShellCommand_Shape verifies the settings.json Stop command
+// calls the script with the sentinel for uninstall detection.
+func TestStopHookShellCommand_Shape(t *testing.T) {
+	cmd := bvStopHookShellCommand("/home/user/.claude/hooks/bv-stop-hook.sh")
+	if !strings.Contains(cmd, "'/home/user/.claude/hooks/bv-stop-hook.sh'") {
+		t.Errorf("Stop hook command must single-quote the script path: %s", cmd)
+	}
+	if !strings.Contains(cmd, bvHookSentinel) {
+		t.Errorf("Stop hook command must contain sentinel: %s", cmd)
 	}
 }
 
@@ -571,22 +630,31 @@ func TestHookShellCommand_QuotesAbsolutePathSafely(t *testing.T) {
 	}
 }
 
-// EV2-E-9b vs EV2-E-9c: the SessionStart entry says "pending" while
-// the Stop entry says "still pending" so the human reads the Stop hook
-// as a reminder of unfinished work. Pin both wordings via the actual
-// settings.json that gets written.
+// PATH-hijack defense: bvStopHookShellCommand must single-quote the
+// script path safely.
+func TestStopHookShellCommand_QuotesPathSafely(t *testing.T) {
+	cmd := bvStopHookShellCommand("/tmp/weird'name/.claude/hooks/bv-stop-hook.sh")
+	if !strings.Contains(cmd, `'/tmp/weird'\''name/.claude/hooks/bv-stop-hook.sh'`) {
+		t.Errorf("Stop hook command must POSIX-escape single quotes in path: %s", cmd)
+	}
+}
+
+// EV2-E-9b vs EV2-E-9c: the SessionStart entry says "pending" (inline)
+// while the Stop hook script says "still pending". Pin both wordings.
 func TestInstall_HookWordingDiffersByEvent(t *testing.T) {
 	home := setupTempHome(t)
 	if rc, _, _ := runInstall(t, "claude", "--enable-hook"); rc != 0 {
 		t.Fatal("install with hooks failed")
 	}
+	// SessionStart wording is in settings.json (inline command).
 	raw := mustReadFile(t, settingsPath(home))
-	body := string(raw)
-	if !strings.Contains(body, "pending: %s") {
-		t.Errorf("SessionStart hook should print '... pending: <ids>': %s", body)
+	if !strings.Contains(string(raw), "pending: %s") {
+		t.Errorf("SessionStart hook should print '... pending: <ids>': %s", raw)
 	}
-	if !strings.Contains(body, "still pending: %s") {
-		t.Errorf("Stop hook should print '... still pending: <ids>' (EV2-E-9c): %s", body)
+	// Stop wording is in the script file (not settings.json).
+	script := mustReadFile(t, stopHookScriptPath(home))
+	if !strings.Contains(string(script), "still pending:") {
+		t.Errorf("Stop hook script should print '... still pending: <ids>' (EV2-E-9c): %s", script)
 	}
 }
 
