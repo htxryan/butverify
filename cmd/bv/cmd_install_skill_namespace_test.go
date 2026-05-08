@@ -654,6 +654,17 @@ func TestStopHookScript_Shape(t *testing.T) {
 	if !strings.Contains(content, "exit 0") {
 		t.Errorf("stop hook script must have an 'exit 0' on clean path: %s", content)
 	}
+	// HEAD-based invalidation: marker stores the HEAD hash at prove-it time;
+	// a new commit after proving must require a fresh prove-it cycle.
+	if !strings.Contains(content, "git rev-parse HEAD") {
+		t.Errorf("stop hook script must compare against current git HEAD: %s", content)
+	}
+	if !strings.Contains(content, "proven_ref") {
+		t.Errorf("stop hook script must read proven_ref from marker: %s", content)
+	}
+	if !strings.Contains(content, "current_ref") {
+		t.Errorf("stop hook script must capture current_ref from git: %s", content)
+	}
 }
 
 // EV2-E-9b: SessionStart hook says "pending" (inline, advisory).

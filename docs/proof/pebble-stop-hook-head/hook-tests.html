@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { background: #1a1a1a; margin: 0; padding: 20px; font-family: 'Menlo', 'Monaco', 'Courier New', monospace; font-size: 13px; line-height: 1.6; }
+  .terminal { background: #0d1117; border-radius: 8px; padding: 20px 24px; max-width: 900px; border: 1px solid #30363d; }
+  .title-bar { display: flex; gap: 6px; margin-bottom: 16px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .red { background: #ff5f57; } .yellow { background: #febc2e; } .green { background: #28c840; }
+  .prompt { color: #79c0ff; } .cmd { color: #e6edf3; } .output { color: #8b949e; }
+  .ok { color: #3fb950; } .dim { color: #484f58; }
+  .section { color: #d2a8ff; font-weight: bold; margin-top: 8px; margin-bottom: 4px; }
+  pre { margin: 0; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="terminal">
+  <div class="title-bar"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>
+  <pre>
+<span class="prompt">$</span> <span class="cmd">go test ./cmd/bv/... -run "TestStopHookScript_Shape" -v</span>
+<span class="output">=== RUN   TestStopHookScript_Shape
+--- <span class="ok">PASS</span>: TestStopHookScript_Shape (0.00s)
+PASS
+ok  	github.com/htxryan/butverify/cmd/bv	0.237s</span>
+
+<span class="dim"># New assertions in TestStopHookScript_Shape (PR #39):</span>
+<span class="dim">#   ✓ script contains "git rev-parse HEAD"  (HEAD-based invalidation)</span>
+<span class="dim">#   ✓ script contains "proven_ref"          (reads stored HEAD from marker)</span>
+<span class="dim">#   ✓ script contains "current_ref"         (captures current HEAD)</span>
+<span class="dim">#   ✓ script does NOT contain "git diff"    (old approach rejected)</span>
+<span class="dim">#   ✓ exit 0 silent, exit 2 to stderr       (loop-safe)</span>
+
+<span class="prompt">$</span> <span class="cmd">go test ./cmd/bv/...</span>
+<span class="output">ok  	github.com/htxryan/butverify/cmd/bv	2.058s</span>
+  </pre>
+</div>
+</body>
+</html>

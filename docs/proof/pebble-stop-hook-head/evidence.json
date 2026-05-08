@@ -1,0 +1,24 @@
+{
+  "title": "fix(hooks): HEAD-based marker so multiple prove-its work in one session",
+  "subtitle": "PR #39 — butverify/cmd/bv",
+  "summary": "The stop hook now stores the git HEAD hash in the session-proven marker. A new commit after proving invalidates the marker, requiring a fresh prove-it cycle. Previously a single prove-it would clear the hook for the entire session regardless of how many commits followed.",
+  "metadata": {
+    "issue_url": "https://github.com/htxryan/butverify/pull/39",
+    "issue_id": "PR-39",
+    "issue_title": "fix(hooks): HEAD-based marker so multiple prove-its work in one session"
+  },
+  "items": [
+    {
+      "sequence": 1,
+      "title": "Hook behavior: all 4 scenarios",
+      "description": "bv install-skill generates the HEAD-based script. Scenario 1: no marker → blocks (exit 2). Scenario 2: marker = current HEAD → allows silently (exit 0, marker deleted). Scenario 3: stale marker (old HEAD) → blocks again. Scenario 4: non-git context → accepts any non-empty marker.",
+      "src": "01-hook-demo.png"
+    },
+    {
+      "sequence": 2,
+      "title": "Test suite: new HEAD-based assertions pass",
+      "description": "TestStopHookScript_Shape now asserts the generated script contains 'git rev-parse HEAD', 'proven_ref', and 'current_ref'. Full cmd/bv suite passes.",
+      "src": "02-tests.png"
+    }
+  ]
+}

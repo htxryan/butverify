@@ -1,0 +1,7 @@
+=== Scenario 2: Marker matches HEAD → hook allows silently (exit 0, no output) ===
+$ echo "$(git rev-parse HEAD)" > ~/.claude/bv-session-proven   # set marker to current HEAD
+$ bash /Users/redhale/.claude/hooks/bv-stop-hook.sh
+# (no output — hook exits 0 silently)
+exit code: 0
+# marker deleted (one-time use):
+marker present after hook: NO

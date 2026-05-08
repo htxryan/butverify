@@ -10,14 +10,15 @@
 //     exits 0 — review notifications are advisory and MUST NEVER block a
 //     session (EV2-U-13 + EV2-N-5).
 //
-//   - Stop — fires after each agent turn. Checks for uncommitted git
-//     changes: exits 2 with a blocking advisory message when any are
-//     found, exits 0 silently otherwise. The silent-exit-0 contract is
-//     critical: any stdout on exit 0 would be injected as a new
-//     conversation turn by Claude Code, causing the agent to respond,
-//     firing the hook again, indefinitely. The complementary behavioral
-//     rule in ~/.claude/CLAUDE.md tells the agent NOT to respond when the
-//     feedback panel shows only "No stderr output".
+//   - Stop — fires after each agent turn. Blocks the session from ending
+//     until the agent has run /butverify:prove-it for the current git HEAD.
+//     The marker (~/.claude/bv-session-proven) stores the HEAD hash at
+//     prove-it time; a new commit invalidates it so each batch of work must
+//     be proven before stopping. Exits 2 with a blocking advisory on stderr
+//     when the marker is absent or stale; exits 0 silently otherwise. The
+//     silent-exit-0 contract is critical: any output on exit 0 would be
+//     injected as a new conversation turn by Claude Code, firing the hook
+//     again, indefinitely.
 //
 // The Stop hook is script-based (written to
 // `<root>/.claude/hooks/bv-stop-hook.sh`) rather than inline, so the
@@ -475,11 +476,12 @@ func stopHookScriptPath(root string) string {
 
 // generateStopHookScript returns the content of bv-stop-hook.sh.
 //
-// The hook blocks the session from ending until the agent creates a
-// ~/.claude/bv-session-proven marker by running /butverify:prove-it.
-// This decouples enforcement from git state: the agent must prove its
-// work (not just commit) before stopping, and sessions with nothing to
-// prove can bypass via `touch ~/.claude/bv-session-proven` directly.
+// The hook blocks the session from ending until the agent has run
+// /butverify:prove-it for the *current* git HEAD. The marker stores the
+// HEAD commit hash at prove-it time; a new commit after proving invalidates
+// the marker, requiring a fresh prove-it cycle. In non-git contexts the
+// marker stores the literal string "no-git" and any non-empty marker is
+// accepted.
 //
 // The marker is one-time-use: the hook deletes it on exit 0, and the
 // SessionStart hook clears it at session start so each new session
@@ -494,13 +496,27 @@ func generateStopHookScript() string {
 		"# On exit 2, write the advisory to STDERR — Claude Code injects the hook's\n" +
 		"# stderr as the conversation turn for non-zero exits.\n" +
 		"\n" +
-		"# Allow stop only after the agent has run /butverify:prove-it for this\n" +
-		"# session. The marker is set by the agent after prove-it succeeds and\n" +
-		"# cleared at session start by the SessionStart hook command.\n" +
+		"# Allow stop only when prove-it was run against the current state of the repo.\n" +
+		"# The marker stores the git HEAD at prove-it time; new commits invalidate it\n" +
+		"# so that each batch of work must be proven before the session can end.\n" +
+		"# In non-git contexts the marker holds the literal string \"no-git\".\n" +
 		"marker=\"$HOME/.claude/bv-session-proven\"\n" +
 		"if [ -f \"$marker\" ]; then\n" +
-		"  rm -f \"$marker\"\n" +
-		"  exit 0\n" +
+		"  proven_ref=$(cat \"$marker\" 2>/dev/null)\n" +
+		"  current_ref=$(git rev-parse HEAD 2>/dev/null)\n" +
+		"  if [ -n \"$current_ref\" ]; then\n" +
+		"    # Git repo: marker must match the current HEAD commit.\n" +
+		"    if [ \"$proven_ref\" = \"$current_ref\" ]; then\n" +
+		"      rm -f \"$marker\"\n" +
+		"      exit 0\n" +
+		"    fi\n" +
+		"  else\n" +
+		"    # Not a git repo: any non-empty marker is accepted.\n" +
+		"    if [ -n \"$proven_ref\" ]; then\n" +
+		"      rm -f \"$marker\"\n" +
+		"      exit 0\n" +
+		"    fi\n" +
+		"  fi\n" +
 		"fi\n" +
 		"printf '[butverify] Run /butverify:prove-it before stopping.\\n' >&2\n" +
 		"exit 2\n" +
