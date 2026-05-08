@@ -285,12 +285,6 @@
       pastReviews = [];
       return;
     }
-    if (result.kind === "network") {
-      // API unreachable (offline, CORS, etc.) — gallery is still browseable
-      // without past reviews, so treat the same as unauthenticated.
-      pastReviews = [];
-      return;
-    }
     pastReviewsError = result.message;
   }
 
@@ -327,14 +321,12 @@
         reviewDetailState = { kind: "ready", review: res.review };
         return;
       }
-      if (res.kind === "unauthenticated" || res.kind === "network") {
-        // Can't load detail without a session / connectivity — clear back to
-        // idle rather than surfacing "Failed to fetch".
-        reviewDetailState = { kind: "idle" };
-        return;
-      }
       const cause: "not_found" | "unauthenticated" | "other" =
-        res.kind === "not_found" ? "not_found" : "other";
+        res.kind === "not_found"
+          ? "not_found"
+          : res.kind === "unauthenticated"
+            ? "unauthenticated"
+            : "other";
       reviewDetailState = { kind: "error", message: res.message, cause };
     });
     return () => ctrl.abort();
