@@ -42,6 +42,21 @@
   // items don't share a draw mode.
   let drawMode = $state<"off" | "circle" | "rect">("off");
 
+  // pebble-eaku — register handlers with the session so the
+  // gallery-level toolbar can drive this item's annotation actions
+  // when this is the active carousel item.
+  $effect(() => {
+    if (!session) return;
+    session.registerItem(index, {
+      openComment: () => openItemComment(),
+      setDrawMode: (m) => setDrawMode(m),
+      getDrawMode: () => drawMode,
+      captureHighlight: () => captureHighlight(),
+      getCanCaptureHighlight: () => canCaptureHighlight,
+    });
+    return () => session?.unregisterItem(index);
+  });
+
   // Lightbox state — only images, only when not drawing.
   let lightboxOpen = $state(false);
 
@@ -164,7 +179,7 @@
     </h2>
   </header>
 
-  {#if session && isImage}
+  {#if session && layout === "stacked" && isImage}
     <ReviewTools
       mode={drawMode}
       onSetMode={setDrawMode}
@@ -172,7 +187,7 @@
       onCaptureHighlight={captureHighlight}
       {canCaptureHighlight}
     />
-  {:else if session && !isImage}
+  {:else if session && layout === "stacked" && !isImage}
     <ReviewTools
       mode="off"
       onSetMode={() => {}}

@@ -5,6 +5,11 @@
    * Two pages:
    *   evidence (default) — gallery items, sticky topbar
    *   details  (#details) — full metadata, same sticky topbar
+   *
+   * pebble-eaku — site comment trigger, carousel pager, annotation
+   * dropdown, and review counts are unified into EvidenceToolbar above
+   * the gallery content. The active carousel index lives here so the
+   * toolbar can drive the carousel and the per-item registry.
    */
   import StackedLayout from "./StackedLayout.svelte";
   import CarouselLayout from "./CarouselLayout.svelte";
@@ -13,10 +18,15 @@
   import EmptyState from "./EmptyState.svelte";
   import ReviewPanel from "./ReviewPanel.svelte";
   import CommentForm from "./CommentForm.svelte";
+  import EvidenceToolbar from "./EvidenceToolbar.svelte";
   import type { EvidenceManifest } from "../lib/manifest.js";
   import type { AnnotationDraft, AnnotationInput } from "../lib/annotations.js";
   import { createDraftStore } from "../lib/draft-store.js";
-  import { setReviewSession, siteCommentInput } from "../lib/review-session.js";
+  import {
+    setReviewSession,
+    siteCommentInput,
+    type ItemHandlers,
+  } from "../lib/review-session.js";
   import { resolveApiBaseFromWindow } from "../lib/api-base.js";
   import { submitReview, type SubmitReviewResult } from "../lib/review-api.js";
 
@@ -90,6 +100,13 @@
   let store = createDraftStore(siteId);
   let drafts = $state<AnnotationDraft[]>(reviewsEnabled ? store.load() : []);
 
+  // pebble-eaku — per-item registry. Plain Map for the storage with a
+  // reactive version counter so Svelte $derived re-runs when items
+  // mount/unmount. Map mutations don't trigger fine-grained reactivity
+  // on their own; the counter is the explicit dependency.
+  const itemRegistry = new Map<number, ItemHandlers>();
+  let registryVersion = $state(0);
+
   if (reviewsEnabled) {
     setReviewSession({
       enabled: true,
@@ -104,6 +121,15 @@
         store.remove(draftId);
         drafts = store.load();
       },
+      registerItem: (itemIndex, handlers) => {
+        itemRegistry.set(itemIndex, handlers);
+        registryVersion = registryVersion + 1;
+      },
+      unregisterItem: (itemIndex) => {
+        itemRegistry.delete(itemIndex);
+        registryVersion = registryVersion + 1;
+      },
+      getItem: (itemIndex) => itemRegistry.get(itemIndex) ?? null,
     });
   }
 
@@ -127,6 +153,36 @@
     siteCommentOpen = false;
   }
 
+  // ─── Carousel pager state (lifted from CarouselLayout) ────────────
+  let carouselActiveIndex = $state(0);
+
+  function carouselPrev() {
+    if (carouselActiveIndex > 0) {
+      carouselActiveIndex = carouselActiveIndex - 1;
+    }
+  }
+  function carouselNext() {
+    if (carouselActiveIndex < manifest.items.length - 1) {
+      carouselActiveIndex = carouselActiveIndex + 1;
+    }
+  }
+
+  // pebble-eaku — re-read active item handlers when the index or the
+  // registry membership changes. registryVersion is the explicit
+  // reactive dependency for Map mutation; carouselActiveIndex selects
+  // the active row.
+  let activeItemHandlers = $derived.by(() => {
+    if (!reviewsEnabled || layout !== "carousel") return null;
+    void registryVersion;
+    return itemRegistry.get(carouselActiveIndex) ?? null;
+  });
+
+  // pebble-eaku — past reviews count placeholder. Wiring of an actual
+  // viewer-accessible "list my reviews on this site" endpoint is
+  // tracked in pebble-60yj. For now we expose 0 so the badge is
+  // hidden; the toolbar branch is in place for the follow-up.
+  let pastReviewsCount = $state(0);
+
   // ─── Submit ────────────────────────────────────────────────────────
   let submitting = $state(false);
   let submitResult = $state<SubmitReviewResult | null>(null);
@@ -142,6 +198,7 @@
     if (result.ok) {
       store.clear();
       drafts = [];
+      pastReviewsCount = pastReviewsCount + 1;
     }
   }
 </script>
@@ -161,22 +218,28 @@
     <!-- Evidence page -->
     <div class="bv-gallery-main">
       {#if reviewsEnabled}
-        <div class="bv-site-comment-region">
+        <div class="bv-toolbar-region">
+          <EvidenceToolbar
+            {layout}
+            pendingCount={drafts.length}
+            {pastReviewsCount}
+            {siteCommentOpen}
+            onSiteComment={openSiteComment}
+            {carouselActiveIndex}
+            carouselTotal={manifest.items.length}
+            onCarouselPrev={carouselPrev}
+            onCarouselNext={carouselNext}
+            {activeItemHandlers}
+          />
           {#if siteCommentOpen}
-            <CommentForm
-              title="Comment on the whole site"
-              placeholder="Overall thoughts on this gallery?"
-              onSave={saveSiteComment}
-              onCancel={cancelSiteComment}
-            />
-          {:else}
-            <button
-              type="button"
-              class="bv-site-comment-trigger"
-              onclick={openSiteComment}
-            >
-              + Site comment
-            </button>
+            <div class="bv-site-comment-region">
+              <CommentForm
+                title="Comment on the whole site"
+                placeholder="Overall thoughts on this gallery?"
+                onSave={saveSiteComment}
+                onCancel={cancelSiteComment}
+              />
+            </div>
           {/if}
         </div>
       {/if}
@@ -188,7 +251,10 @@
           {#if layout === "stacked"}
             <StackedLayout items={manifest.items} />
           {:else}
-            <CarouselLayout items={manifest.items} />
+            <CarouselLayout
+              items={manifest.items}
+              bind:activeIndex={carouselActiveIndex}
+            />
           {/if}
         </main>
       {/if}
@@ -244,32 +310,14 @@
     padding: var(--bv-space-5);
   }
 
+  .bv-toolbar-region {
+    padding: var(--bv-space-3) 0 0;
+  }
   .bv-site-comment-region {
     max-width: var(--bv-max-content);
     width: 100%;
     margin: 0 auto;
     padding: 0 var(--bv-space-5) var(--bv-space-3);
-  }
-  .bv-site-comment-trigger {
-    background: var(--bv-surface);
-    border: 1px dashed var(--bv-border-strong);
-    color: var(--bv-text-dim);
-    border-radius: var(--bv-radius-pill);
-    padding: var(--bv-space-2) var(--bv-space-4);
-    font-size: var(--bv-text-sm);
-    cursor: pointer;
-    min-height: 44px;
-    transition:
-      color var(--bv-duration-quick) var(--bv-ease-out),
-      background-color var(--bv-duration-quick) var(--bv-ease-out),
-      border-color var(--bv-duration-quick) var(--bv-ease-out);
-  }
-  .bv-site-comment-trigger:hover,
-  .bv-site-comment-trigger:focus-visible {
-    color: var(--bv-text);
-    background: var(--bv-surface-2);
-    border-color: var(--bv-accent);
-    border-style: solid;
   }
 
   .bv-gallery-content {

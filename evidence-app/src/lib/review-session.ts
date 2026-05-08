@@ -9,6 +9,10 @@
 // callbacks through both layouts (which know nothing about reviews)
 // would couple unrelated components; a context keeps the layouts
 // review-agnostic.
+//
+// pebble-eaku adds an item-handler registry so the gallery-level
+// toolbar can drive the active carousel item's annotation actions
+// without needing prop-drilled refs.
 
 import { getContext, setContext } from "svelte";
 import type {
@@ -18,6 +22,19 @@ import type {
 } from "./annotations.js";
 
 const KEY = Symbol("bv.review-session");
+
+// pebble-eaku — handlers a GalleryItem registers so the toolbar can
+// drive its annotation actions. Drawing mode lives on the GalleryItem
+// (so the AnnotationOverlay co-located with the image can read it
+// directly); the registry exposes a getter so the toolbar can show the
+// "active mode" state in its dropdown trigger.
+export interface ItemHandlers {
+  openComment: () => void;
+  setDrawMode: (mode: "off" | "circle" | "rect") => void;
+  getDrawMode: () => "off" | "circle" | "rect";
+  captureHighlight: () => void;
+  getCanCaptureHighlight: () => boolean;
+}
 
 export interface ReviewSession {
   // Read this in components to know whether review affordances should
@@ -34,6 +51,10 @@ export interface ReviewSession {
   // change so the caller doesn't have to call drafts() again.
   add: (input: AnnotationInput) => AnnotationDraft;
   remove: (draftId: string) => void;
+  // pebble-eaku — per-item handler registry.
+  registerItem: (itemIndex: number, handlers: ItemHandlers) => void;
+  unregisterItem: (itemIndex: number) => void;
+  getItem: (itemIndex: number) => ItemHandlers | null;
 }
 
 export function setReviewSession(session: ReviewSession): void {
