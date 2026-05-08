@@ -633,6 +633,12 @@ func TestStopHookScript_Shape(t *testing.T) {
 	if !strings.Contains(content, "[butverify]") {
 		t.Errorf("stop hook advisory message must use [butverify] prefix: %s", content)
 	}
+	// Advisory must go to STDERR (>&2), not stdout. Claude Code injects the
+	// hook's stderr as the conversation turn for non-zero exits; stdout is
+	// not injected and would cause "No stderr output" to appear instead.
+	if !strings.Contains(content, ">&2") {
+		t.Errorf("stop hook advisory must be written to stderr (>&2): %s", content)
+	}
 	// Silent on clean exit: no printf/echo before the final "exit 0".
 	// The "exit 0" line must exist.
 	if !strings.Contains(content, "\nexit 0\n") {
