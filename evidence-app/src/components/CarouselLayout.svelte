@@ -174,16 +174,14 @@
     border-radius: var(--bv-radius-md);
   }
 
+  /* Each cell is exactly the width of the rail so paging always shows
+   * exactly one item. Inner content (.bv-item-carousel) caps its own
+   * max-width and centers itself within the cell on wide viewports. */
   .bv-carousel-cell {
     flex: 0 0 100%;
+    width: 100%;
     scroll-snap-align: start;
-  }
-  @media (min-width: 720px) {
-    .bv-carousel-cell {
-      flex-basis: 80%;
-      max-width: 60rem;
-      margin: 0 auto;
-    }
+    scroll-snap-stop: always;
   }
 
   .bv-carousel-dots {

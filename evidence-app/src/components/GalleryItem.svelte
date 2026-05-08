@@ -315,18 +315,17 @@
     border-bottom: 0;
     padding-bottom: var(--bv-space-10);
   }
+  /* The carousel cell wrapping this article is always 100% of the rail
+   * (one item per page). Cap the inner content at 60rem and center it
+   * so wide screens get a comfortable reading column without revealing
+   * any portion of the adjacent items. */
   .bv-item-carousel {
-    flex: 0 0 100%;
-    scroll-snap-align: start;
     padding: var(--bv-space-5);
     height: 100%;
     box-sizing: border-box;
-  }
-  @media (min-width: 720px) {
-    .bv-item-carousel {
-      flex-basis: 80%;
-      max-width: 60rem;
-    }
+    max-width: 60rem;
+    margin: 0 auto;
+    width: 100%;
   }
 
   .bv-item-header {
