@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -445,4 +446,196 @@ func newHumanWriter(t *testing.T) (*output.Writer, *bytes.Buffer, *bytes.Buffer)
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	return output.NewWith(output.ModeHuman, &stdout, &stderr), &stdout, &stderr
+}
+
+// stageEvidenceFixtureMulti writes a manifest with N PNG items into dir and
+// returns the path of the JSON file. Each item references a PNG named
+// shotN.png where N is 1-based.
+func stageEvidenceFixtureMulti(t *testing.T, dir string, count int) string {
+	t.Helper()
+	pngBytes := makeTestPNG(t)
+	items := make([]string, 0, count)
+	for i := 1; i <= count; i++ {
+		fname := fmt.Sprintf("shot%d.png", i)
+		if err := os.WriteFile(filepath.Join(dir, fname), pngBytes, 0o644); err != nil {
+			t.Fatalf("write png %d: %v", i, err)
+		}
+		items = append(items, fmt.Sprintf(`{
+			"src": "./%s",
+			"title": "Step %d",
+			"description": "Description for step %d",
+			"sequence": %d
+		}`, fname, i, i, i))
+	}
+	manifest := fmt.Sprintf(`{
+		"title": "Multi-item evidence",
+		"items": [%s]
+	}`, strings.Join(items, ",\n"))
+	jsonPath := filepath.Join(dir, "evidence.json")
+	if err := os.WriteFile(jsonPath, []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write json: %v", err)
+	}
+	return jsonPath
+}
+
+// chdirTemp changes CWD to a new temp dir for the duration of the test
+// and returns the dir path.
+func chdirTemp(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prev) })
+	return dir
+}
+
+// TestEvidence_ValidateWorkflow_HappyPath tests the full validation loop:
+// start session with a 2-item manifest, validate item 1, validate item 2,
+// expect push call.
+func TestEvidence_ValidateWorkflow_HappyPath(t *testing.T) {
+	srv := newFakeServer(t)
+	stagingURL := ""
+	srv.create = func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":               "ev-val-123",
+			"url":                   "https://ev-val-123.butverify.dev",
+			"expires_at":            "2026-05-10T10:00:00Z",
+			"upload_token":          "use_installation_token",
+			"manifest_url":          "x",
+			"status":                "creating",
+			"idempotent":            false,
+			"upload_url":            stagingURL,
+			"upload_max_bytes":      100 * 1024 * 1024,
+			"upload_url_expires_at": "2026-05-10T10:15:00Z",
+		})
+	}
+	srv.finalize = func(w http.ResponseWriter, r *http.Request, siteID string) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"site_id":        siteID,
+			"status":         "active",
+			"url":            "https://ev-val-123.butverify.dev",
+			"manifest_url":   "x",
+			"expires_at":     "2026-05-10T10:00:00Z",
+			"manifest_sha":   strings.Repeat("b", 64),
+			"last_pushed_at": "2026-05-10T10:00:00Z",
+			"idempotent":     false,
+		})
+	}
+	srv.put = func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if len(body) == 0 {
+			t.Error("PUT body empty")
+		}
+		w.WriteHeader(200)
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	stagingURL = server.URL + "/staging-put"
+
+	// Stage everything in CWD (the session uses CWD-relative paths).
+	dir := chdirTemp(t)
+	setupConfig(t, server.URL)
+	jsonPath := stageEvidenceFixtureMulti(t, dir, 2)
+
+	ctx := context.Background()
+
+	// Step 1: start the validation workflow.
+	w1, stdout1, _ := newJSONWriter(t)
+	rc1 := runEvidence(ctx, globalContext{w: w1}, []string{"--from", jsonPath})
+	if rc1 != 0 {
+		t.Fatalf("step 1 rc=%d stdout=%s", rc1, stdout1.String())
+	}
+	out1 := stdout1.String()
+	if !strings.Contains(out1, `"action": "validate_item"`) {
+		t.Errorf("expected validate_item action in stdout: %s", out1)
+	}
+	if !strings.Contains(out1, `"item_index": 1`) {
+		t.Errorf("expected item_index 1 in stdout: %s", out1)
+	}
+	if !strings.Contains(out1, `"item_count": 2`) {
+		t.Errorf("expected item_count 2 in stdout: %s", out1)
+	}
+	// Session file should exist.
+	if _, err := os.Stat(evidenceSessionPath); err != nil {
+		t.Fatalf("session file missing after step 1: %v", err)
+	}
+
+	// Step 2: validate item 1 → should prompt for item 2.
+	w2, stdout2, _ := newJSONWriter(t)
+	rc2 := runEvidence(ctx, globalContext{w: w2}, []string{"validate", "--item", "1"})
+	if rc2 != 0 {
+		t.Fatalf("step 2 rc=%d stdout=%s", rc2, stdout2.String())
+	}
+	out2 := stdout2.String()
+	if !strings.Contains(out2, `"item_index": 2`) {
+		t.Errorf("expected item_index 2 after validating item 1: %s", out2)
+	}
+	// Session should still exist (not all items validated yet).
+	if _, err := os.Stat(evidenceSessionPath); err != nil {
+		t.Fatalf("session file missing after step 2: %v", err)
+	}
+
+	// Step 3: validate item 2 → should publish.
+	w3, stdout3, _ := newJSONWriter(t)
+	rc3 := runEvidence(ctx, globalContext{w: w3}, []string{"validate", "--item", "2"})
+	if rc3 != 0 {
+		t.Fatalf("step 3 rc=%d stdout=%s", rc3, stdout3.String())
+	}
+	out3 := stdout3.String()
+	if !strings.Contains(out3, `"url": "https://ev-val-123.butverify.dev"`) {
+		t.Errorf("expected URL in publish output: %s", out3)
+	}
+	// Session file should be deleted after successful publish.
+	if _, err := os.Stat(evidenceSessionPath); !os.IsNotExist(err) {
+		t.Errorf("session file should be deleted after publish; stat err=%v", err)
+	}
+}
+
+// TestEvidence_ValidateWorkflow_NoSession verifies that `bv evidence validate`
+// with no active session returns a non-zero exit code.
+func TestEvidence_ValidateWorkflow_NoSession(t *testing.T) {
+	chdirTemp(t)
+	w, _, _ := newJSONWriter(t)
+	rc := runEvidence(context.Background(), globalContext{w: w}, []string{"validate", "--item", "1"})
+	if rc == 0 {
+		t.Errorf("expected non-zero rc when no session exists, got %d", rc)
+	}
+}
+
+// TestEvidence_ValidateWorkflow_BadIndex verifies that out-of-range --item
+// values and zero/negative indices return a non-zero exit code.
+func TestEvidence_ValidateWorkflow_BadIndex(t *testing.T) {
+	dir := chdirTemp(t)
+	jsonPath := stageEvidenceFixtureMulti(t, dir, 2)
+	ctx := context.Background()
+	isolatedConfigPath(t)
+
+	// Start a session first.
+	w0, _, _ := newJSONWriter(t)
+	if rc := runEvidence(ctx, globalContext{w: w0}, []string{"--from", jsonPath}); rc != 0 {
+		t.Fatalf("setup session rc=%d", rc)
+	}
+
+	cases := []struct {
+		name string
+		item string
+	}{
+		{"zero", "0"},
+		{"out_of_range", "99"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			w, _, _ := newJSONWriter(t)
+			rc := runEvidence(ctx, globalContext{w: w}, []string{"validate", "--item", tc.item})
+			if rc == 0 {
+				t.Errorf("expected non-zero rc for --item %s, got 0", tc.item)
+			}
+		})
+	}
 }

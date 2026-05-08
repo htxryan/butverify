@@ -8,6 +8,14 @@
 //	bv evidence --from in.json --out DIR # render-only (EV-E-2)
 //	bv evidence --from in.json --push    # render to ephemeral tmp + push (EV-E-5)
 //	bv evidence --from - --out DIR       # read manifest from stdin
+//	bv evidence --from in.json           # start validation workflow (EV-E-9)
+//	bv evidence validate --item N        # mark item N validated (EV-E-9)
+//
+// When invoked without --push and without --out, the evidence command
+// renders the bundle to .butverify/evidence-bundle/ and starts a
+// human-in-the-loop validation workflow. The agent reviews each item
+// one at a time by running `bv evidence validate --item N`; after all
+// items are validated the CLI publishes automatically.
 //
 // Rendered evidence pages include a viewer-side layout switcher and image
 // lightbox; layout is intentionally not a publish-time CLI option.
@@ -24,6 +32,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -35,6 +44,61 @@ import (
 	"github.com/htxryan/butverify/internal/api"
 	"github.com/htxryan/butverify/pkg/templates"
 )
+
+// ===========================================================================
+// Session types
+// ===========================================================================
+
+// evidenceSession persists the in-progress validation state between
+// `bv evidence --from` and subsequent `bv evidence validate --item N`
+// invocations. Stored at .butverify/evidence-session.json in CWD.
+type evidenceSession struct {
+	UploadID      string                `json:"upload_id"`
+	BundleDir     string                `json:"bundle_dir"`
+	FromPath      string                `json:"from_path"`
+	TTLSeconds    int64                 `json:"ttl_seconds,omitempty"`
+	EnableReviews bool                  `json:"enable_reviews,omitempty"`
+	ModeOverride  string                `json:"mode_override,omitempty"`
+	Items         []evidenceSessionItem `json:"items"`
+}
+
+// evidenceSessionItem tracks a single gallery entry during validation.
+type evidenceSessionItem struct {
+	Index     int    `json:"index"` // 1-based
+	Title     string `json:"title"`
+	Desc      string `json:"desc"`
+	AssetPath string `json:"asset_path"` // relative path from CWD to asset file
+	Validated bool   `json:"validated"`
+}
+
+const evidenceSessionPath = ".butverify/evidence-session.json"
+
+func saveEvidenceSession(s evidenceSession) error {
+	if err := os.MkdirAll(filepath.Dir(evidenceSessionPath), 0o755); err != nil {
+		return fmt.Errorf("evidence session mkdir: %w", err)
+	}
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return fmt.Errorf("evidence session marshal: %w", err)
+	}
+	return os.WriteFile(evidenceSessionPath, data, 0o644)
+}
+
+func loadEvidenceSession() (evidenceSession, error) {
+	data, err := os.ReadFile(evidenceSessionPath)
+	if err != nil {
+		return evidenceSession{}, err
+	}
+	var s evidenceSession
+	if err := json.Unmarshal(data, &s); err != nil {
+		return evidenceSession{}, fmt.Errorf("evidence session parse: %w", err)
+	}
+	return s, nil
+}
+
+func deleteEvidenceSession() {
+	_ = os.Remove(evidenceSessionPath)
+}
 
 // stdinIsTTY reports whether os.Stdin is currently attached to a
 // terminal. Wired through a package-level var so tests can swap in a
@@ -90,6 +154,12 @@ func newEvidenceFlagSet() (*flag.FlagSet, evidenceFlags) {
 }
 
 func runEvidence(ctx context.Context, g globalContext, args []string) int {
+	// Subcommand dispatch: `bv evidence validate …` is handled before flag
+	// parsing so `--item` is not seen as an unknown flag by newEvidenceFlagSet.
+	if len(args) > 0 && args[0] == "validate" {
+		return runEvidenceValidate(ctx, g, args[1:])
+	}
+
 	fs, f := newEvidenceFlagSet()
 	from := f.from
 	out := f.out
@@ -153,13 +223,24 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 
 	// --out + --push allowed (render to user dir, then push from there).
 	// --out alone: render only. --push alone: ephemeral tmp dir.
+	// no flags: validation workflow — render to .butverify/evidence-bundle/.
 	//
 	// UseBundleV2: the CDN-bundle render path (Astro/Svelte gallery
 	// served from /assets/evidence/v{ver}/_astro/) is the new default
 	// per spec docs/specs/evidence-v2.md §3.1 (EV2-U-2). The CLI no
 	// longer embeds the gallery JS/CSS — only the version string.
+
+	// Determine the effective output dir and whether to clean first.
+	effectiveOut := *out
+	if !*push && *out == "" {
+		// Validation workflow: use the well-known bundle directory.
+		effectiveOut = filepath.Join(".butverify", "evidence-bundle")
+		// Clean any existing bundle so RenderEvidence won't reject it.
+		_ = os.RemoveAll(effectiveOut)
+	}
+
 	opts := templates.RenderOptions{
-		OutDir:          *out,
+		OutDir:          effectiveOut,
 		ContainmentRoot: containmentRoot,
 		UseBundleV2:     true,
 		EnableReviews:   *enableReviewsFlag,
@@ -187,21 +268,69 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	g.w.Status("Rendered evidence (%d items) to %s", len(in.Items), bundleDir)
 
 	if !*push {
-		// Render-only mode: emit a small JSON summary so a piped
-		// consumer can chain into `bv push` programmatically.
-		if g.w.IsJSON() {
-			_ = g.w.JSON(struct {
-				OK       bool   `json:"ok"`
-				OutDir   string `json:"out_dir"`
-				Title    string `json:"title"`
-				Items    int    `json:"items"`
-				Template string `json:"template"`
-			}{true, bundleDir, in.Title, len(in.Items), "evidence"})
+		// If --out was explicitly set (render-only mode), just report and exit.
+		if *out != "" {
+			if g.w.IsJSON() {
+				_ = g.w.JSON(struct {
+					OK       bool   `json:"ok"`
+					OutDir   string `json:"out_dir"`
+					Title    string `json:"title"`
+					Items    int    `json:"items"`
+					Template string `json:"template"`
+				}{true, bundleDir, in.Title, len(in.Items), "evidence"})
+				return 0
+			}
+			g.w.Human("Evidence rendered to %s (%d items)", bundleDir, len(in.Items))
+			g.w.Human("To publish:  bv push %s", bundleDir)
 			return 0
 		}
-		g.w.Human("Evidence rendered to %s (%d items)", bundleDir, len(in.Items))
-		g.w.Human("To publish:  bv push %s", bundleDir)
-		return 0
+
+		// No --out and no --push: start the validation workflow (EV-E-9).
+		// Generate a stable upload_id for the eventual push.
+		uploadID := *uploadIDFlag
+		if uploadID == "" {
+			var genErr error
+			uploadID, genErr = newUploadID()
+			if genErr != nil {
+				return reportError(g.w, fmt.Errorf("generate upload_id: %w", genErr))
+			}
+		}
+
+		// Build session items from the rendered bundle.
+		sessionItems := make([]evidenceSessionItem, len(in.Items))
+		for i, item := range in.Items {
+			safeName := templates.SafeAssetName(item, i)
+			assetAbs := filepath.Join(bundleDir, "assets", safeName)
+			// Make the asset path relative to CWD for display.
+			cwd, _ := os.Getwd()
+			assetRel := assetAbs
+			if rel, err := filepath.Rel(cwd, assetAbs); err == nil {
+				assetRel = rel
+			}
+			sessionItems[i] = evidenceSessionItem{
+				Index:     i + 1,
+				Title:     item.Title,
+				Desc:      item.Description,
+				AssetPath: assetRel,
+				Validated: false,
+			}
+		}
+
+		session := evidenceSession{
+			UploadID:      uploadID,
+			BundleDir:     bundleDir,
+			FromPath:      *from,
+			TTLSeconds:    *ttlFlag,
+			EnableReviews: *enableReviewsFlag,
+			ModeOverride:  *modeFlag,
+			Items:         sessionItems,
+		}
+		if err := saveEvidenceSession(session); err != nil {
+			return reportError(g.w, fmt.Errorf("save evidence session: %w", err))
+		}
+
+		// Print the prompt for the first item.
+		return printEvidenceItemPrompt(g, session.Items, 0, *from)
 	}
 
 	uploadID := *uploadIDFlag
@@ -223,6 +352,166 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 		enableReviews:      *enableReviewsFlag,
 		createErrTransform: classifyTemplateRolloutErr,
 	})
+}
+
+// printEvidenceItemPrompt writes the human/JSON validation prompt for one
+// item in the session. itemIdx is the 0-based index into items.
+// fromPath is the original --from value so the restart command is correct.
+func printEvidenceItemPrompt(g globalContext, items []evidenceSessionItem, itemIdx int, fromPath string) int {
+	if itemIdx >= len(items) {
+		return reportError(g.w, fmt.Errorf("item index %d out of range (have %d items)", itemIdx, len(items)))
+	}
+	item := items[itemIdx]
+	total := len(items)
+	restartCmd := "bv evidence --from " + fromPath
+	validateCmd := fmt.Sprintf("bv evidence validate --item %d", item.Index)
+
+	if g.w.IsJSON() {
+		type promptJSON struct {
+			OK              bool   `json:"ok"`
+			Action          string `json:"action"`
+			ItemIndex       int    `json:"item_index"`
+			ItemCount       int    `json:"item_count"`
+			Title           string `json:"title,omitempty"`
+			Description     string `json:"description,omitempty"`
+			AssetPath       string `json:"asset_path"`
+			ValidateCommand string `json:"validate_command"`
+			RestartCommand  string `json:"restart_command"`
+		}
+		_ = g.w.JSON(promptJSON{
+			OK:              true,
+			Action:          "validate_item",
+			ItemIndex:       item.Index,
+			ItemCount:       total,
+			Title:           item.Title,
+			Description:     item.Desc,
+			AssetPath:       item.AssetPath,
+			ValidateCommand: validateCmd,
+			RestartCommand:  restartCmd,
+		})
+		return 0
+	}
+
+	// Human output.
+	header := fmt.Sprintf("  Item %d of %d", item.Index, total)
+	if item.Title != "" {
+		header += fmt.Sprintf(" — %q", item.Title)
+	}
+	ruler := strings.Repeat("─", 65)
+	lines := []string{
+		header,
+		"  " + ruler,
+	}
+	if item.Desc != "" {
+		lines = append(lines, fmt.Sprintf("  Description:  %s", item.Desc))
+	}
+	lines = append(lines,
+		fmt.Sprintf("  Screenshot:   %s", item.AssetPath),
+		"",
+		"  Before continuing:",
+		"    1. Open the screenshot/recording and inspect it carefully.",
+		"    2. Confirm it accurately shows what is described above.",
+		"    3. Check for errors, unexpected behavior, or incomplete states.",
+		"       (Web apps: also check browser DevTools console for JS errors.)",
+		"    4. If anything is wrong, fix it and restart:",
+		"         "+restartCmd,
+		"",
+		fmt.Sprintf("  When verified:  %s", validateCmd),
+	)
+	g.w.Human("%s", strings.Join(lines, "\n"))
+	return 0
+}
+
+// runEvidenceValidate handles `bv evidence validate --item N`.
+func runEvidenceValidate(ctx context.Context, g globalContext, args []string) int {
+	fs := flag.NewFlagSet("evidence-validate", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	itemFlag := fs.Int("item", 0, "1-based item index to mark validated")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		g.w.Error(toErrorEnvelope(err))
+		return 2
+	}
+	if *itemFlag < 1 {
+		g.w.Error(toErrorEnvelope(fmt.Errorf("--item is required and must be >= 1 (got %d)", *itemFlag)))
+		return 2
+	}
+
+	// Load session.
+	session, err := loadEvidenceSession()
+	if err != nil {
+		if os.IsNotExist(err) {
+			g.w.Error(toErrorEnvelope(fmt.Errorf("no evidence session in progress; run: bv evidence --from <file>")))
+		} else {
+			g.w.Error(toErrorEnvelope(fmt.Errorf("load evidence session: %w", err)))
+		}
+		return 1
+	}
+
+	// Validate item index.
+	if *itemFlag > len(session.Items) {
+		g.w.Error(toErrorEnvelope(fmt.Errorf("--item %d out of range (session has %d items)", *itemFlag, len(session.Items))))
+		return 2
+	}
+
+	// Find the item (1-based index stored in session).
+	idx := -1
+	for i, it := range session.Items {
+		if it.Index == *itemFlag {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		g.w.Error(toErrorEnvelope(fmt.Errorf("--item %d not found in session", *itemFlag)))
+		return 2
+	}
+
+	// Idempotent: warn if already validated but continue.
+	if session.Items[idx].Validated {
+		g.w.Status("Item %d was already validated; marking again (idempotent)", *itemFlag)
+	}
+
+	// Mark validated and persist.
+	session.Items[idx].Validated = true
+	if err := saveEvidenceSession(session); err != nil {
+		return reportError(g.w, fmt.Errorf("save evidence session: %w", err))
+	}
+
+	// Find the next unvalidated item.
+	nextIdx := -1
+	for i, it := range session.Items {
+		if !it.Validated {
+			nextIdx = i
+			break
+		}
+	}
+
+	if nextIdx >= 0 {
+		// More items to validate.
+		return printEvidenceItemPrompt(g, session.Items, nextIdx, session.FromPath)
+	}
+
+	// All items validated — publish.
+	total := len(session.Items)
+	g.w.Status("All %d items validated  Publishing...", total)
+
+	rc := runPushFlowForMode(ctx, g, pushOptions{
+		dir:                session.BundleDir,
+		sourcePath:         publishSourcePath(session.FromPath),
+		uploadID:           session.UploadID,
+		ttlSeconds:         session.TTLSeconds,
+		template:           "evidence",
+		modeOverride:       session.ModeOverride,
+		enableReviews:      session.EnableReviews,
+		createErrTransform: classifyTemplateRolloutErr,
+	})
+	if rc == 0 {
+		deleteEvidenceSession()
+	}
+	return rc
 }
 
 // classifyTemplateRolloutErr rewrites a 400 APIError from POST
