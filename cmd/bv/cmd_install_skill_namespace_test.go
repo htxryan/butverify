@@ -574,19 +574,20 @@ func TestSessionStartHookCommand_NeverLeaksContent(t *testing.T) {
 }
 
 // TestStopHookScript_Shape verifies the generated stop hook script has
-// the expected structure: bv path embedded, advisory review listing,
-// and blocking exit 2 on uncommitted changes.
+// the expected structure: silent on exit 0 (no stdout advisory that would
+// cause an infinite agent feedback loop), and blocking exit 2 on uncommitted
+// changes. Review notifications belong in the SessionStart hook only.
 func TestStopHookScript_Shape(t *testing.T) {
 	script := generateStopHookScript("/opt/butverify/bin/bv")
 
-	if !strings.Contains(script, "'/opt/butverify/bin/bv'") {
-		t.Errorf("script must embed quoted bv path: %s", script[:min(len(script), 300)])
+	// Must NOT embed bv path or call review list — those belong in SessionStart.
+	// Any stdout on exit 0 causes Claude Code to re-inject feedback as a new
+	// turn, creating an infinite loop.
+	if strings.Contains(script, "review list") {
+		t.Errorf("Stop hook must NOT call review list (causes feedback loop on exit 0): %s", script[:min(len(script), 400)])
 	}
-	if !strings.Contains(script, "review list --unacknowledged --format=ids") {
-		t.Errorf("script must call review list: %s", script[:min(len(script), 300)])
-	}
-	if !strings.Contains(script, "still pending:") {
-		t.Errorf("script must print 'still pending:' for reviews: %s", script[:min(len(script), 300)])
+	if strings.Contains(script, "still pending:") {
+		t.Errorf("Stop hook must NOT print advisory 'still pending:' (causes feedback loop on exit 0): %s", script[:min(len(script), 400)])
 	}
 	if !strings.Contains(script, "exit 2") {
 		t.Errorf("script must exit 2 when uncommitted changes present: %s", script[:min(len(script), 300)])
@@ -639,8 +640,9 @@ func TestStopHookShellCommand_QuotesPathSafely(t *testing.T) {
 	}
 }
 
-// EV2-E-9b vs EV2-E-9c: the SessionStart entry says "pending" (inline)
-// while the Stop hook script says "still pending". Pin both wordings.
+// EV2-E-9b: SessionStart hook says "pending" (inline, advisory).
+// The Stop hook must NOT print review notifications — any stdout on exit 0
+// creates an infinite Claude Code feedback loop. Reviews are SessionStart-only.
 func TestInstall_HookWordingDiffersByEvent(t *testing.T) {
 	home := setupTempHome(t)
 	if rc, _, _ := runInstall(t, "claude", "--enable-hook"); rc != 0 {
@@ -651,10 +653,13 @@ func TestInstall_HookWordingDiffersByEvent(t *testing.T) {
 	if !strings.Contains(string(raw), "pending: %s") {
 		t.Errorf("SessionStart hook should print '... pending: <ids>': %s", raw)
 	}
-	// Stop wording is in the script file (not settings.json).
+	// Stop hook script must NOT print review notifications.
 	script := mustReadFile(t, stopHookScriptPath(home))
-	if !strings.Contains(string(script), "still pending:") {
-		t.Errorf("Stop hook script should print '... still pending: <ids>' (EV2-E-9c): %s", script)
+	if strings.Contains(string(script), "still pending:") {
+		t.Errorf("Stop hook script must NOT print 'still pending:' — causes infinite feedback loop (EV2-E-9c): %s", script)
+	}
+	if strings.Contains(string(script), "review list") {
+		t.Errorf("Stop hook script must NOT call review list — belongs in SessionStart only: %s", script)
 	}
 }
 
