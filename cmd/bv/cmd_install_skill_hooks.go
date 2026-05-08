@@ -10,14 +10,15 @@
 //     exits 0 — review notifications are advisory and MUST NEVER block a
 //     session (EV2-U-13 + EV2-N-5).
 //
-//   - Stop — fires after each agent turn. Checks for uncommitted git
-//     changes: exits 2 with a blocking advisory message when any are
-//     found, exits 0 silently otherwise. The silent-exit-0 contract is
-//     critical: any stdout on exit 0 would be injected as a new
-//     conversation turn by Claude Code, causing the agent to respond,
-//     firing the hook again, indefinitely. The complementary behavioral
-//     rule in ~/.claude/CLAUDE.md tells the agent NOT to respond when the
-//     feedback panel shows only "No stderr output".
+//   - Stop — fires after each agent turn. Blocks the session from ending
+//     until the agent has run /butverify:prove-it for the current git HEAD.
+//     The marker (~/.claude/bv-session-proven) stores the HEAD hash at
+//     prove-it time; a new commit invalidates it so each batch of work must
+//     be proven before stopping. Exits 2 with a blocking advisory on stderr
+//     when the marker is absent or stale; exits 0 silently otherwise. The
+//     silent-exit-0 contract is critical: any output on exit 0 would be
+//     injected as a new conversation turn by Claude Code, firing the hook
+//     again, indefinitely.
 //
 // The Stop hook is script-based (written to
 // `<root>/.claude/hooks/bv-stop-hook.sh`) rather than inline, so the
