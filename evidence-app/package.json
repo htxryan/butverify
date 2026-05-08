@@ -1,6 +1,6 @@
 {
   "name": "@butverify/evidence-app",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "private": true,
   "type": "module",
   "description": "Static bundle for the butverify.dev evidence gallery. Built in CI via Vite + Svelte and published to /assets/evidence/v{semver}/ on the customer-site CDN.",

@@ -73,9 +73,8 @@
     border-bottom: 1px solid var(--bv-border);
   }
   .bv-topbar-inner {
-    max-width: var(--bv-max-content);
-    margin: 0 auto;
-    padding: 0 var(--bv-space-5);
+    width: 100%;
+    padding: 0 var(--bv-space-3);
     height: 3.25rem;
     display: flex;
     align-items: center;
