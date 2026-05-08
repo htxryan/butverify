@@ -64,7 +64,7 @@ type evidenceSession struct {
 
 // evidenceSessionItem tracks a single gallery entry during validation.
 type evidenceSessionItem struct {
-	Index     int    `json:"index"`      // 1-based
+	Index     int    `json:"index"` // 1-based
 	Title     string `json:"title"`
 	Desc      string `json:"desc"`
 	AssetPath string `json:"asset_path"` // relative path from CWD to asset file
