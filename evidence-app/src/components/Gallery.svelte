@@ -23,6 +23,7 @@
   import ReviewDetailsPage from "./ReviewDetailsPage.svelte";
   import type { EvidenceManifest } from "../lib/manifest.js";
   import type { AnnotationDraft, AnnotationInput } from "../lib/annotations.js";
+  import { untrack } from "svelte";
   import { createDraftStore } from "../lib/draft-store.js";
   import {
     setReviewSession,
@@ -199,11 +200,11 @@
       },
       registerItem: (itemIndex, handlers) => {
         itemRegistry.set(itemIndex, handlers);
-        registryVersion = registryVersion + 1;
+        registryVersion = untrack(() => registryVersion) + 1;
       },
       unregisterItem: (itemIndex) => {
         itemRegistry.delete(itemIndex);
-        registryVersion = registryVersion + 1;
+        registryVersion = untrack(() => registryVersion) + 1;
       },
       getItem: (itemIndex) => itemRegistry.get(itemIndex) ?? null,
     });
