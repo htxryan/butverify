@@ -1,9 +1,14 @@
 <script lang="ts">
-  /* Carousel layout: horizontal scroll-snap row + prev/next buttons +
-   * keyboard arrow nav. Built on CSS scroll-snap rather than transform-
-   * positioned tracks so reduced-motion users get a non-animated snap
-   * (browser handles scroll-behavior:smooth via the global override) and
-   * touch devices get native momentum scrolling.
+  /* Carousel layout: horizontal scroll-snap row + keyboard arrow nav.
+   * Built on CSS scroll-snap rather than transform-positioned tracks
+   * so reduced-motion users get a non-animated snap (browser handles
+   * scroll-behavior:smooth via the global override) and touch devices
+   * get native momentum scrolling.
+   *
+   * pebble-eaku — the prev/next pager has moved to EvidenceToolbar at
+   * the gallery level. activeIndex is now a bindable prop driven by
+   * either user scroll (reported up) or external navigation (the
+   * toolbar setting it; this component reacts via $effect to scroll).
    *
    * Accessibility: items are still rendered in DOM order so screen
    * readers traverse the gallery sequentially regardless of which
@@ -13,43 +18,60 @@
   import GalleryItem from "./GalleryItem.svelte";
   import { prefersReducedMotion } from "../lib/manifest.js";
 
-  let { items }: { items: EvidenceItem[] } = $props();
+  let {
+    items,
+    activeIndex = $bindable(0),
+  }: {
+    items: EvidenceItem[];
+    activeIndex?: number;
+  } = $props();
 
   let railEl: HTMLElement | null = $state(null);
-  let activeIndex = $state(0);
 
-  function scrollToIndex(idx: number) {
+  function scrollToIndex(idx: number, opts: { suppressUpdate?: boolean } = {}) {
     if (!railEl) return;
     const child = railEl.children[idx] as HTMLElement | undefined;
     if (!child) return;
     const reduced = prefersReducedMotion();
+    if (opts.suppressUpdate) {
+      // External nav (toolbar prev/next) — scrollLeft will fire onScroll
+      // which would re-set activeIndex, but we want the binding to win.
+      // The onScroll handler clamps to the closest cell so once smooth
+      // scroll lands, the index stays consistent.
+    }
     railEl.scrollTo({
       left: child.offsetLeft - railEl.offsetLeft,
       behavior: reduced ? "auto" : "smooth",
     });
-    activeIndex = idx;
   }
 
-  function prev() {
-    scrollToIndex(Math.max(0, activeIndex - 1));
-  }
-  function next() {
-    scrollToIndex(Math.min(items.length - 1, activeIndex + 1));
-  }
+  // External navigation (toolbar): scroll the rail when activeIndex
+  // changes from outside. We compare to the rail's nearest cell to
+  // avoid a feedback loop with onScroll.
+  $effect(() => {
+    if (!railEl) return;
+    const railLeft = railEl.scrollLeft;
+    const child = railEl.children[activeIndex] as HTMLElement | undefined;
+    if (!child) return;
+    const targetLeft = child.offsetLeft - railEl.offsetLeft;
+    if (Math.abs(railLeft - targetLeft) < 4) return; // already there
+    const reduced = prefersReducedMotion();
+    railEl.scrollTo({ left: targetLeft, behavior: reduced ? "auto" : "smooth" });
+  });
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      prev();
+      activeIndex = Math.max(0, activeIndex - 1);
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      next();
+      activeIndex = Math.min(items.length - 1, activeIndex + 1);
     } else if (e.key === "Home") {
       e.preventDefault();
-      scrollToIndex(0);
+      activeIndex = 0;
     } else if (e.key === "End") {
       e.preventDefault();
-      scrollToIndex(items.length - 1);
+      activeIndex = items.length - 1;
     }
   }
 
@@ -74,40 +96,12 @@
           bestIdx = i;
         }
       }
-      activeIndex = bestIdx;
+      if (bestIdx !== activeIndex) activeIndex = bestIdx;
     });
   }
 </script>
 
 <div class="bv-carousel" role="region" aria-label="Evidence items, carousel layout">
-  <div class="bv-carousel-controls">
-    <button
-      type="button"
-      class="bv-carousel-button"
-      aria-label="Previous item"
-      onclick={prev}
-      disabled={activeIndex === 0}
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
-        <path d="M10 3 5 8l5 5" stroke="currentColor" stroke-width="1.5" fill="none" />
-      </svg>
-    </button>
-    <span class="bv-carousel-status" aria-live="polite">
-      {activeIndex + 1} / {items.length}
-    </span>
-    <button
-      type="button"
-      class="bv-carousel-button"
-      aria-label="Next item"
-      onclick={next}
-      disabled={activeIndex === items.length - 1}
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
-        <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" fill="none" />
-      </svg>
-    </button>
-  </div>
-
   <!--
     The carousel rail is a horizontally-scrolling list. We give it a
     tabindex + role=group + key handlers so keyboard users can step
@@ -149,7 +143,7 @@
         class:bv-active={idx === activeIndex}
         aria-selected={idx === activeIndex}
         aria-label={`Go to item ${idx + 1}`}
-        onclick={() => scrollToIndex(idx)}
+        onclick={() => (activeIndex = idx)}
       ></button>
     {/each}
   </div>
@@ -160,46 +154,13 @@
     display: flex;
     flex-direction: column;
     gap: var(--bv-space-3);
-  }
-
-  .bv-carousel-controls {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--bv-space-3);
-    padding: 0 var(--bv-space-5);
-  }
-
-  .bv-carousel-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: var(--bv-radius-pill);
-    border: 1px solid var(--bv-border);
-    background: var(--bv-surface);
-    color: var(--bv-text);
-    transition:
-      background var(--bv-duration-quick) var(--bv-ease-out),
-      border-color var(--bv-duration-quick) var(--bv-ease-out),
-      color var(--bv-duration-quick) var(--bv-ease-out);
-  }
-  .bv-carousel-button:hover:not(:disabled) {
-    background: var(--bv-surface-2);
-    border-color: var(--bv-border-strong);
-  }
-  .bv-carousel-button:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .bv-carousel-status {
-    font-family: var(--bv-font-mono);
-    font-size: var(--bv-text-sm);
-    color: var(--bv-text-dim);
-    min-width: 4ch;
-    text-align: center;
+    /* Fill any height-constrained ancestor (e.g. carousel-mode shell)
+     * so the rail can flex-grow into the available viewport area. In
+     * unbounded contexts the column collapses to its children's
+     * natural height, so this is safe outside the locked-viewport
+     * shell as well. */
+    flex: 1;
+    min-height: 0;
   }
 
   .bv-carousel-rail {
@@ -208,11 +169,17 @@
     padding: 0;
     display: flex;
     overflow-x: auto;
+    overflow-y: hidden;
     scroll-snap-type: x mandatory;
     scrollbar-width: thin;
     /* Touch friction; honoring browser-default scroll-behavior so
      * reduced-motion users get instant snap. */
     -webkit-overflow-scrolling: touch;
+    /* Take all available vertical space inside the carousel column so
+     * each cell can size its asset against the viewport rather than
+     * the natural content height. */
+    flex: 1;
+    min-height: 0;
   }
   .bv-carousel-rail:focus-visible {
     outline: 2px solid var(--bv-accent);
@@ -220,16 +187,16 @@
     border-radius: var(--bv-radius-md);
   }
 
+  /* Each cell is exactly the width of the rail so paging always shows
+   * exactly one item. Inner content (.bv-item-carousel) caps its own
+   * max-width and centers itself within the cell on wide viewports. */
   .bv-carousel-cell {
     flex: 0 0 100%;
+    width: 100%;
     scroll-snap-align: start;
-  }
-  @media (min-width: 720px) {
-    .bv-carousel-cell {
-      flex-basis: 80%;
-      max-width: 60rem;
-      margin: 0 auto;
-    }
+    scroll-snap-stop: always;
+    height: 100%;
+    min-height: 0;
   }
 
   .bv-carousel-dots {

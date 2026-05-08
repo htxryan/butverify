@@ -56,29 +56,40 @@ var embeddedProveItBytes []byte
 //go:embed embedded_skills/claude_review.md
 var embeddedReviewBytes []byte
 
+// embeddedLaunchMonitoredLoopBytes carries the /launch-monitored-loop skill.
+// Mirror of bv-skills/claude/launch-monitored-loop.md.
+//
+//go:embed embedded_skills/claude_launch-monitored-loop.md
+var embeddedLaunchMonitoredLoopBytes []byte
+
 const skillMetadataPrefix = "<!-- bv-skill:"
 
 // skillEntry describes one installable skill file under a Claude Code
-// agent's namespace. The v1 install plants three skills under
-// `<root>/.claude/skills/butverify/`:
+// agent's namespace. The install set covers:
 //
-//   - SKILL.md            — deprecated alias preserved for one release.
-//   - prove-it/SKILL.md   — renamed from the historical /butverify skill.
-//   - review/SKILL.md     — new skill that surfaces unacknowledged reviews.
+//   - <root>/.claude/skills/butverify/SKILL.md       — deprecated alias.
+//   - <root>/.claude/skills/butverify/prove-it/       — /butverify:prove-it
+//   - <root>/.claude/skills/butverify/review/         — /butverify:review
+//   - <root>/.claude/skills/launch-monitored-loop/    — /launch-monitored-loop
 //
 // Each entry carries its own embedded bytes and its own per-file install
-// path (relative to the agent's namespace dir). All three go through the
-// same atomic-rename + canonical-hash-stamp + drift-detect pipeline.
+// path. All entries go through the same atomic-rename + canonical-hash-stamp
+// + drift-detect pipeline.
 type skillEntry struct {
-	// LeafPath is the install path relative to the namespace dir
-	// (i.e. relative to `<root>/.claude/skills/butverify/`). The empty
-	// segment list means a flat `SKILL.md` in the namespace dir; a
-	// single segment like "prove-it" means `<namespace>/prove-it/SKILL.md`.
+	// LeafSegments is the path under the butverify namespace dir
+	// (`<root>/.claude/skills/butverify/`). The empty segment list
+	// means a flat SKILL.md directly in the namespace dir.
 	LeafSegments []string
-	Embedded     []byte
+	// SkillsRelPath, when non-nil, installs the skill relative to
+	// `<root>/.claude/skills/` directly (no butverify/ namespace). The
+	// last segment is a directory; SKILL.md is appended automatically.
+	// Use this for top-level skills invoked as /<name> rather than
+	// /butverify:<name>.
+	SkillsRelPath []string
+	Embedded      []byte
 }
 
-// claudeSkills is the v1 install set for the `claude` agent. The order
+// claudeSkills is the install set for the `claude` agent. The order
 // is documentary; install/uninstall iterate in slice order for stable
 // log output.
 func claudeSkills() []skillEntry {
@@ -86,6 +97,7 @@ func claudeSkills() []skillEntry {
 		{LeafSegments: nil, Embedded: embeddedSkillBytes},
 		{LeafSegments: []string{"prove-it"}, Embedded: embeddedProveItBytes},
 		{LeafSegments: []string{"review"}, Embedded: embeddedReviewBytes},
+		{SkillsRelPath: []string{"launch-monitored-loop"}, Embedded: embeddedLaunchMonitoredLoopBytes},
 	}
 }
 
@@ -332,11 +344,15 @@ func claudeSkillPath(root string) string {
 	return filepath.Join(claudeNamespaceDir(root), "SKILL.md")
 }
 
-// claudeSkillPathFor resolves the absolute install path for one
-// skillEntry under the namespace `<root>/.claude/skills/butverify/`.
-// LeafSegments are joined into the path; the file is always named
-// `SKILL.md` (Claude Code convention).
+// claudeSkillPathFor resolves the absolute install path for one skillEntry.
+// Skills with SkillsRelPath install directly under `<root>/.claude/skills/`;
+// all others install under the butverify namespace dir.
 func claudeSkillPathFor(root string, e skillEntry) string {
+	if len(e.SkillsRelPath) > 0 {
+		parts := append([]string{root, ".claude", "skills"}, e.SkillsRelPath...)
+		parts = append(parts, "SKILL.md")
+		return filepath.Join(parts...)
+	}
 	parts := append([]string{claudeNamespaceDir(root)}, e.LeafSegments...)
 	parts = append(parts, "SKILL.md")
 	return filepath.Join(parts...)
@@ -523,6 +539,11 @@ func isFlatLegacyMigration(preps []installPrep) bool {
 	flatExists := false
 	subdirInstalled := false
 	for _, p := range preps {
+		// Only butverify-namespaced skills participate in the flat→namespace
+		// migration check. Top-level skills (SkillsRelPath) are independent.
+		if len(p.entry.SkillsRelPath) > 0 {
+			continue
+		}
 		if len(p.entry.LeafSegments) == 0 {
 			if p.installed {
 				flatExists = true
@@ -851,17 +872,22 @@ func doUninstall(g globalContext, opts installSkillOptions, root string, skills 
 		}
 	}
 
-	// rmdir each empty skill subdir, then the namespace dir if empty.
-	// Iterate from deepest to shallowest so children get a chance to
-	// disappear before their parent is checked.
+	// rmdir each empty skill subdir, then the butverify namespace dir if
+	// empty. Skills installed directly under .claude/skills/ get their
+	// own subdir rmdir'd; the top-level .claude/skills/ itself is never
+	// touched (BVS-N-3). Iterate from deepest to shallowest.
+	nsDir := claudeNamespaceDir(root)
 	dirsToTry := []string{}
 	for _, e := range skills {
-		if len(e.LeafSegments) == 0 {
+		dir := filepath.Dir(claudeSkillPathFor(root, e))
+		if dir == nsDir {
+			// Alias SKILL.md lives directly in the namespace dir; the
+			// dir itself is cleaned up by the appended nsDir below.
 			continue
 		}
-		dirsToTry = append(dirsToTry, filepath.Dir(claudeSkillPathFor(root, e)))
+		dirsToTry = append(dirsToTry, dir)
 	}
-	dirsToTry = append(dirsToTry, claudeNamespaceDir(root))
+	dirsToTry = append(dirsToTry, nsDir)
 
 	dirRemoved := false
 	for _, d := range dirsToTry {

@@ -78,7 +78,7 @@
   --bv-shadow-lg: 0 12px 32px rgba(17, 20, 27, 0.12);
 
   /* Layout. */
-  --bv-max-content: 72rem;
+  --bv-max-content: 144rem;
   --bv-max-narrow: 44rem;
 
   /* Motion. Honored only when prefers-reduced-motion is no-preference;

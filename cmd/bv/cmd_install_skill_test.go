@@ -157,6 +157,7 @@ func TestEmbedMirror_MatchesCanonical(t *testing.T) {
 		{name: "butverify (alias)", canonical: filepath.Join(cwd, "..", "..", "bv-skills", "claude", "butverify.md"), embedded: embeddedSkillBytes},
 		{name: "prove-it", canonical: filepath.Join(cwd, "..", "..", "bv-skills", "claude", "prove-it.md"), embedded: embeddedProveItBytes},
 		{name: "review", canonical: filepath.Join(cwd, "..", "..", "bv-skills", "claude", "review.md"), embedded: embeddedReviewBytes},
+		{name: "launch-monitored-loop", canonical: filepath.Join(cwd, "..", "..", "bv-skills", "claude", "launch-monitored-loop.md"), embedded: embeddedLaunchMonitoredLoopBytes},
 	}
 	for _, c := range cases {
 		c := c

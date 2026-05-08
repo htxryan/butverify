@@ -3,7 +3,7 @@
   import LayoutSwitcher from "./LayoutSwitcher.svelte";
 
   type Layout = "stacked" | "carousel";
-  type Page = "evidence" | "details";
+  type Page = "evidence" | "details" | "reviews";
 
   let {
     manifest,
@@ -20,7 +20,7 @@
 
 <header class="bv-topbar" aria-label="Site navigation">
   <div class="bv-topbar-inner">
-    {#if page === "details"}
+    {#if page === "details" || page === "reviews"}
       <button
         class="bv-topbar-back"
         type="button"
@@ -34,7 +34,7 @@
       </button>
     {/if}
 
-    <h1 class="bv-topbar-title" class:bv-topbar-title--details={page === "details"} title={manifest.title}>
+    <h1 class="bv-topbar-title" class:bv-topbar-title--details={page === "details" || page === "reviews"} title={manifest.title}>
       {manifest.title}
     </h1>
 
@@ -73,9 +73,8 @@
     border-bottom: 1px solid var(--bv-border);
   }
   .bv-topbar-inner {
-    max-width: var(--bv-max-content);
-    margin: 0 auto;
-    padding: 0 var(--bv-space-5);
+    width: 100%;
+    padding: 0 var(--bv-space-3);
     height: 3.25rem;
     display: flex;
     align-items: center;

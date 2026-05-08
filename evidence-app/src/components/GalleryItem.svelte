@@ -31,6 +31,12 @@
   // getReviewSession returns null when reviews are disabled; we treat
   // that as the no-review fallback path.
   let session = getReviewSession();
+  // pebble-6fux — when the session is read-only (Review Details page)
+  // the item still RENDERS annotation overlays from the session's
+  // drafts() but does NOT register editing handlers or render any
+  // editor UI. The flag is read once (sessions are stable for the
+  // lifetime of a page).
+  let readOnly = session?.readOnly === true;
 
   // Per-item slice of drafts (for the AnnotationOverlay to render
   // already-saved regions without it knowing about the global list).
@@ -39,8 +45,24 @@
   );
 
   // Drawing mode: 'off', 'circle', or 'rect'. Owned per-item so two
-  // items don't share a draw mode.
+  // items don't share a draw mode. In read-only mode this never
+  // leaves "off" — the overlay's drawingEnabled is computed from it.
   let drawMode = $state<"off" | "circle" | "rect">("off");
+
+  // pebble-eaku — register handlers with the session so the
+  // gallery-level toolbar can drive this item's annotation actions
+  // when this is the active carousel item.
+  $effect(() => {
+    if (!session || readOnly) return;
+    session.registerItem(index, {
+      openComment: () => openItemComment(),
+      setDrawMode: (m) => setDrawMode(m),
+      getDrawMode: () => drawMode,
+      captureHighlight: () => captureHighlight(),
+      getCanCaptureHighlight: () => canCaptureHighlight,
+    });
+    return () => session?.unregisterItem(index);
+  });
 
   // Lightbox state — only images, only when not drawing.
   let lightboxOpen = $state(false);
@@ -164,7 +186,7 @@
     </h2>
   </header>
 
-  {#if session && isImage}
+  {#if session && !readOnly && layout === "stacked" && isImage}
     <ReviewTools
       mode={drawMode}
       onSetMode={setDrawMode}
@@ -172,7 +194,7 @@
       onCaptureHighlight={captureHighlight}
       {canCaptureHighlight}
     />
-  {:else if session && !isImage}
+  {:else if session && !readOnly && layout === "stacked" && !isImage}
     <ReviewTools
       mode="off"
       onSetMode={() => {}}
@@ -182,7 +204,7 @@
     />
   {/if}
 
-  {#if itemCommentOpen}
+  {#if !readOnly && itemCommentOpen}
     <CommentForm
       title={`Comment on item ${index + 1}`}
       placeholder="What about this item do you want to call out?"
@@ -191,7 +213,7 @@
     />
   {/if}
 
-  {#if pendingHighlight.kind === "pending"}
+  {#if !readOnly && pendingHighlight.kind === "pending"}
     <CommentForm
       title="Annotate selected text"
       placeholder={`What about this passage do you want to call out?`}
@@ -293,18 +315,45 @@
     border-bottom: 0;
     padding-bottom: var(--bv-space-10);
   }
+  /* The carousel cell wrapping this article is always 100% of the rail
+   * (one item per page). Cap the inner content at 60rem and center it
+   * so wide screens get a comfortable reading column without revealing
+   * any portion of the adjacent items. */
   .bv-item-carousel {
-    flex: 0 0 100%;
-    scroll-snap-align: start;
     padding: var(--bv-space-5);
     height: 100%;
     box-sizing: border-box;
+    max-width: 60rem;
+    margin: 0 auto;
+    width: 100%;
+    overflow: hidden;
+    gap: var(--bv-space-3);
   }
-  @media (min-width: 720px) {
-    .bv-item-carousel {
-      flex-basis: 80%;
-      max-width: 60rem;
-    }
+  .bv-item-carousel .bv-item-header,
+  .bv-item-carousel :global(.bv-review-tools),
+  .bv-item-carousel :global(.bv-item-details) {
+    flex: 0 0 auto;
+  }
+  .bv-item-carousel .bv-item-media {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .bv-item-carousel .bv-item-media img,
+  .bv-item-carousel .bv-item-media video {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    max-width: 100%;
+    object-fit: contain;
+  }
+  .bv-item-carousel .bv-item-description {
+    flex: 0 1 auto;
+    max-height: 30%;
+    overflow-y: auto;
   }
 
   .bv-item-header {
