@@ -1,6 +1,6 @@
 // Hook installation for `bv install-skill claude` (EV2-E-9a/b/c).
 //
-// Two hooks are written into the per-agent settings.json (Claude Code
+// One hook is written into the per-agent settings.json (Claude Code
 // `<root>/.claude/settings.json`):
 //
 //   - SessionStart — fires when a new agent session opens. Calls
@@ -8,16 +8,14 @@
 //     returns IDs, the hook prints a single advisory line so the agent
 //     and the human both see pending feedback at session start.
 //
-//   - Stop — fires when the agent session ends. Delegates to a
-//     generated shell script (`<root>/.claude/hooks/bv-stop-hook.sh`)
-//     that (a) prints any unacknowledged reviews (advisory) and (b)
-//     exits 2 when uncommitted changes are present so the agent must
-//     invoke /butverify:prove-it before stopping.
-//
 // The SessionStart hook always exits 0 — review notifications are
 // advisory and MUST NEVER block a session (EV2-U-13 + EV2-N-5).
-// The Stop hook exits 2 on uncommitted changes to prompt the agent to
-// publish evidence; it exits 0 on a clean tree.
+//
+// NOTE: The Stop hook was removed because Claude Code always injects Stop
+// hook output as a new conversation turn in interactive mode, creating an
+// infinite feedback loop where the agent responds, the hook fires again,
+// and so on. uninstallHooks still cleans up Stop hook entries written by
+// older bv versions.
 //
 // Idempotency: hooks are tagged with the sentinel `BV_HOOK_SENTINEL` so
 // repeated installs replace the previous entries instead of appending
@@ -63,9 +61,9 @@ type hookInstallOutcome struct {
 	SettingsPath string `json:"settings_path,omitempty"`
 }
 
-// maybeInstallHooks decides whether to install the SessionStart and
-// Stop hooks based on opts (EnableHook / NoHook / TTY) and writes them
-// into <root>/.claude/settings.json on consent. Returns a structured
+// maybeInstallHooks decides whether to install the SessionStart hook
+// based on opts (EnableHook / NoHook / TTY) and writes it into
+// <root>/.claude/settings.json on consent. Returns a structured
 // outcome; install never fails the install run.
 func maybeInstallHooks(g globalContext, opts installSkillOptions, root string) hookInstallOutcome {
 	switch {
@@ -102,9 +100,7 @@ func maybeInstallHooks(g globalContext, opts installSkillOptions, root string) h
 // insensitive); any other answer (including empty / EOF) is "no".
 func promptHookConsent(g globalContext) (bool, error) {
 	g.w.Human("")
-	g.w.Human("Optional: install Claude Code hooks that surface unacknowledged butverify reviews.")
-	g.w.Human("The Stop hook also blocks the session when uncommitted changes are present,")
-	g.w.Human("prompting the agent to run /butverify:prove-it before finishing.")
+	g.w.Human("Optional: install a Claude Code SessionStart hook that surfaces unacknowledged butverify reviews.")
 	fmt.Fprint(os.Stderr, "Enable butverify hooks? (y/N): ")
 	var line string
 	_, err := fmt.Fscanln(os.Stdin, &line)
@@ -138,20 +134,21 @@ type hookEntry struct {
 type hookCommand struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
-	// Timeout is in seconds; we set 2s for the SessionStart and Stop
-	// hooks so a slow control-plane never holds up a session.
+	// Timeout is in seconds; we set 2s for the SessionStart hook so a
+	// slow control-plane never holds up a session.
 	Timeout int `json:"timeout,omitempty"`
 }
 
 // installHooks reads <root>/.claude/settings.json (creating an empty
 // object if absent), removes any existing bv-sentinel entries from the
-// SessionStart and Stop arrays, appends fresh entries, and writes the
-// merged settings back atomically. The merge is robust to a settings.json
+// SessionStart array, appends a fresh entry, and writes the merged
+// settings back atomically. The merge is robust to a settings.json
 // that already contains other tools' hooks (e.g. compound-agent).
 //
-// The SessionStart entry is an inline shell command (always exits 0).
-// The Stop entry delegates to a generated script file that also exits 2
-// when uncommitted changes are present.
+// Only the SessionStart hook is installed (inline shell command, always
+// exits 0). The Stop hook is NOT installed — Claude Code injects Stop
+// hook stdout as a new conversation turn in interactive mode, which
+// creates an infinite feedback loop.
 func installHooks(root string) error {
 	sp := settingsPath(root)
 	settings, err := readSettings(sp)
@@ -169,7 +166,7 @@ func installHooks(root string) error {
 	// Defense-in-depth: a wrongly-typed per-event value (e.g. somebody
 	// hand-edited hooks.SessionStart to be a string or object) must not
 	// be silently overwritten — surface a clear error instead.
-	for _, evt := range []string{"SessionStart", "Stop"} {
+	for _, evt := range []string{"SessionStart"} {
 		v, present := hooks[evt]
 		if !present {
 			continue
@@ -184,20 +181,8 @@ func installHooks(root string) error {
 		return err
 	}
 
-	exe, err := bvExecutableFn()
-	if err != nil {
-		return fmt.Errorf("install-skill: resolve bv executable for hook command: %w", err)
-	}
-	scriptPath := stopHookScriptPath(root)
-	if err := writeStopHookScript(scriptPath, exe); err != nil {
-		return err
-	}
-	stopCmd := bvStopHookShellCommand(scriptPath)
-
 	startStripped, _ := stripSentinelEntries(getEventArray(hooks, "SessionStart"))
-	stopStripped, _ := stripSentinelEntries(getEventArray(hooks, "Stop"))
 	hooks["SessionStart"] = appendHook(startStripped, buildHookEntryFromCommand(startCmd))
-	hooks["Stop"] = appendHook(stopStripped, buildStopHookEntry(stopCmd))
 	settings["hooks"] = hooks
 
 	return writeSettings(sp, settings)
@@ -471,61 +456,10 @@ func appendHook(arr []any, entry hookEntry) []any {
 
 // stopHookScriptPath returns the absolute path where the stop hook script
 // is installed: `<root>/.claude/hooks/bv-stop-hook.sh`.
+// Retained for use by uninstallHooks to clean up script files written by
+// older bv versions that installed the Stop hook.
 func stopHookScriptPath(root string) string {
 	return filepath.Join(root, ".claude", "hooks", "bv-stop-hook.sh")
-}
-
-// generateStopHookScript returns the content of the bv-stop-hook.sh
-// script. The resolved bv executable path is embedded at install time
-// (same PATH-hijack defense as the SessionStart inline command).
-//
-// Design constraint: this script MUST be completely silent on exit 0.
-// Claude Code injects Stop hook stdout into the conversation as a new
-// user turn; any output on a clean exit creates an infinite loop where
-// the agent responds, the hook fires again, and so on. Pending-review
-// notifications belong in the SessionStart hook (already installed there),
-// not here. Only the exit-2 blocking path may print — that output is
-// intentionally surfaced to prompt the agent to commit before stopping.
-func generateStopHookScript(_ string) string {
-	return `#!/usr/bin/env bash
-# bv-stop-hook.sh — generated by bv agent-init. Do not edit by hand;
-# re-run bv agent-init --enable-hook --force to regenerate.
-#
-# IMPORTANT: this script must produce NO stdout output on exit 0.
-# Any stdout on a clean exit creates an infinite agent feedback loop.
-
-# Block on uncommitted changes so the agent runs /butverify:prove-it.
-if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
-    printf '[butverify] Uncommitted changes detected — run /butverify:prove-it or commit before stopping.\n'
-    exit 2
-  fi
-fi
-
-exit 0
-# ` + bvHookSentinel + `
-`
-}
-
-// writeStopHookScript writes the stop hook script to scriptPath, creating
-// parent directories as needed. The file is made executable (0o755).
-func writeStopHookScript(scriptPath, bvExePath string) error {
-	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
-		return fmt.Errorf("install-skill: mkdir stop hook script dir: %w", err)
-	}
-	content := []byte(generateStopHookScript(bvExePath))
-	if err := atomicWriteMode(scriptPath, content, 0o755); err != nil {
-		return fmt.Errorf("install-skill: write stop hook script %q: %w", scriptPath, err)
-	}
-	return nil
-}
-
-// bvStopHookShellCommand returns the settings.json command that invokes
-// the stop hook script. The script path is single-quoted for shell safety.
-// The sentinel is appended as a comment so uninstall can find and remove
-// this entry.
-func bvStopHookShellCommand(scriptPath string) string {
-	return "bash " + shellSingleQuote(scriptPath) + " # " + bvHookSentinel
 }
 
 // buildHookEntryFromCommand wraps a precomputed shell command in the
@@ -535,17 +469,6 @@ func buildHookEntryFromCommand(cmd string) hookEntry {
 		Matcher: "",
 		Hooks: []hookCommand{
 			{Type: "command", Command: cmd, Timeout: 2},
-		},
-	}
-}
-
-// buildStopHookEntry wraps the stop hook command with a longer timeout
-// since it runs git commands and may write evidence before unblocking.
-func buildStopHookEntry(cmd string) hookEntry {
-	return hookEntry{
-		Matcher: "",
-		Hooks: []hookCommand{
-			{Type: "command", Command: cmd, Timeout: 5},
 		},
 	}
 }
@@ -586,8 +509,6 @@ func shellSingleQuote(s string) string {
 // `bv` is embedded at install time so the hook cannot be hijacked by a
 // later PATH change. The snippet always exits 0 — SessionStart hooks are
 // advisory and MUST NEVER block a session (EV2-N-5).
-//
-// The Stop hook uses bvStopHookShellCommand instead.
 func bvHookShellCommand(phase string) (string, error) {
 	exe, err := bvExecutableFn()
 	if err != nil {

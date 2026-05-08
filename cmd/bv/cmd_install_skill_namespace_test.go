@@ -262,33 +262,21 @@ func TestInstall_EnableHook_WritesSettingsJSON(t *testing.T) {
 		t.Errorf("hooks[SessionStart] missing sentinel entry: %v", startArr)
 	}
 
-	// Stop: script-delegating command that calls bv-stop-hook.sh.
-	stopArr, ok := hooks["Stop"].([]any)
-	if !ok || len(stopArr) == 0 {
-		t.Fatalf("hooks[Stop] missing or empty: %v", hooks["Stop"])
-	}
-	stopFound := false
-	for _, raw := range stopArr {
-		if entryHasSentinel(raw) {
-			stopFound = true
-			cmd := commandFromEntry(t, raw)
-			if !strings.Contains(cmd, "bv-stop-hook.sh") {
-				t.Errorf("hooks[Stop] sentinel entry should call bv-stop-hook.sh: %s", cmd)
+	// Stop hook must NOT be installed — it causes infinite feedback loops
+	// in Claude Code's interactive mode.
+	if stopVal, present := hooks["Stop"]; present {
+		stopArr, _ := stopVal.([]any)
+		for _, raw := range stopArr {
+			if entryHasSentinel(raw) {
+				t.Errorf("install must NOT write a bv Stop hook entry (causes infinite feedback loop): %v", raw)
 			}
 		}
 	}
-	if !stopFound {
-		t.Errorf("hooks[Stop] missing sentinel entry: %v", stopArr)
-	}
 
-	// The stop hook script must also exist and be executable.
+	// The stop hook script must NOT be written.
 	scriptPath := stopHookScriptPath(home)
-	info, err := os.Stat(scriptPath)
-	if err != nil {
-		t.Fatalf("stop hook script should exist at %s: %v", scriptPath, err)
-	}
-	if info.Mode()&0o111 == 0 {
-		t.Errorf("stop hook script should be executable: mode=%o", info.Mode())
+	if _, err := os.Stat(scriptPath); !os.IsNotExist(err) {
+		t.Errorf("stop hook script should NOT exist after install (err=%v)", err)
 	}
 }
 
@@ -309,18 +297,26 @@ func TestInstall_EnableHook_ReplacesPriorBVHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	hooks := settings["hooks"].(map[string]any)
-	for _, evt := range []string{"SessionStart", "Stop"} {
-		arr := hooks[evt].([]any)
-		bvCount := 0
-		for _, raw := range arr {
-			if entryHasSentinel(raw) {
-				bvCount++
-			}
-		}
-		if bvCount != 1 {
-			t.Errorf("hooks[%s]: expected exactly 1 bv sentinel entry after re-install, got %d", evt, bvCount)
+	// Only SessionStart is installed; Stop must be absent.
+	startArr := hooks["SessionStart"].([]any)
+	bvCount := 0
+	for _, raw := range startArr {
+		if entryHasSentinel(raw) {
+			bvCount++
 		}
 	}
+	if bvCount != 1 {
+		t.Errorf("hooks[SessionStart]: expected exactly 1 bv sentinel entry after re-install, got %d", bvCount)
+	}
+	if stopVal, present := hooks["Stop"]; present {
+		stopArr, _ := stopVal.([]any)
+		for _, raw := range stopArr {
+			if entryHasSentinel(raw) {
+				t.Errorf("hooks[Stop] must not contain a bv sentinel entry after re-install: %v", raw)
+			}
+		}
+	}
+	_ = home
 }
 
 func TestInstall_EnableHook_PreservesOtherHooks(t *testing.T) {
@@ -487,9 +483,14 @@ func TestUninstall_RemovesHooksAndPreservesOthers(t *testing.T) {
 	if rc, _, _ := runInstall(t, "claude", "--enable-hook"); rc != 0 {
 		t.Fatal("install with hooks failed")
 	}
+	// Install no longer writes the stop hook script. Simulate a leftover
+	// script from an older bv version to verify uninstall still cleans it.
 	scriptPath := stopHookScriptPath(home)
-	if _, err := os.Stat(scriptPath); err != nil {
-		t.Fatalf("stop hook script should exist after install: %v", err)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\n# "+bvHookSentinel+"\n"), 0o755); err != nil {
+		t.Fatal(err)
 	}
 	if rc, _, _ := runInstall(t, "claude", "--uninstall"); rc != 0 {
 		t.Fatal("uninstall failed")
@@ -573,48 +574,6 @@ func TestSessionStartHookCommand_NeverLeaksContent(t *testing.T) {
 	}
 }
 
-// TestStopHookScript_Shape verifies the generated stop hook script has
-// the expected structure: silent on exit 0 (no stdout advisory that would
-// cause an infinite agent feedback loop), and blocking exit 2 on uncommitted
-// changes. Review notifications belong in the SessionStart hook only.
-func TestStopHookScript_Shape(t *testing.T) {
-	script := generateStopHookScript("/opt/butverify/bin/bv")
-
-	// Must NOT embed bv path or call review list — those belong in SessionStart.
-	// Any stdout on exit 0 causes Claude Code to re-inject feedback as a new
-	// turn, creating an infinite loop.
-	if strings.Contains(script, "review list") {
-		t.Errorf("Stop hook must NOT call review list (causes feedback loop on exit 0): %s", script[:min(len(script), 400)])
-	}
-	if strings.Contains(script, "still pending:") {
-		t.Errorf("Stop hook must NOT print advisory 'still pending:' (causes feedback loop on exit 0): %s", script[:min(len(script), 400)])
-	}
-	if !strings.Contains(script, "exit 2") {
-		t.Errorf("script must exit 2 when uncommitted changes present: %s", script[:min(len(script), 300)])
-	}
-	if !strings.Contains(script, "git diff --quiet") {
-		t.Errorf("script must check for uncommitted changes via git diff: %s", script[:min(len(script), 300)])
-	}
-	if !strings.Contains(script, "/butverify:prove-it") {
-		t.Errorf("script must mention /butverify:prove-it: %s", script[:min(len(script), 300)])
-	}
-	if !strings.Contains(script, bvHookSentinel) {
-		t.Errorf("script must embed sentinel for idempotent uninstall: %s", script[:min(len(script), 300)])
-	}
-}
-
-// TestStopHookShellCommand_Shape verifies the settings.json Stop command
-// calls the script with the sentinel for uninstall detection.
-func TestStopHookShellCommand_Shape(t *testing.T) {
-	cmd := bvStopHookShellCommand("/home/user/.claude/hooks/bv-stop-hook.sh")
-	if !strings.Contains(cmd, "'/home/user/.claude/hooks/bv-stop-hook.sh'") {
-		t.Errorf("Stop hook command must single-quote the script path: %s", cmd)
-	}
-	if !strings.Contains(cmd, bvHookSentinel) {
-		t.Errorf("Stop hook command must contain sentinel: %s", cmd)
-	}
-}
-
 // PATH-hijack defense: a path containing a single quote must be safely
 // escaped so a malicious filename cannot break out of the quoted span.
 func TestHookShellCommand_QuotesAbsolutePathSafely(t *testing.T) {
@@ -631,18 +590,10 @@ func TestHookShellCommand_QuotesAbsolutePathSafely(t *testing.T) {
 	}
 }
 
-// PATH-hijack defense: bvStopHookShellCommand must single-quote the
-// script path safely.
-func TestStopHookShellCommand_QuotesPathSafely(t *testing.T) {
-	cmd := bvStopHookShellCommand("/tmp/weird'name/.claude/hooks/bv-stop-hook.sh")
-	if !strings.Contains(cmd, `'/tmp/weird'\''name/.claude/hooks/bv-stop-hook.sh'`) {
-		t.Errorf("Stop hook command must POSIX-escape single quotes in path: %s", cmd)
-	}
-}
-
 // EV2-E-9b: SessionStart hook says "pending" (inline, advisory).
-// The Stop hook must NOT print review notifications — any stdout on exit 0
-// creates an infinite Claude Code feedback loop. Reviews are SessionStart-only.
+// The Stop hook must NOT be installed — any Stop hook output in interactive
+// mode creates an infinite Claude Code feedback loop. Reviews are
+// SessionStart-only.
 func TestInstall_HookWordingDiffersByEvent(t *testing.T) {
 	home := setupTempHome(t)
 	if rc, _, _ := runInstall(t, "claude", "--enable-hook"); rc != 0 {
@@ -653,13 +604,23 @@ func TestInstall_HookWordingDiffersByEvent(t *testing.T) {
 	if !strings.Contains(string(raw), "pending: %s") {
 		t.Errorf("SessionStart hook should print '... pending: <ids>': %s", raw)
 	}
-	// Stop hook script must NOT print review notifications.
-	script := mustReadFile(t, stopHookScriptPath(home))
-	if strings.Contains(string(script), "still pending:") {
-		t.Errorf("Stop hook script must NOT print 'still pending:' — causes infinite feedback loop (EV2-E-9c): %s", script)
+	// Stop hook must NOT be installed.
+	var settings map[string]any
+	if err := json.Unmarshal(raw, &settings); err != nil {
+		t.Fatalf("settings.json must be valid JSON: %v", err)
 	}
-	if strings.Contains(string(script), "review list") {
-		t.Errorf("Stop hook script must NOT call review list — belongs in SessionStart only: %s", script)
+	hooks, _ := settings["hooks"].(map[string]any)
+	if stopVal, present := hooks["Stop"]; present {
+		stopArr, _ := stopVal.([]any)
+		for _, entry := range stopArr {
+			if entryHasSentinel(entry) {
+				t.Errorf("Stop hook must NOT be installed (causes infinite feedback loop): %v", entry)
+			}
+		}
+	}
+	// Stop hook script must NOT exist.
+	if _, err := os.Stat(stopHookScriptPath(home)); !os.IsNotExist(err) {
+		t.Errorf("Stop hook script must NOT be written during install (err=%v)", err)
 	}
 }
 
