@@ -23,6 +23,7 @@
     pastReviewsCount,
     siteCommentOpen,
     onSiteComment,
+    onOpenReviews = () => {},
     // Carousel-mode props (ignored in stacked mode)
     carouselActiveIndex = 0,
     carouselTotal = 0,
@@ -37,6 +38,10 @@
     pastReviewsCount: number;
     siteCommentOpen: boolean;
     onSiteComment: () => void;
+    // pebble-60yj — fired when the past-reviews chip is clicked.
+    // Default no-op so existing call sites without the Reviews page
+    // hash route still typecheck.
+    onOpenReviews?: () => void;
     carouselActiveIndex?: number;
     carouselTotal?: number;
     onCarouselPrev?: () => void;
@@ -149,13 +154,15 @@
     {/if}
 
     {#if pastReviewsCount > 0}
-      <span
-        class="bv-toolbar-count bv-toolbar-count--past"
-        aria-label={`${pastReviewsCount} past ${pastReviewsCount === 1 ? "review" : "reviews"}`}
-        title="Past reviews on this site"
+      <button
+        type="button"
+        class="bv-toolbar-count bv-toolbar-count--past bv-toolbar-count--clickable"
+        aria-label={`Open ${pastReviewsCount} past ${pastReviewsCount === 1 ? "review" : "reviews"}`}
+        title="View your past reviews on this site"
+        onclick={onOpenReviews}
       >
         {pastReviewsCount} past
-      </span>
+      </button>
     {/if}
 
     {#if showAnnotate}
@@ -352,6 +359,25 @@
     color: var(--bv-accent-strong);
     border-color: var(--bv-accent);
     background: var(--bv-accent-soft);
+  }
+  /* pebble-60yj — clickable past-reviews chip is a real <button>
+   * (semantic) but inherits the chip visuals; reset the default
+   * button background/font/min-height so it sits flush with the other
+   * inline counts. */
+  button.bv-toolbar-count--clickable {
+    font: inherit;
+    cursor: pointer;
+    min-height: 0;
+    transition:
+      background-color var(--bv-duration-quick) var(--bv-ease-out),
+      border-color var(--bv-duration-quick) var(--bv-ease-out),
+      color var(--bv-duration-quick) var(--bv-ease-out);
+  }
+  button.bv-toolbar-count--clickable:hover,
+  button.bv-toolbar-count--clickable:focus-visible {
+    background: var(--bv-surface-2);
+    border-color: var(--bv-border-strong);
+    color: var(--bv-text);
   }
   .bv-toolbar-pending-dot {
     width: 8px;

@@ -19,6 +19,7 @@
   import ReviewPanel from "./ReviewPanel.svelte";
   import CommentForm from "./CommentForm.svelte";
   import EvidenceToolbar from "./EvidenceToolbar.svelte";
+  import ReviewsPage from "./ReviewsPage.svelte";
   import type { EvidenceManifest } from "../lib/manifest.js";
   import type { AnnotationDraft, AnnotationInput } from "../lib/annotations.js";
   import { createDraftStore } from "../lib/draft-store.js";
@@ -29,16 +30,19 @@
   } from "../lib/review-session.js";
   import { resolveApiBaseFromWindow } from "../lib/api-base.js";
   import { submitReview, type SubmitReviewResult } from "../lib/review-api.js";
+  import { listReviewsForViewer, type ViewerReview } from "../lib/review-list.js";
 
   type Layout = "stacked" | "carousel";
-  type Page = "evidence" | "details";
+  type Page = "evidence" | "details" | "reviews";
 
   let { manifest }: { manifest: EvidenceManifest } = $props();
 
   // ─── Page routing (hash-based) ────────────────────────────────────
   function readPage(): Page {
     if (typeof window === "undefined") return "evidence";
-    return window.location.hash === "#details" ? "details" : "evidence";
+    if (window.location.hash === "#details") return "details";
+    if (window.location.hash === "#reviews") return "reviews";
+    return "evidence";
   }
 
   let page = $state<Page>(readPage());
@@ -54,7 +58,8 @@
 
   function navigateTo(p: Page) {
     if (typeof window === "undefined") return;
-    history.pushState(null, "", p === "details" ? "#details" : "#");
+    const hash = p === "details" ? "#details" : p === "reviews" ? "#reviews" : "#";
+    history.pushState(null, "", hash);
     page = p;
     // Scroll to top on page change.
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -177,11 +182,45 @@
     return itemRegistry.get(carouselActiveIndex) ?? null;
   });
 
-  // pebble-eaku — past reviews count placeholder. Wiring of an actual
-  // viewer-accessible "list my reviews on this site" endpoint is
-  // tracked in pebble-60yj. For now we expose 0 so the badge is
-  // hidden; the toolbar branch is in place for the follow-up.
-  let pastReviewsCount = $state(0);
+  // pebble-60yj — past reviews are fetched from the control-plane
+  // (GET /v1/sites/:id/reviews, viewer cookie). We keep both the array
+  // (for the Reviews page) and a derived count (for the toolbar badge)
+  // so the Reviews page does not need to refetch on navigation.
+  let pastReviews = $state<ViewerReview[]>([]);
+  let pastReviewsCount = $derived(pastReviews.length);
+  let pastReviewsLoading = $state(false);
+  let pastReviewsError = $state<string | null>(null);
+
+  async function refreshPastReviews(): Promise<void> {
+    if (!reviewsEnabled) return;
+    pastReviewsLoading = true;
+    pastReviewsError = null;
+    const apiBase = resolveApiBaseFromWindow();
+    const result = await listReviewsForViewer({ apiBase, siteId });
+    pastReviewsLoading = false;
+    if (result.ok) {
+      pastReviews = result.reviews;
+      return;
+    }
+    // unauthenticated: most viewers without a cookie won't have any
+    // past reviews — silently treat as empty rather than surfacing an
+    // error. The submit flow still walks the user through OAuth.
+    if (result.kind === "unauthenticated") {
+      pastReviews = [];
+      return;
+    }
+    if (result.kind === "site_not_found") {
+      // enable_reviews=false (server-side) — also silent.
+      pastReviews = [];
+      return;
+    }
+    pastReviewsError = result.message;
+  }
+
+  $effect(() => {
+    if (!reviewsEnabled) return;
+    void refreshPastReviews();
+  });
 
   // ─── Submit ────────────────────────────────────────────────────────
   let submitting = $state(false);
@@ -198,7 +237,10 @@
     if (result.ok) {
       store.clear();
       drafts = [];
-      pastReviewsCount = pastReviewsCount + 1;
+      // pebble-60yj — refresh from the server so the count and the
+      // Reviews page reflect the persisted row, not just an optimistic
+      // bump (which would desync if the server later 409s a retry).
+      void refreshPastReviews();
     }
   }
 </script>
@@ -214,6 +256,14 @@
 
   {#if page === "details"}
     <MetadataPage {manifest} />
+  {:else if page === "reviews"}
+    <ReviewsPage
+      {drafts}
+      {pastReviews}
+      listLoading={pastReviewsLoading}
+      listError={pastReviewsError}
+      onBack={() => navigateTo("evidence")}
+    />
   {:else}
     <!-- Evidence page -->
     <div class="bv-gallery-main">
@@ -225,6 +275,7 @@
             {pastReviewsCount}
             {siteCommentOpen}
             onSiteComment={openSiteComment}
+            onOpenReviews={() => navigateTo("reviews")}
             {carouselActiveIndex}
             carouselTotal={manifest.items.length}
             onCarouselPrev={carouselPrev}
