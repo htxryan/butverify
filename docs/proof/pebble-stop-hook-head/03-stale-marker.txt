@@ -1,0 +1,6 @@
+=== Scenario 3: Marker has stale HEAD (new commit after proving) → hook blocks ===
+$ echo 'aaaaaaaabbbbbbbbccccccccddddddddeeeeeeee' > ~/.claude/bv-session-proven  # old HEAD
+# current HEAD: af1a7f07567f0dce149129b87f5d5b02caf67948
+$ bash /Users/redhale/.claude/hooks/bv-stop-hook.sh
+[butverify] Run /butverify:prove-it before stopping.
+exit code: 2

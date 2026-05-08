@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { background: #1a1a1a; margin: 0; padding: 20px; font-family: 'Menlo', 'Monaco', 'Courier New', monospace; font-size: 13px; line-height: 1.6; }
+  .terminal { background: #0d1117; border-radius: 8px; padding: 20px 24px; max-width: 900px; border: 1px solid #30363d; }
+  .title-bar { display: flex; gap: 6px; margin-bottom: 16px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .red { background: #ff5f57; } .yellow { background: #febc2e; } .green { background: #28c840; }
+  .prompt { color: #79c0ff; } .cmd { color: #e6edf3; } .output { color: #8b949e; }
+  .ok { color: #3fb950; } .err { color: #f85149; } .dim { color: #484f58; }
+  .section { color: #d2a8ff; font-weight: bold; margin-top: 18px; margin-bottom: 4px; }
+  pre { margin: 0; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="terminal">
+  <div class="title-bar"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>
+  <pre>
+<span class="section"># ── bv install-skill generates HEAD-based stop hook ─────────────────────</span>
+<span class="prompt">$</span> <span class="cmd">bv install-skill claude --enable-hook</span>
+<span class="output">Installed /butverify skills for claude.
+  ~/.claude/skills/butverify/SKILL.md             (installed)
+  ~/.claude/skills/butverify/prove-it/SKILL.md    (installed)
+  ~/.claude/skills/butverify/review/SKILL.md      (installed)
+  ~/.claude/skills/launch-monitored-loop/SKILL.md (installed)
+  Hooks: installed (~/.claude/settings.json)</span>
+
+<span class="prompt">$</span> <span class="cmd">grep "git rev-parse\|proven_ref\|current_ref" ~/.claude/hooks/bv-stop-hook.sh</span>
+<span class="output">  proven_ref=
+  current_ref=b0658090cbefa827de76986a0043a87b5f53bd7a
+    if [ "" = "" ]; then</span>
+
+<span class="section"># ── Scenario 1: No marker → blocks ───────────────────────────────────────</span>
+<span class="prompt">$</span> <span class="cmd">bash ~/.claude/hooks/bv-stop-hook.sh</span>
+<span class="err">[butverify] Run /butverify:prove-it before stopping.</span>
+<span class="dim">exit code: 2 ✓</span>
+
+<span class="section"># ── Scenario 2: Marker = current HEAD → allows silently ──────────────────</span>
+<span class="prompt">$</span> <span class="cmd">echo "af1a7f07567f0dce149129b87f5d5b02caf67948" > ~/.claude/bv-session-proven</span>
+<span class="prompt">$</span> <span class="cmd">bash ~/.claude/hooks/bv-stop-hook.sh  # no output — clean exit</span>
+<span class="dim">exit code: 0 ✓  (marker deleted — one-time use)</span>
+
+<span class="section"># ── Scenario 3: Stale marker (new commit after proving) → blocks ──────────</span>
+<span class="prompt">$</span> <span class="cmd">echo 'aaaaaaaabbbbbbbbccccccccddddddddeeeeeeee' > ~/.claude/bv-session-proven</span>
+<span class="dim"># current HEAD: af1a7f07567f0dce149129b87f5d5b02caf67948</span>
+<span class="prompt">$</span> <span class="cmd">bash ~/.claude/hooks/bv-stop-hook.sh  # HEAD mismatch</span>
+<span class="err">[butverify] Run /butverify:prove-it before stopping.</span>
+<span class="dim">exit code: 2 ✓  (stale marker rejected)</span>
+
+<span class="section"># ── Scenario 4: Non-git context, any marker → allows ─────────────────────</span>
+<span class="prompt">$</span> <span class="cmd">cd /tmp && echo 'no-git' > ~/.claude/bv-session-proven</span>
+<span class="prompt">$</span> <span class="cmd">bash ~/.claude/hooks/bv-stop-hook.sh</span>
+<span class="dim">exit code: 0 ✓</span>
+  </pre>
+</div>
+</body>
+</html>

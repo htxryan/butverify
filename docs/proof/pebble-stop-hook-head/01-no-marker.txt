@@ -1,0 +1,4 @@
+=== Scenario 1: No marker → hook blocks (exit 2, advisory to stderr) ===
+$ bash /Users/redhale/.claude/hooks/bv-stop-hook.sh
+[butverify] Run /butverify:prove-it before stopping.
+exit code: 2

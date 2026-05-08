@@ -1,0 +1,5 @@
+=== Scenario 4: Non-git context, any non-empty marker → hook allows ===
+$ echo 'no-git' > ~/.claude/bv-session-proven
+$ cd /tmp  # not a git repo
+$ bash /path/to/bv-stop-hook.sh
+exit code: 0
