@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="generator" content="bv {{.GeneratorVersion}} (template=evidence; bundle=v{{.BundleVersion}})">
+<title>{{.Title}}</title>
+<link rel="stylesheet" href="/assets/evidence/v{{.BundleVersion}}/_astro/main.css">
+</head>
+<body>
+<noscript>
+  <style>
+    .bv-noscript { max-width: 44rem; margin: 4rem auto; padding: 1rem 1.5rem;
+      font: 16px/1.55 ui-sans-serif, -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #4a5364; }
+    .bv-noscript h1 { color: #11141b; font-size: 1.5rem; margin: 0 0 .75rem; }
+    .bv-noscript ol { padding-left: 1.5rem; }
+    .bv-noscript li { margin-bottom: 1rem; }
+    .bv-noscript img, .bv-noscript video { max-width: 100%; height: auto;
+      border: 1px solid #e6e8ef; border-radius: 8px; }
+    .bv-noscript figcaption { margin-top: .5rem; }
+    .bv-noscript figcaption strong { color: #11141b; }
+  </style>
+  <div class="bv-noscript">
+    <h1>{{.Title}}</h1>
+    {{if .Subtitle}}<p>{{.Subtitle}}</p>{{end}}
+    {{if .Summary}}<p>{{.Summary}}</p>{{end}}
+    <ol>
+      {{range $i, $it := .Items}}
+      <li>
+        <figure>
+          {{if $it.IsImage}}<img src="assets/{{$it.SafeName}}" alt="{{$it.Alt}}">{{end}}
+          {{if $it.IsVideo}}<!-- svelte-ignore a11y_media_has_caption -->
+          <video src="assets/{{$it.SafeName}}" controls preload="metadata" aria-label="{{$it.Alt}}"></video>{{end}}
+          <figcaption>
+            {{if $it.Title}}<strong>{{$it.Title}}</strong>{{end}}
+            {{if $it.Description}}<br><span>{{$it.Description}}</span>{{end}}
+          </figcaption>
+        </figure>
+      </li>
+      {{end}}
+    </ol>
+    <p style="margin-top:2rem;font-size:0.875rem;color:#6c7689;">
+      Enable JavaScript to view the interactive gallery. Static fallback above is for
+      assistive tech and JavaScript-disabled environments.
+    </p>
+  </div>
+</noscript>
+
+<div id="bv-gallery-root"></div>
+
+<script type="application/json" id="evidence-manifest">{{.ManifestJSON}}</script>
+<script type="module" src="/assets/evidence/v{{.BundleVersion}}/_astro/main.js"></script>
+</body>
+</html>

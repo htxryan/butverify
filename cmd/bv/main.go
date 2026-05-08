@@ -187,6 +187,8 @@ func main() {
 		exitCode = runAgentInit(ctx, gctx, cmdArgs)
 	case "install-skill":
 		exitCode = runInstallSkill(ctx, gctx, cmdArgs)
+	case "review":
+		exitCode = runReview(ctx, gctx, cmdArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "bv: unknown command %q\n\n", cmd)
 		fmt.Fprint(os.Stderr, usageText)

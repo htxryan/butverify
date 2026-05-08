@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex" />
+    <title>Evidence — butverify.dev</title>
+  </head>
+  <body>
+    <!--
+      Dev preview manifest. The production Go CLI generates its own
+      index.html and inlines the real manifest at <script
+      type="application/json" id="evidence-manifest">. We inline the dev
+      manifest here so the same DOM contract drives the same boot path
+      both in `pnpm dev` and in production.
+    -->
+    <script
+      type="application/json"
+      id="evidence-manifest"
+      data-bv-dev-only="true"
+    >
+      {
+        "title": "Evidence gallery preview",
+        "subtitle": "Sample manifest for dev / preview",
+        "summary": "This manifest is loaded only in `pnpm dev` and `pnpm preview`. Production galleries inline the manifest at publish time and never reference this file.",
+        "metadata": {
+          "issue_id": "EV2-DEV",
+          "issue_title": "Astro evidence gallery local preview"
+        },
+        "generated_at": "2026-05-05T20:00:00Z",
+        "generator_version": "dev",
+        "bundle_version": "1.0.0",
+        "enable_reviews": true,
+        "items": [
+          {
+            "src": "https://placehold.co/1200x680/3a66f0/ffffff?text=Item+1",
+            "title": "First step: empty form",
+            "description": "Initial state — the form is rendered with no input.",
+            "alt": "Empty form with no inputs filled in",
+            "is_image": true
+          },
+          {
+            "src": "https://placehold.co/1200x680/274cc7/ffffff?text=Item+2",
+            "title": "Validation surface",
+            "description": "After submitting empty, inline errors appear next to each required field.",
+            "alt": "Form showing inline validation messages on each empty required field",
+            "is_image": true,
+            "metadata": { "issue_id": "ENG-456" }
+          },
+          {
+            "src": "https://placehold.co/1200x680/8aa9ff/11141b?text=Item+3",
+            "title": "Successful submission",
+            "description": "Filling all required fields and submitting yields a success toast.",
+            "alt": "Success toast with checkmark icon",
+            "is_image": true,
+            "properties": {
+              "viewport": "1280x720",
+              "browser": "Chromium 132",
+              "frame": {
+                "fill_step": "completed",
+                "duration_ms": 2400
+              }
+            }
+          }
+        ]
+      }
+    </script>
+
+    <div id="bv-gallery-root"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

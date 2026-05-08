@@ -59,14 +59,15 @@ var stdinIsTTY = func() bool {
 // runEvidence's flag surface ever drifts, the test fails before the
 // binary ships.
 type evidenceFlags struct {
-	from     *string
-	out      *string
-	push     *bool
-	schema   *bool
-	uploadID *string
-	ttl      *int64
-	quality  *int
-	mode     *string
+	from          *string
+	out           *string
+	push          *bool
+	schema        *bool
+	uploadID      *string
+	ttl           *int64
+	quality       *int
+	mode          *string
+	enableReviews *bool
 }
 
 // newEvidenceFlagSet constructs the canonical `bv evidence` flag set.
@@ -75,14 +76,15 @@ type evidenceFlags struct {
 func newEvidenceFlagSet() (*flag.FlagSet, evidenceFlags) {
 	fs, values := newCLIFlagSet("evidence")
 	f := evidenceFlags{
-		from:     values.String("from"),
-		out:      values.String("out"),
-		push:     values.Bool("push"),
-		schema:   values.Bool("schema"),
-		uploadID: values.String("upload-id"),
-		ttl:      values.Int64("ttl-seconds"),
-		quality:  values.Int("image-quality"),
-		mode:     values.String("mode"),
+		from:          values.String("from"),
+		out:           values.String("out"),
+		push:          values.Bool("push"),
+		schema:        values.Bool("schema"),
+		uploadID:      values.String("upload-id"),
+		ttl:           values.Int64("ttl-seconds"),
+		quality:       values.Int("image-quality"),
+		mode:          values.String("mode"),
+		enableReviews: values.Bool("enable-reviews"),
 	}
 	return fs, f
 }
@@ -97,6 +99,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 	ttlFlag := f.ttl
 	imageQuality := f.quality
 	modeFlag := f.mode
+	enableReviewsFlag := f.enableReviews
 	if err := fs.Parse(args); err != nil {
 		return handleFlagParseError(g, "evidence", err)
 	}
@@ -150,9 +153,16 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 
 	// --out + --push allowed (render to user dir, then push from there).
 	// --out alone: render only. --push alone: ephemeral tmp dir.
+	//
+	// UseBundleV2: the CDN-bundle render path (Astro/Svelte gallery
+	// served from /assets/evidence/v{ver}/_astro/) is the new default
+	// per spec docs/specs/evidence-v2.md §3.1 (EV2-U-2). The CLI no
+	// longer embeds the gallery JS/CSS — only the version string.
 	opts := templates.RenderOptions{
 		OutDir:          *out,
 		ContainmentRoot: containmentRoot,
+		UseBundleV2:     true,
+		EnableReviews:   *enableReviewsFlag,
 	}
 	in, bundleDir, err := templates.RenderEvidence(input, opts, templates.Generator{Version: Version})
 	if err != nil {
@@ -210,6 +220,7 @@ func runEvidence(ctx context.Context, g globalContext, args []string) int {
 		template:           "evidence",
 		imageQuality:       *imageQuality,
 		modeOverride:       *modeFlag,
+		enableReviews:      *enableReviewsFlag,
 		createErrTransform: classifyTemplateRolloutErr,
 	})
 }

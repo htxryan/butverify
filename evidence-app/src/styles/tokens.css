@@ -1,0 +1,146 @@
+/* Design tokens for the evidence gallery.
+ *
+ * Aligned with marketing-site/tailwind.config.mjs and the dashboard.
+ * The gallery is a viewer surface, not a product UI — we keep the palette
+ * tight (one bg, one surface, one accent) and lean on typography +
+ * whitespace for hierarchy. Light theme is the default; dark theme is
+ * activated by `data-theme="dark"` on <html>.
+ *
+ * Annotation tokens (`--bv-annot-*`) are defined here even though the
+ * annotation interaction logic ships in a later epic — the visual shells
+ * live in this bundle and need stable colors.
+ */
+
+:root {
+  --bv-bg: #ffffff;
+  --bv-surface: #f7f8fa;
+  --bv-surface-2: #eef0f4;
+  --bv-text: #11141b;
+  --bv-text-dim: #4a5364;
+  --bv-text-muted: #6c7689;
+  --bv-border: #e6e8ef;
+  --bv-border-strong: #c4cad6;
+
+  --bv-accent: #3a66f0;
+  --bv-accent-strong: #274cc7;
+  --bv-accent-soft: #dde7ff;
+
+  --bv-good: #1e8a5a;
+  --bv-warn: #b3700f;
+  --bv-danger: #c8362f;
+
+  /* Annotation overlays — semi-transparent so screenshot content shows
+   * through. The "ring" pair is for circle/rect shape outlines; the
+   * "fill" is the inner wash. */
+  --bv-annot-ring: rgba(58, 102, 240, 0.85);
+  --bv-annot-fill: rgba(58, 102, 240, 0.18);
+  --bv-annot-highlight: rgba(245, 166, 35, 0.35); /* text highlight bg */
+  --bv-annot-highlight-strong: rgba(245, 166, 35, 0.7);
+
+  /* Type scale. Major-second (1.125). Body text 16px. */
+  --bv-font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+    "Helvetica Neue", Arial, sans-serif;
+  --bv-font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --bv-text-xs: 0.75rem;
+  --bv-text-sm: 0.875rem;
+  --bv-text-base: 1rem;
+  --bv-text-lg: 1.125rem;
+  --bv-text-xl: 1.25rem;
+  --bv-text-2xl: 1.5rem;
+  --bv-text-3xl: 1.875rem;
+  --bv-text-4xl: 2.25rem;
+
+  --bv-line-tight: 1.2;
+  --bv-line-snug: 1.35;
+  --bv-line-normal: 1.55;
+
+  /* Spacing. 4px grid. */
+  --bv-space-1: 0.25rem;
+  --bv-space-2: 0.5rem;
+  --bv-space-3: 0.75rem;
+  --bv-space-4: 1rem;
+  --bv-space-5: 1.5rem;
+  --bv-space-6: 2rem;
+  --bv-space-8: 3rem;
+  --bv-space-10: 4rem;
+  --bv-space-12: 6rem;
+
+  --bv-radius-sm: 4px;
+  --bv-radius-md: 8px;
+  --bv-radius-lg: 14px;
+  --bv-radius-pill: 999px;
+
+  --bv-shadow-sm: 0 1px 2px rgba(17, 20, 27, 0.05);
+  --bv-shadow-md: 0 4px 12px rgba(17, 20, 27, 0.08);
+  --bv-shadow-lg: 0 12px 32px rgba(17, 20, 27, 0.12);
+
+  /* Layout. */
+  --bv-max-content: 72rem;
+  --bv-max-narrow: 44rem;
+
+  /* Motion. Honored only when prefers-reduced-motion is no-preference;
+   * see base.css for the reduced-motion override. */
+  --bv-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --bv-duration-quick: 120ms;
+  --bv-duration-base: 240ms;
+  --bv-duration-slow: 360ms;
+}
+
+[data-theme="dark"] {
+  --bv-bg: #0b0d12;
+  --bv-surface: #11141b;
+  --bv-surface-2: #181c25;
+  --bv-text: #e6e8ef;
+  --bv-text-dim: #94a0b3;
+  --bv-text-muted: #6c7689;
+  --bv-border: #232735;
+  --bv-border-strong: #323948;
+
+  --bv-accent: #8aa9ff;
+  --bv-accent-strong: #b8c9ff;
+  --bv-accent-soft: rgba(138, 169, 255, 0.18);
+
+  --bv-good: #5fd49e;
+  --bv-warn: #f5a623;
+  --bv-danger: #ff6b6b;
+
+  --bv-annot-ring: rgba(138, 169, 255, 0.95);
+  --bv-annot-fill: rgba(138, 169, 255, 0.22);
+  --bv-annot-highlight: rgba(245, 166, 35, 0.45);
+  --bv-annot-highlight-strong: rgba(245, 166, 35, 0.78);
+
+  --bv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --bv-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --bv-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* System-preference dark mode. Wins unless an explicit data-theme
+ * overrides it. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bv-bg: #0b0d12;
+    --bv-surface: #11141b;
+    --bv-surface-2: #181c25;
+    --bv-text: #e6e8ef;
+    --bv-text-dim: #94a0b3;
+    --bv-text-muted: #6c7689;
+    --bv-border: #232735;
+    --bv-border-strong: #323948;
+
+    --bv-accent: #8aa9ff;
+    --bv-accent-strong: #b8c9ff;
+    --bv-accent-soft: rgba(138, 169, 255, 0.18);
+
+    --bv-annot-ring: rgba(138, 169, 255, 0.95);
+    --bv-annot-fill: rgba(138, 169, 255, 0.22);
+    --bv-annot-highlight: rgba(245, 166, 35, 0.45);
+    --bv-annot-highlight-strong: rgba(245, 166, 35, 0.78);
+
+    --bv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --bv-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --bv-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  }
+}

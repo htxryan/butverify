@@ -162,21 +162,31 @@ func extractBvEvidenceInvocations(markdown []byte) []string {
 //   - Renaming `--push` to `--upload` in cmd_evidence.go without
 //     simultaneously editing the markdown MUST fail this test.
 func TestBVSU8c_EmbeddedSkillEvidenceInvocationsRoundTrip(t *testing.T) {
-	invocations := extractBvEvidenceInvocations(embeddedSkillBytes)
-	if len(invocations) == 0 {
-		// The skill is supposed to teach the agent how to call
-		// `bv evidence …`. Zero invocations means the markdown was
-		// gutted — fail loudly.
-		t.Fatal("no `bv evidence …` invocations found in embedded skill markdown — the skill no longer teaches the evidence workflow")
+	// Both the alias and the prove-it skill teach the evidence workflow;
+	// each one must round-trip through the runtime flag parser.
+	skills := []struct {
+		name string
+		body []byte
+	}{
+		{"butverify (alias)", embeddedSkillBytes},
+		{"prove-it", embeddedProveItBytes},
 	}
-
-	for i, inv := range invocations {
-		i, inv := i, inv
-		t.Run("invocation_"+itoa(i), func(t *testing.T) {
-			fs, _ := newEvidenceFlagSet()
-			args := strings.Fields(inv)
-			if err := fs.Parse(args); err != nil {
-				t.Errorf("invocation %d (%q) failed to parse against runtime flag set: %v", i, "bv evidence "+inv, err)
+	for _, s := range skills {
+		s := s
+		t.Run(s.name, func(t *testing.T) {
+			invocations := extractBvEvidenceInvocations(s.body)
+			if len(invocations) == 0 {
+				t.Fatalf("no `bv evidence …` invocations found in embedded %s markdown — the skill no longer teaches the evidence workflow", s.name)
+			}
+			for i, inv := range invocations {
+				i, inv := i, inv
+				t.Run("invocation_"+itoa(i), func(t *testing.T) {
+					fs, _ := newEvidenceFlagSet()
+					args := strings.Fields(inv)
+					if err := fs.Parse(args); err != nil {
+						t.Errorf("invocation %d (%q) failed to parse against runtime flag set: %v", i, "bv evidence "+inv, err)
+					}
+				})
 			}
 		})
 	}
@@ -242,12 +252,26 @@ func TestBVSN2_GuardrailSubstringsPresent(t *testing.T) {
 		{name: "NEVER_skirt", substring: "NEVER skirt"},
 		{name: "NEVER_publish_proof_of_unfinished_work", substring: "NEVER publish proof of unfinished work"},
 	}
-	body := string(embeddedSkillBytes)
-	for _, r := range required {
-		r := r
-		t.Run(r.name, func(t *testing.T) {
-			if !strings.Contains(body, r.substring) {
-				t.Errorf("embedded skill markdown missing required guardrail substring %q (BVS-N-2)", r.substring)
+	// Both the deprecated alias AND the new prove-it skill must carry
+	// the load-bearing guardrails. The review skill is a different
+	// workflow (acknowledging human feedback) and is exempt.
+	skills := []struct {
+		name string
+		body string
+	}{
+		{"butverify (alias)", string(embeddedSkillBytes)},
+		{"prove-it", string(embeddedProveItBytes)},
+	}
+	for _, s := range skills {
+		s := s
+		t.Run(s.name, func(t *testing.T) {
+			for _, r := range required {
+				r := r
+				t.Run(r.name, func(t *testing.T) {
+					if !strings.Contains(s.body, r.substring) {
+						t.Errorf("embedded %s skill missing required guardrail substring %q (BVS-N-2)", s.name, r.substring)
+					}
+				})
 			}
 		})
 	}
@@ -414,7 +438,7 @@ func TestEmbeddedSkillContent_AC5_NonPrescriptiveLanguage(t *testing.T) {
 // cmd/bv/embedded_skills/claude_butverify.md) that affects the
 // canonical hash domain MUST fail this test.
 func TestBVSU9_HashDeterminism(t *testing.T) {
-	const wantHash = "f79138717d68"
+	const wantHash = "46a6be62f837"
 
 	hash := skillVersionHash(embeddedSkillBytes)
 	if hash == "" {

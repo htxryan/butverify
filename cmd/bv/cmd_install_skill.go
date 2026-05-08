@@ -37,16 +37,57 @@ import (
 	"github.com/htxryan/butverify/internal/cliref"
 )
 
-// embeddedSkillBytes carries the canonical /butverify skill markdown
-// at compile time. The file is a build-time mirror of
-// bv-skills/claude/butverify.md (see top-of-file comment for the
-// `..` cross-module-boundary issue and the byte-equality test that
-// keeps the two in sync).
+// embeddedSkillBytes carries the canonical /butverify (deprecated alias)
+// skill markdown at compile time. The file is a build-time mirror of
+// bv-skills/claude/butverify.md.
 //
 //go:embed embedded_skills/claude_butverify.md
 var embeddedSkillBytes []byte
 
+// embeddedProveItBytes carries the new /butverify:prove-it skill markdown.
+// Mirror of bv-skills/claude/prove-it.md.
+//
+//go:embed embedded_skills/claude_prove-it.md
+var embeddedProveItBytes []byte
+
+// embeddedReviewBytes carries the new /butverify:review skill markdown.
+// Mirror of bv-skills/claude/review.md.
+//
+//go:embed embedded_skills/claude_review.md
+var embeddedReviewBytes []byte
+
 const skillMetadataPrefix = "<!-- bv-skill:"
+
+// skillEntry describes one installable skill file under a Claude Code
+// agent's namespace. The v1 install plants three skills under
+// `<root>/.claude/skills/butverify/`:
+//
+//   - SKILL.md            — deprecated alias preserved for one release.
+//   - prove-it/SKILL.md   — renamed from the historical /butverify skill.
+//   - review/SKILL.md     — new skill that surfaces unacknowledged reviews.
+//
+// Each entry carries its own embedded bytes and its own per-file install
+// path (relative to the agent's namespace dir). All three go through the
+// same atomic-rename + canonical-hash-stamp + drift-detect pipeline.
+type skillEntry struct {
+	// LeafPath is the install path relative to the namespace dir
+	// (i.e. relative to `<root>/.claude/skills/butverify/`). The empty
+	// segment list means a flat `SKILL.md` in the namespace dir; a
+	// single segment like "prove-it" means `<namespace>/prove-it/SKILL.md`.
+	LeafSegments []string
+	Embedded     []byte
+}
+
+// claudeSkills is the v1 install set for the `claude` agent. The order
+// is documentary; install/uninstall iterate in slice order for stable
+// log output.
+func claudeSkills() []skillEntry {
+	return []skillEntry{
+		{LeafSegments: nil, Embedded: embeddedSkillBytes},
+		{LeafSegments: []string{"prove-it"}, Embedded: embeddedProveItBytes},
+		{LeafSegments: []string{"review"}, Embedded: embeddedReviewBytes},
+	}
+}
 
 func canonicalHashDomain(markdown []byte) []byte {
 	normalized := normalizeLineEndings(markdown)
@@ -98,6 +139,13 @@ type installSkillOptions struct {
 	Force     bool
 	Uninstall bool
 	Project   bool
+	// EnableHook is set by --enable-hook and overrides the TTY consent
+	// prompt with an unconditional yes. NoHook is set by --no-hook and
+	// overrides with an unconditional no. Both default false; if neither
+	// is set and the installer is on a TTY, the installer prompts the
+	// user. Non-TTY without --enable-hook silently skips hook install.
+	EnableHook bool
+	NoHook     bool
 }
 
 func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
@@ -105,6 +153,8 @@ func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
 	force := flags.Bool("force")
 	uninstall := flags.Bool("uninstall")
 	project := flags.Bool("project")
+	enableHook := flags.Bool("enable-hook")
+	noHook := flags.Bool("no-hook")
 
 	// Allow `bv install-skill claude --force` (positional before
 	// flags) the same as `bv install-skill --force claude`. The
@@ -159,10 +209,16 @@ func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
 		return 2
 	}
 	opts := installSkillOptions{
-		Agent:     agent,
-		Force:     *force,
-		Uninstall: *uninstall,
-		Project:   *project,
+		Agent:      agent,
+		Force:      *force,
+		Uninstall:  *uninstall,
+		Project:    *project,
+		EnableHook: *enableHook,
+		NoHook:     *noHook,
+	}
+	if opts.EnableHook && opts.NoHook {
+		g.w.Error(toErrorEnvelope(errors.New("--enable-hook and --no-hook are mutually exclusive")))
+		return 2
 	}
 
 	// BVS-E-5: validate agent up front so an unsupported value never
@@ -180,22 +236,25 @@ func runInstallSkill(ctx context.Context, g globalContext, args []string) int {
 		logInstallSkillError(g, opts.Agent, "ROOT_RESOLVE", "")
 		return reportError(g.w, err)
 	}
-	skillPath := claudeSkillPath(root)
 
-	// BVS-N-1 + BVS-N-3: containment check. We resolve the
-	// install-target's PARENT (since the target itself doesn't exist
-	// yet at first install) under the install root. Mirrors EV-S-1
-	// from the evidence template.
-	if _, err := containInstallPath(root, skillPath); err != nil {
-		g.w.Error(toErrorEnvelope(err))
-		logInstallSkillError(g, opts.Agent, "CONTAINMENT", skillPath)
-		return 1
+	skills := claudeSkills()
+	// BVS-N-1 + BVS-N-3: containment check on every install path. We
+	// resolve each install-target's PARENT (since the target itself may
+	// not exist yet) under the install root. Mirrors EV-S-1 from the
+	// evidence template.
+	for _, e := range skills {
+		p := claudeSkillPathFor(root, e)
+		if _, err := containInstallPath(root, p); err != nil {
+			g.w.Error(toErrorEnvelope(err))
+			logInstallSkillError(g, opts.Agent, "CONTAINMENT", p)
+			return 1
+		}
 	}
 
 	if opts.Uninstall {
-		return doUninstall(g, opts, skillPath)
+		return doUninstall(g, opts, root, skills)
 	}
-	return doInstall(g, opts, skillPath)
+	return doInstall(g, opts, root, skills)
 }
 
 func runAgentInit(ctx context.Context, g globalContext, args []string) int {
@@ -260,10 +319,27 @@ func installRoot(opts installSkillOptions) (string, error) {
 	return home, nil
 }
 
-// claudeSkillPath returns the v1 Claude Code install path:
-// <root>/.claude/skills/butverify/SKILL.md.
+// claudeNamespaceDir returns the namespace dir
+// `<root>/.claude/skills/butverify/`.
+func claudeNamespaceDir(root string) string {
+	return filepath.Join(root, ".claude", "skills", "butverify")
+}
+
+// claudeSkillPath returns the deprecated-alias path
+// `<root>/.claude/skills/butverify/SKILL.md`. The new namespaced
+// skills live one directory deeper (see claudeSkillPathFor).
 func claudeSkillPath(root string) string {
-	return filepath.Join(root, ".claude", "skills", "butverify", "SKILL.md")
+	return filepath.Join(claudeNamespaceDir(root), "SKILL.md")
+}
+
+// claudeSkillPathFor resolves the absolute install path for one
+// skillEntry under the namespace `<root>/.claude/skills/butverify/`.
+// LeafSegments are joined into the path; the file is always named
+// `SKILL.md` (Claude Code convention).
+func claudeSkillPathFor(root string, e skillEntry) string {
+	parts := append([]string{claudeNamespaceDir(root)}, e.LeafSegments...)
+	parts = append(parts, "SKILL.md")
+	return filepath.Join(parts...)
 }
 
 // containInstallPath enforces BVS-N-1 + BVS-N-3 by mirroring the
@@ -410,131 +486,227 @@ func readInstalledFrontmatter(path string) (version string, exists bool, err err
 	return "", true, nil
 }
 
-// doInstall implements BVS-E-1 (fresh install), BVS-E-2 (drift detect),
-// and BVS-E-3 (--force).
-func doInstall(g globalContext, opts installSkillOptions, skillPath string) int {
-	embeddedHash := skillVersionHash(embeddedSkillBytes)
-	stamped := stampVersion(embeddedSkillBytes, embeddedHash)
+// installOneOutcome captures the result of installing one skill. The
+// multi-skill driver aggregates these into a single output payload so a
+// run that touches three files reports per-file status.
+type installOneOutcome struct {
+	Path    string `json:"path"`
+	Version string `json:"version"`
+	Status  string `json:"status"` // "installed", "force_overwrote", "already_current"
+}
 
-	// Read existing version (if any) before we touch the filesystem.
-	installedVersion, exists, err := readInstalledFrontmatter(skillPath)
-	if err != nil {
-		logInstallSkillError(g, opts.Agent, "READ_INSTALLED", skillPath)
-		return reportError(g.w, err)
-	}
-	installedContentHash := ""
-	if exists {
-		installedBytes, rerr := os.ReadFile(skillPath)
-		if rerr != nil {
-			logInstallSkillError(g, opts.Agent, "READ_INSTALLED", skillPath)
-			return reportError(g.w, fmt.Errorf("install-skill: read installed SKILL.md %q: %w", skillPath, rerr))
-		}
-		installedContentHash = skillVersionHash(installedBytes)
-	}
+// installPrep captures the per-skill state collected before any
+// filesystem write. Lifted out of doInstall so helpers (e.g. flat-
+// legacy migration detection) can range over it without aliasing a
+// function-scoped type.
+type installPrep struct {
+	entry       skillEntry
+	path        string
+	hash        string
+	stamped     []byte
+	installed   bool
+	instVer     string
+	instContent string
+}
 
-	switch {
-	case exists && !opts.Force:
-		// BVS-E-2: file exists; compare versions.
-		if installedVersion == embeddedHash && installedContentHash == embeddedHash {
-			// Already up to date — exit 0, NO write, mtime untouched.
-			if g.w.IsJSON() {
-				_ = g.w.JSON(struct {
-					OK      bool   `json:"ok"`
-					Path    string `json:"path"`
-					Version string `json:"version"`
-					Status  string `json:"status"`
-				}{true, skillPath, embeddedHash, "already_current"})
-			} else {
-				g.w.Human("/butverify skill is already up to date at %s (version %s).", skillPath, embeddedHash)
+// isFlatLegacyMigration reports whether the install is a "pre-namespace
+// flat install" upgrade: the alias SKILL.md exists at the namespace dir
+// AND none of the namespaced skills (prove-it / review) are installed
+// yet. The metadata stamp is intentionally NOT consulted — older
+// `bv install-skill` releases stamped a flat SKILL.md before the
+// namespace refactor, so a clean stamped pre-refactor install is just
+// as much a migration as a hand-edited or unstamped one. When true the
+// drift error message switches to the migration-call-out variant so
+// the user understands --force will move them onto the new layout
+// rather than just clobbering one file.
+func isFlatLegacyMigration(preps []installPrep) bool {
+	flatExists := false
+	subdirInstalled := false
+	for _, p := range preps {
+		if len(p.entry.LeafSegments) == 0 {
+			if p.installed {
+				flatExists = true
 			}
-			logInstallSkill(g, "completed", opts.Agent, skillPath)
-			return 0
+			continue
 		}
-		// Drift. Refuse non-zero with a message that names both
-		// versions. The agent / human picks --force or --uninstall.
-		shown := installedVersion
-		if shown == "" {
-			shown = "<unknown>"
+		if p.installed {
+			subdirInstalled = true
 		}
-		if installedContentHash != "" && installedContentHash != installedVersion {
-			shown = fmt.Sprintf("%s, current_content=%s", shown, installedContentHash)
-		}
-		msg := fmt.Sprintf(
-			"/butverify skill at %s has a different version than the embedded one (installed=%s, embedded=%s); re-run with --force to overwrite (a .bak will be written) or --uninstall to remove",
-			skillPath, shown, embeddedHash,
-		)
-		g.w.Error(toErrorEnvelope(errors.New(msg)))
-		logInstallSkillError(g, opts.Agent, "DRIFT", skillPath)
-		return 1
-
-	case exists && opts.Force:
-		// BVS-E-3: backup the previous file (always overwrite any
-		// prior .bak — most-recent semantics, one level deep), then
-		// atomic-write the new content.
-		bakPath := skillPath + ".bak"
-		oldBytes, rerr := os.ReadFile(skillPath)
-		if rerr != nil {
-			logInstallSkillError(g, opts.Agent, "READ_FOR_BACKUP", skillPath)
-			return reportError(g.w, fmt.Errorf("install-skill: read prior SKILL.md for .bak: %w", rerr))
-		}
-		// Write .bak atomically too — a concurrent reader of the .bak
-		// should never see a partial file.
-		if err := atomicWrite(bakPath, oldBytes); err != nil {
-			logInstallSkillError(g, opts.Agent, "WRITE_BAK", bakPath)
-			return reportError(g.w, fmt.Errorf("install-skill: write .bak: %w", err))
-		}
-		if err := atomicWrite(skillPath, stamped); err != nil {
-			logInstallSkillError(g, opts.Agent, "WRITE", skillPath)
-			return reportError(g.w, fmt.Errorf("install-skill: write SKILL.md: %w", err))
-		}
-		emitInstallSuccess(g, opts, skillPath, embeddedHash, "force_overwrote")
-		logInstallSkill(g, "completed", opts.Agent, skillPath)
-		return 0
-
-	case !exists && opts.Force:
-		// --force on a clean directory is harmless — same as a fresh
-		// install. Document it that way so a CI script that always
-		// passes --force still works.
-		fallthrough
-	default:
-		// BVS-E-1 fresh install.
-		if err := atomicWrite(skillPath, stamped); err != nil {
-			logInstallSkillError(g, opts.Agent, "WRITE", skillPath)
-			return reportError(g.w, fmt.Errorf("install-skill: write SKILL.md: %w", err))
-		}
-		emitInstallSuccess(g, opts, skillPath, embeddedHash, "installed")
-		logInstallSkill(g, "completed", opts.Agent, skillPath)
-		return 0
 	}
+	return flatExists && !subdirInstalled
+}
+
+// doInstall installs every skill in `skills` under `root`. BVS-E-2's
+// drift contract still applies: if ANY installed skill differs from the
+// embedded one and --force is not set, the whole run aborts before any
+// write. This keeps the install set atomic from the user's POV — either
+// the new namespace is fully landed, or the old state is preserved.
+func doInstall(g globalContext, opts installSkillOptions, root string, skills []skillEntry) int {
+	preps := make([]installPrep, 0, len(skills))
+	for _, e := range skills {
+		path := claudeSkillPathFor(root, e)
+		hash := skillVersionHash(e.Embedded)
+		stamped := stampVersion(e.Embedded, hash)
+
+		installedVersion, exists, err := readInstalledFrontmatter(path)
+		if err != nil {
+			logInstallSkillError(g, opts.Agent, "READ_INSTALLED", path)
+			return reportError(g.w, err)
+		}
+		instContent := ""
+		if exists {
+			b, rerr := os.ReadFile(path)
+			if rerr != nil {
+				logInstallSkillError(g, opts.Agent, "READ_INSTALLED", path)
+				return reportError(g.w, fmt.Errorf("install-skill: read installed SKILL.md %q: %w", path, rerr))
+			}
+			instContent = skillVersionHash(b)
+		}
+		preps = append(preps, installPrep{
+			entry:       e,
+			path:        path,
+			hash:        hash,
+			stamped:     stamped,
+			installed:   exists,
+			instVer:     installedVersion,
+			instContent: instContent,
+		})
+	}
+
+	// First pass: drift detection across all skills. Any drift with no
+	// --force aborts the run with a single combined error envelope so
+	// the user sees the full picture. Special case: an existing flat
+	// SKILL.md from a pre-namespace `bv` release has no bv-skill-version
+	// metadata (instVer == "") and no peer prove-it/review SKILL.md;
+	// surface the migration call-out so the user knows what --force
+	// will actually do.
+	if !opts.Force {
+		flatLegacyMigration := isFlatLegacyMigration(preps)
+		for _, p := range preps {
+			if !p.installed {
+				continue
+			}
+			if p.instVer == p.hash && p.instContent == p.hash {
+				continue
+			}
+			shown := p.instVer
+			if shown == "" {
+				shown = "<unknown>"
+			}
+			if p.instContent != "" && p.instContent != p.instVer {
+				shown = fmt.Sprintf("%s, current_content=%s", shown, p.instContent)
+			}
+			var msg string
+			if flatLegacyMigration {
+				msg = fmt.Sprintf(
+					"/butverify skill at %s is a pre-namespace flat install (installed=%s, embedded=%s). Re-run with --force to migrate: the current SKILL.md will be backed up to %s.bak and replaced by a deprecated alias, and the new /butverify:prove-it and /butverify:review skills will be installed under the butverify/ namespace. Use --uninstall to remove instead.",
+					p.path, shown, p.hash, p.path,
+				)
+			} else {
+				msg = fmt.Sprintf(
+					"/butverify skill at %s has a different version than the embedded one (installed=%s, embedded=%s); re-run with --force to overwrite (a .bak will be written) or --uninstall to remove",
+					p.path, shown, p.hash,
+				)
+			}
+			g.w.Error(toErrorEnvelope(errors.New(msg)))
+			logInstallSkillError(g, opts.Agent, "DRIFT", p.path)
+			return 1
+		}
+	}
+
+	// Second pass: write or short-circuit per skill.
+	outcomes := make([]installOneOutcome, 0, len(preps))
+	for _, p := range preps {
+		switch {
+		case p.installed && !opts.Force && p.instVer == p.hash && p.instContent == p.hash:
+			outcomes = append(outcomes, installOneOutcome{Path: p.path, Version: p.hash, Status: "already_current"})
+
+		case p.installed && opts.Force:
+			// BVS-E-3: backup the previous file (always overwrite any
+			// prior .bak), then atomic-write the new content.
+			bakPath := p.path + ".bak"
+			oldBytes, rerr := os.ReadFile(p.path)
+			if rerr != nil {
+				logInstallSkillError(g, opts.Agent, "READ_FOR_BACKUP", p.path)
+				return reportError(g.w, fmt.Errorf("install-skill: read prior SKILL.md for .bak: %w", rerr))
+			}
+			if err := atomicWrite(bakPath, oldBytes); err != nil {
+				logInstallSkillError(g, opts.Agent, "WRITE_BAK", bakPath)
+				return reportError(g.w, fmt.Errorf("install-skill: write .bak: %w", err))
+			}
+			if err := atomicWrite(p.path, p.stamped); err != nil {
+				logInstallSkillError(g, opts.Agent, "WRITE", p.path)
+				return reportError(g.w, fmt.Errorf("install-skill: write SKILL.md: %w", err))
+			}
+			outcomes = append(outcomes, installOneOutcome{Path: p.path, Version: p.hash, Status: "force_overwrote"})
+
+		default:
+			// Fresh install (or --force on clean dir).
+			if err := atomicWrite(p.path, p.stamped); err != nil {
+				logInstallSkillError(g, opts.Agent, "WRITE", p.path)
+				return reportError(g.w, fmt.Errorf("install-skill: write SKILL.md: %w", err))
+			}
+			outcomes = append(outcomes, installOneOutcome{Path: p.path, Version: p.hash, Status: "installed"})
+		}
+	}
+
+	// Optional hooks installation (EV2-E-9). Hooks are advisory and a
+	// failure to write them must not fail the install — log and move on.
+	hookOutcome := maybeInstallHooks(g, opts, root)
+
+	// Pick a single primary path for log emission (the legacy alias
+	// path keeps the existing log shape stable for downstream consumers).
+	primaryPath := claudeSkillPath(root)
+	primaryHash := outcomes[0].Version
+	primaryStatus := outcomes[0].Status
+	for _, o := range outcomes {
+		if o.Path == primaryPath {
+			primaryHash = o.Version
+			primaryStatus = o.Status
+			break
+		}
+	}
+	emitInstallSuccess(g, opts, primaryPath, primaryHash, primaryStatus, outcomes, hookOutcome)
+	logInstallSkill(g, "completed", opts.Agent, primaryPath)
+	return 0
 }
 
 // emitInstallSuccess prints the post-install "next steps" block in
-// human mode and a structured payload in JSON mode.
-func emitInstallSuccess(g globalContext, opts installSkillOptions, skillPath, version, status string) {
+// human mode and a structured payload in JSON mode. The `outcomes`
+// slice carries one entry per skill (alias + namespaced) so a JSON
+// consumer sees per-skill status.
+func emitInstallSuccess(g globalContext, opts installSkillOptions, skillPath, version, status string, outcomes []installOneOutcome, hook hookInstallOutcome) {
 	if g.w.IsJSON() {
 		_ = g.w.JSON(struct {
-			OK      bool   `json:"ok"`
-			Agent   string `json:"agent"`
-			Path    string `json:"path"`
-			Version string `json:"version"`
-			Status  string `json:"status"`
-		}{true, opts.Agent, skillPath, version, status})
+			OK      bool                `json:"ok"`
+			Agent   string              `json:"agent"`
+			Path    string              `json:"path"`
+			Version string              `json:"version"`
+			Status  string              `json:"status"`
+			Skills  []installOneOutcome `json:"skills,omitempty"`
+			Hook    hookInstallOutcome  `json:"hook"`
+		}{true, opts.Agent, skillPath, version, status, outcomes, hook})
 		return
 	}
-	g.w.Human("Installed /butverify skill for %s.", opts.Agent)
-	g.w.Human("  Path:    %s", skillPath)
-	g.w.Human("  Version: %s", version)
+	g.w.Human("Installed /butverify skills for %s.", opts.Agent)
+	for _, o := range outcomes {
+		g.w.Human("  %s  (%s, version %s)", o.Path, o.Status, o.Version)
+	}
 	g.w.Human("  Scope:   %s", scopeLabel(opts))
+	if hook.Status != "" && hook.Status != "skipped" {
+		g.w.Human("  Hooks:   %s (%s)", hook.Status, hook.SettingsPath)
+	} else if hook.Status == "skipped" && hook.Reason != "" {
+		g.w.Human("  Hooks:   skipped (%s)", hook.Reason)
+	}
 	g.w.Human("")
 	g.w.Human("Next steps:")
 	g.w.Human("  1. Open Claude Code in your project.")
-	g.w.Human("  2. After delivering a piece of work, run /butverify in chat.")
-	g.w.Human("  3. The agent will capture proof and publish it via `bv evidence --push --mode remote`.")
+	g.w.Human("  2. After delivering a piece of work, run /butverify:prove-it in chat.")
+	g.w.Human("  3. The agent captures proof and publishes it via `bv evidence --push --mode remote`.")
+	g.w.Human("  4. To check for human feedback later, run /butverify:review.")
 	g.w.Human("")
-	// Surface the alternate-scope hint so a user who picked one scope
-	// knows the other is one flag away. Mirrors the --help output.
 	if opts.Project {
-		g.w.Human("(To install at user level instead, omit --project; the file then lives at $HOME/.claude/skills/butverify/SKILL.md.)")
+		g.w.Human("(To install at user level instead, omit --project; files then live under $HOME/.claude/skills/butverify/.)")
 	} else {
 		g.w.Human("(To install only into a specific project instead, use 'bv install-skill %s --project'.)", opts.Agent)
 	}
@@ -579,6 +751,13 @@ func printInstallSkillUsageError(g globalContext) {
 // guarantee here makes the test redundant for a code-inspection level
 // of confidence.
 func atomicWrite(dstPath string, data []byte) error {
+	return atomicWriteMode(dstPath, data, 0o644)
+}
+
+// atomicWriteMode writes data to dstPath with the supplied mode. Hook
+// settings.json may carry an existing 0600 mode that we must preserve
+// to avoid widening file permissions on a user-tightened file.
+func atomicWriteMode(dstPath string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(dstPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("mkdir %q: %w", dir, err)
@@ -589,7 +768,7 @@ func atomicWrite(dstPath string, data []byte) error {
 	}
 	tmpPath := filepath.Join(dir, tmpName)
 	// O_EXCL so two racing renames don't both write the same tmp.
-	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 	if err != nil {
 		return fmt.Errorf("create tmp %q: %w", tmpPath, err)
 	}
@@ -621,106 +800,149 @@ func tmpSiblingName(base string) (string, error) {
 	return base + ".tmp." + hex.EncodeToString(buf[:]), nil
 }
 
-// doUninstall implements BVS-E-4. The fixed uninstall set is exactly:
+// doUninstall implements BVS-E-4 across the multi-skill namespace. The
+// per-skill fixed uninstall set is:
 //
 //	<dir>/SKILL.md
 //	<dir>/SKILL.md.bak
 //	<dir>/SKILL.md.tmp.*    (any orphan tmp from a crashed install)
 //
-// After removing the fixed set, the CLI attempts os.Remove on the
-// containing dir IFF the dir is empty. The CLI NEVER calls RemoveAll;
-// NEVER touches the parent (~/.claude/skills/) or any ancestor (BVS-E-4
-// + BVS-N-3); preserves any sibling files the user may have planted.
-func doUninstall(g globalContext, opts installSkillOptions, skillPath string) int {
-	dir := filepath.Dir(skillPath)
-	base := filepath.Base(skillPath) // "SKILL.md"
-
-	// Build the fixed set of literal removals + the tmp glob.
-	fixed := []string{
-		skillPath,
-		skillPath + ".bak",
-	}
-	tmpGlob := filepath.Join(dir, base+".tmp.*")
-	tmps, err := filepath.Glob(tmpGlob)
-	if err != nil {
-		// filepath.Glob only errors on malformed pattern — our pattern
-		// is static, so this is unreachable in practice. Treat as a
-		// real error if it ever fires.
-		logInstallSkillError(g, opts.Agent, "GLOB", tmpGlob)
-		return reportError(g.w, fmt.Errorf("install-skill: glob tmp siblings: %w", err))
-	}
-
-	// Remove every entry that exists. We deliberately swallow
-	// "does-not-exist" so an idempotent uninstall on a clean dir
-	// returns 0.
+// After removing the fixed set for each installed skill, the CLI also
+// rmdirs each skill subdir if empty AND the namespace dir if empty.
+// The CLI NEVER calls RemoveAll; NEVER touches the parent
+// (~/.claude/skills/) or any ancestor (BVS-E-4 + BVS-N-3); preserves any
+// sibling files the user may have planted. Hooks (if installed) are
+// removed from settings.json by sentinel.
+func doUninstall(g globalContext, opts installSkillOptions, root string, skills []skillEntry) int {
+	primaryPath := claudeSkillPath(root)
 	removed := []string{}
 	anyExisted := false
-	for _, p := range append(fixed, tmps...) {
-		if _, statErr := os.Lstat(p); statErr != nil {
-			if os.IsNotExist(statErr) {
-				continue
+
+	for _, e := range skills {
+		path := claudeSkillPathFor(root, e)
+		dir := filepath.Dir(path)
+		base := filepath.Base(path) // "SKILL.md"
+
+		fixed := []string{
+			path,
+			path + ".bak",
+		}
+		tmpGlob := filepath.Join(dir, base+".tmp.*")
+		tmps, err := filepath.Glob(tmpGlob)
+		if err != nil {
+			logInstallSkillError(g, opts.Agent, "GLOB", tmpGlob)
+			return reportError(g.w, fmt.Errorf("install-skill: glob tmp siblings: %w", err))
+		}
+
+		for _, p := range append(fixed, tmps...) {
+			if _, statErr := os.Lstat(p); statErr != nil {
+				if os.IsNotExist(statErr) {
+					continue
+				}
+				logInstallSkillError(g, opts.Agent, "STAT_FOR_REMOVE", p)
+				return reportError(g.w, fmt.Errorf("install-skill: stat %q: %w", p, statErr))
 			}
-			logInstallSkillError(g, opts.Agent, "STAT_FOR_REMOVE", p)
-			return reportError(g.w, fmt.Errorf("install-skill: stat %q: %w", p, statErr))
+			anyExisted = true
+			if err := os.Remove(p); err != nil {
+				logInstallSkillError(g, opts.Agent, "REMOVE", p)
+				return reportError(g.w, fmt.Errorf("install-skill: remove %q: %w", p, err))
+			}
+			removed = append(removed, p)
 		}
-		anyExisted = true
-		if err := os.Remove(p); err != nil {
-			logInstallSkillError(g, opts.Agent, "REMOVE", p)
-			return reportError(g.w, fmt.Errorf("install-skill: remove %q: %w", p, err))
-		}
-		removed = append(removed, p)
 	}
 
-	// rmdir the butverify/ dir IFF empty. NEVER touch parents.
+	// rmdir each empty skill subdir, then the namespace dir if empty.
+	// Iterate from deepest to shallowest so children get a chance to
+	// disappear before their parent is checked.
+	dirsToTry := []string{}
+	for _, e := range skills {
+		if len(e.LeafSegments) == 0 {
+			continue
+		}
+		dirsToTry = append(dirsToTry, filepath.Dir(claudeSkillPathFor(root, e)))
+	}
+	dirsToTry = append(dirsToTry, claudeNamespaceDir(root))
+
 	dirRemoved := false
-	if entries, err := os.ReadDir(dir); err == nil {
-		if len(entries) == 0 {
-			if rerr := os.Remove(dir); rerr == nil {
-				dirRemoved = true
+	for _, d := range dirsToTry {
+		if entries, err := os.ReadDir(d); err == nil {
+			if len(entries) == 0 {
+				if rerr := os.Remove(d); rerr == nil {
+					if d == claudeNamespaceDir(root) {
+						dirRemoved = true
+					}
+				}
 			}
-			// If os.Remove fails (permissions, race), leave the dir;
-			// not worth surfacing as a uninstall failure.
+		} else if !os.IsNotExist(err) {
+			logInstallSkillError(g, opts.Agent, "READDIR", d)
+			return reportError(g.w, fmt.Errorf("install-skill: read dir %q: %w", d, err))
 		}
-	} else if !os.IsNotExist(err) {
-		// Non-existent dir is fine (already cleaned up by hand).
-		// Anything else is a real error.
-		logInstallSkillError(g, opts.Agent, "READDIR", dir)
-		return reportError(g.w, fmt.Errorf("install-skill: read butverify dir %q: %w", dir, err))
 	}
 
-	logInstallSkill(g, "uninstalled", opts.Agent, skillPath)
+	hookRemoved, hookErr := uninstallHooks(root)
+	hookErrMsg := ""
+	if hookErr != nil {
+		// Hooks removal failure is a partial-uninstall: skill files are
+		// gone but the auto-executing SessionStart/Stop hooks remain in
+		// settings.json. Surface the failure and exit non-zero so a
+		// caller (or human) sees that the uninstall is incomplete.
+		hookErrMsg = hookErr.Error()
+		logInstallSkillError(g, opts.Agent, "HOOK_REMOVE", settingsPath(root))
+	}
+
+	logInstallSkill(g, "uninstalled", opts.Agent, primaryPath)
+
+	status := "not_installed"
+	if anyExisted || hookRemoved {
+		status = "uninstalled"
+	}
+	if hookErr != nil {
+		status = "partial"
+	}
 
 	if g.w.IsJSON() {
 		_ = g.w.JSON(struct {
-			OK         bool     `json:"ok"`
-			Agent      string   `json:"agent"`
-			Removed    []string `json:"removed"`
-			DirRemoved bool     `json:"dir_removed"`
-			Status     string   `json:"status"`
+			OK          bool     `json:"ok"`
+			Agent       string   `json:"agent"`
+			Removed     []string `json:"removed"`
+			DirRemoved  bool     `json:"dir_removed"`
+			HookRemoved bool     `json:"hook_removed"`
+			HookError   string   `json:"hook_error,omitempty"`
+			Status      string   `json:"status"`
 		}{
-			OK:         true,
-			Agent:      opts.Agent,
-			Removed:    removed,
-			DirRemoved: dirRemoved,
-			Status: func() string {
-				if anyExisted {
-					return "uninstalled"
-				}
-				return "not_installed"
-			}(),
+			OK:          hookErr == nil,
+			Agent:       opts.Agent,
+			Removed:     removed,
+			DirRemoved:  dirRemoved,
+			HookRemoved: hookRemoved,
+			HookError:   hookErrMsg,
+			Status:      status,
 		})
+		if hookErr != nil {
+			return 1
+		}
 		return 0
 	}
-	if !anyExisted {
-		g.w.Human("/butverify skill is not installed at %s — nothing to remove.", skillPath)
+	if !anyExisted && !hookRemoved && hookErr == nil {
+		g.w.Human("/butverify skills are not installed under %s — nothing to remove.", claudeNamespaceDir(root))
 		return 0
 	}
-	g.w.Human("Uninstalled /butverify skill for %s.", opts.Agent)
+	g.w.Human("Uninstalled /butverify skills for %s.", opts.Agent)
 	for _, r := range removed {
 		g.w.Human("  removed: %s", r)
 	}
 	if dirRemoved {
-		g.w.Human("  removed dir: %s", dir)
+		g.w.Human("  removed dir: %s", claudeNamespaceDir(root))
+	}
+	if hookRemoved {
+		g.w.Human("  removed hooks from %s", settingsPath(root))
+	}
+	if hookErr != nil {
+		g.w.Error(toErrorEnvelope(fmt.Errorf(
+			"install-skill: failed to remove hooks from %s: %w; SessionStart/Stop bv hooks may still be installed — please review manually",
+			settingsPath(root), hookErr,
+		)))
+		return 1
 	}
 	return 0
 }

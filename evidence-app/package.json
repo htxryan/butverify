@@ -1,0 +1,26 @@
+{
+  "name": "@butverify/evidence-app",
+  "version": "1.0.4",
+  "private": true,
+  "type": "module",
+  "description": "Static bundle for the butverify.dev evidence gallery. Built in CI via Vite + Svelte and published to /assets/evidence/v{semver}/ on the customer-site CDN.",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "svelte-check --tsconfig tsconfig.json && tsc --noEmit"
+  },
+  "dependencies": {
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@tsconfig/svelte": "^5.0.4",
+    "@types/node": "^22.9.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.4"
+  }
+}

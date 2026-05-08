@@ -35,7 +35,7 @@ import (
 	"strings"
 )
 
-//go:embed assets/evidence.html.tmpl assets/evidence.css assets/evidence.js
+//go:embed assets/evidence.html.tmpl assets/evidence.v2.html.tmpl assets/evidence.css assets/evidence.js
 var evidenceFS embed.FS
 
 // evidenceFuncs are the template helpers we need for 1-based item labels.

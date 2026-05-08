@@ -66,6 +66,14 @@ func runLogin(ctx context.Context, g globalContext, args []string) int {
 		url = g.apiURLOverride
 	}
 	if url == "" {
+		// Preserve the api_url from an existing config so `bv login`
+		// (re-auth on token expiry) doesn't silently reset a non-default
+		// endpoint (e.g. dev-api.butverify.dev) back to prod.
+		if existing, err := config.Load(); err == nil {
+			url = existing.APIURL
+		}
+	}
+	if url == "" {
 		url = config.DefaultAPIURL
 	}
 

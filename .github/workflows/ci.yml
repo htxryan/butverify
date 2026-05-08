@@ -77,3 +77,41 @@ jobs:
         run: task build:site
       - name: Check links
         run: task link:check
+  evidence-app:
+    name: Evidence app (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.11.0"
+          cache: pnpm
+          cache-dependency-path: evidence-app/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        working-directory: evidence-app
+      - name: Typecheck
+        run: pnpm typecheck
+        working-directory: evidence-app
+      - name: Test
+        run: pnpm test
+        working-directory: evidence-app
+      - name: Build
+        run: pnpm build
+        working-directory: evidence-app
+      - name: Verify predictable bundle filenames
+        # The Go CLI hardcodes references to /assets/evidence/v{ver}/_astro/main.{js,css}.
+        # If vite.config.ts ever drops the entryFileNames override and starts
+        # emitting hashed names, every published gallery would 404. Catch
+        # that drift here.
+        run: |
+          test -f evidence-app/dist/_astro/main.js
+          test -f evidence-app/dist/_astro/main.css
+          if compgen -G "evidence-app/dist/_astro/*-*.js" > /dev/null; then
+            echo "::error::found hashed JS files in dist/_astro; vite.config.ts must keep filenames stable"
+            ls evidence-app/dist/_astro/
+            exit 1
+          fi

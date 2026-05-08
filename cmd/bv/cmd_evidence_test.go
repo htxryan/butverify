@@ -124,7 +124,13 @@ func TestEvidence_StdinTTYRejected(t *testing.T) {
 	}
 }
 
-func TestEvidence_RenderOnly_IncludesLayoutSwitcher(t *testing.T) {
+func TestEvidence_RenderOnly_EmitsV2BundleReferences(t *testing.T) {
+	// V2 (CDN-bundle) is the default render path per spec
+	// docs/specs/evidence-v2.md §3.1 (EV2-U-2). The CLI's
+	// generated index.html must reference the versioned CDN
+	// bundle assets, inline the manifest as a JSON script tag,
+	// and provide a noscript fallback. Layout/theme controls are
+	// rendered client-side by the bundle, NOT baked in by the CLI.
 	dir := t.TempDir()
 	jsonPath := stageEvidenceFixture(t, dir)
 	outDir := filepath.Join(dir, "out")
@@ -142,22 +148,36 @@ func TestEvidence_RenderOnly_IncludesLayoutSwitcher(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if strings.Contains(string(idx), `data-layout=`) {
-		t.Errorf("rendered html should not hard-code a publish-time layout (first 300): %s", idx[:min(300, len(idx))])
+	html := string(idx)
+	if strings.Contains(html, `data-layout=`) {
+		t.Errorf("rendered html should not hard-code a publish-time layout (first 300): %s", html[:min(300, len(html))])
 	}
-	for _, want := range []string{`class="ev-topbar"`, `class="ev-brand"`, `data-ev-published-at`, `id="ev-meta-panel"`, `data-ev-theme-toggle`, `id="ev-layout-stacked"`, `id="ev-layout-carousel"`, `class="ev-outline `, `class="ev-track"`, `class="ev-pager"`, `data-ev-lightbox`, `data-ev-lightbox-trigger`, `href="https://jira.example.com/browse/EV-1"`, `EV-1`, `src="evidence.js"`} {
-		if !strings.Contains(string(idx), want) {
-			t.Errorf("rendered html missing layout-switcher marker %q (first 300): %s", want, idx[:min(300, len(idx))])
+	for _, want := range []string{
+		// CDN bundle references — must use the templates.EvidenceBundleVersion path.
+		`/assets/evidence/v` + templates.EvidenceBundleVersion + `/_astro/main.js`,
+		`/assets/evidence/v` + templates.EvidenceBundleVersion + `/_astro/main.css`,
+		// Manifest mount point for the Svelte gallery.
+		`<div id="bv-gallery-root"></div>`,
+		// Inlined manifest payload.
+		`<script type="application/json" id="evidence-manifest">`,
+		// Noscript fallback present (assistive-tech / JS-disabled clients).
+		`<noscript>`,
+		// Title round-trips.
+		`Evidence test`,
+		// Per-item issue metadata still surfaces in the manifest payload
+		// (the test fixture sets EV-1 / jira URL).
+		`EV-1`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("rendered html missing v2 marker %q (first 300): %s", want, html[:min(300, len(html))])
 		}
 	}
-	if !strings.Contains(string(idx), "Evidence test") {
-		t.Errorf("title missing from index: %s", idx[:min(300, len(idx))])
+	// V2 must NOT emit the legacy in-binary bundle files. They live on the CDN.
+	if _, err := os.Stat(filepath.Join(outDir, "styles.css")); err == nil {
+		t.Errorf("v2 must not write styles.css (CDN-served); file exists at %s/styles.css", outDir)
 	}
-	if _, err := os.Stat(filepath.Join(outDir, "styles.css")); err != nil {
-		t.Errorf("styles.css missing: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(outDir, "evidence.js")); err != nil {
-		t.Errorf("evidence.js missing: %v", err)
+	if _, err := os.Stat(filepath.Join(outDir, "evidence.js")); err == nil {
+		t.Errorf("v2 must not write evidence.js (CDN-served); file exists at %s/evidence.js", outDir)
 	}
 	// Asset has the deterministic `001-shot.png` prefix from
 	// templates.SafeAssetName.

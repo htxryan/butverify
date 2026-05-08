@@ -1,0 +1,158 @@
+name: Publish evidence bundle
+
+# Build evidence-app/ and upload dist/_astro/* to R2 at the SHA-versioned
+# CDN path `evidence-bundles/{sha}/_astro/*` for ALL environments, then
+# commit the updated bundle_version_gen.go back to the repo so the next
+# CLI build references the new version automatically.
+#
+# Triggered automatically on every push to main that touches evidence-app/.
+# Also available as workflow_dispatch for ad-hoc runs (e.g. after a
+# Cloudflare-side R2 bucket was recreated, or to force a dry-run).
+#
+# The bundle is public static JS/CSS — uploading to all envs on every push
+# is intentional: any `bv evidence --push` run targets one of these envs,
+# and the site it generates must be able to load the bundle from whichever
+# bucket backs that env's customer-site Worker. Uploading everywhere at once
+# ensures the invariant holds without gating on which env a user targets.
+#
+# Secrets required (set on htxryan/butverify):
+#   CLOUDFLARE_API_TOKEN   R2 Object Read/Write on all three asset buckets
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare account id
+#
+# R2 buckets per env (must match customer-site wrangler.toml in service repo):
+#   dev  → butverify-assets-dev
+#   qa   → butverify-assets-qa
+#   prod → butverify-assets
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'evidence-app/**'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify outputs but skip R2 upload and version commit"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write  # push bundle_version_gen.go back to main
+
+concurrency:
+  # One publish at a time. New pushes queue; they don't cancel an
+  # in-flight upload since a partial write is worse than a stale version.
+  group: publish-evidence-bundle
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build + publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.11.0"
+          cache: pnpm
+          cache-dependency-path: evidence-app/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        working-directory: evidence-app
+
+      - name: Typecheck
+        run: pnpm typecheck
+        working-directory: evidence-app
+
+      - name: Test
+        run: pnpm test
+        working-directory: evidence-app
+
+      - name: Build
+        run: pnpm build
+        working-directory: evidence-app
+
+      - name: Verify predictable bundle filenames
+        run: |
+          set -euo pipefail
+          ls -la evidence-app/dist/_astro/
+          test -f evidence-app/dist/_astro/main.js
+          test -f evidence-app/dist/_astro/main.css
+          if compgen -G "evidence-app/dist/_astro/*-*.js" > /dev/null; then
+            echo "::error::found hashed JS files; vite.config.ts must keep filenames stable"
+            exit 1
+          fi
+
+      - name: Compute bundle version
+        id: version
+        # Use the first 7 chars of the triggering commit SHA — unique,
+        # human-readable, and directly traceable to the source build.
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to R2 (all envs)
+        if: ${{ !inputs.dry_run }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          sha="${{ steps.version.outputs.sha }}"
+          prefix="evidence-bundles/$sha/_astro"
+
+          declare -A BUCKETS=(
+            [dev]=butverify-assets-dev
+            [qa]=butverify-assets-qa
+            [prod]=butverify-assets
+          )
+          declare -A CONTENT_TYPE=(
+            [js]="application/javascript; charset=utf-8"
+            [css]="text/css; charset=utf-8"
+          )
+
+          for env_name in dev qa prod; do
+            bucket="${BUCKETS[$env_name]}"
+            echo "→ $bucket/$prefix"
+            while IFS= read -r -d '' file; do
+              rel="${file#evidence-app/dist/_astro/}"
+              ext="${rel##*.}"
+              mime="${CONTENT_TYPE[$ext]:-application/octet-stream}"
+              http_code=$(curl -s -o /tmp/r2_resp.txt -w "%{http_code}" -X PUT \
+                "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${bucket}/objects/${prefix}/${rel}" \
+                -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                -H "Content-Type: ${mime}" \
+                --data-binary "@$file")
+              if [ "$http_code" != "200" ]; then
+                echo "::error::upload failed ($http_code): $(cat /tmp/r2_resp.txt)"
+                exit 1
+              fi
+              echo "  ✓ $rel ($mime)"
+            done < <(find evidence-app/dist/_astro -type f -print0)
+            echo "✓ $env_name done"
+          done
+
+      - name: Commit updated bundle_version_gen.go
+        if: ${{ !inputs.dry_run }}
+        run: |
+          sha="${{ steps.version.outputs.sha }}"
+          cat > pkg/templates/bundle_version_gen.go <<'GOEOF'
+          // Code generated by CI (publish-evidence-bundle.yaml); DO NOT EDIT.
+          // Updated automatically whenever evidence-app/ changes land on main.
+          // To regenerate locally: push to main or trigger the workflow manually.
+          package templates
+
+          GOEOF
+          printf 'const EvidenceBundleVersion = "%s"\n' "$sha" >> pkg/templates/bundle_version_gen.go
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pkg/templates/bundle_version_gen.go
+          # diff --cached exits 1 if there are staged changes; only commit if something changed.
+          git diff --cached --quiet || git commit -m "chore: sync bundle version to $sha"
+          git push

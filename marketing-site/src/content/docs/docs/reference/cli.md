@@ -147,40 +147,70 @@ Flags:
 - `--ttl-seconds N` — site TTL in seconds; 0 uses the server default.
 - `--image-quality N` — image optimization quality; JPEG uses this value and PNG is recompressed losslessly when smaller; 0 uses config/default.
 - `--mode local|remote` — publish mode for --push.
+- `--enable-reviews` — opt the site into the review/annotation system (paid plan required).
 
-## `bv agent-init [--project] [--force] [--uninstall]`
+## `bv agent-init [--project] [--force] [--uninstall] [--enable-hook|--no-hook]`
 
-Install the /butverify agent skill for the current agent environment.
+Install the /butverify agent skills for the current agent environment.
 
-v1 installs the Claude Code /butverify skill. Future versions may install additional skills, hooks, or MCP servers.
+v1 installs the Claude Code /butverify:prove-it and /butverify:review skills, plus a deprecated /butverify alias. Future versions may install additional skills, hooks, or MCP servers.
 
 Flags:
 
 - `--project` — install into ./.claude/skills/butverify/ instead of $HOME/.claude/skills/butverify/.
 - `--force` — overwrite an existing install.
 - `--uninstall` — remove the deterministic install file set.
+- `--enable-hook` — install Claude Code SessionStart and Stop hooks that surface unacknowledged reviews (skip the TTY prompt).
+- `--no-hook` — skip hook installation regardless of TTY state.
 
 Examples:
 
 - `bv agent-init`
 - `bv agent-init --project`
 
-## `bv install-skill [--project] [--force] [--uninstall] <agent>`
+## `bv install-skill [--project] [--force] [--uninstall] [--enable-hook|--no-hook] <agent>`
 
-Install the /butverify agent skill.
+Install the /butverify agent skills (prove-it + review).
 
 Supported agent in v1: claude.
+
+Installs three skill files under <root>/.claude/skills/butverify/: SKILL.md (deprecated alias), prove-it/SKILL.md, review/SKILL.md.
+
+On a TTY, prompts to enable session-start and session-end hooks that surface unacknowledged reviews. --enable-hook forces yes (useful for CI); --no-hook forces no.
 
 Flags:
 
 - `--project` — install into ./.claude/skills/<agent>/ instead of $HOME/.claude/skills/<agent>/.
 - `--force` — overwrite an existing install.
 - `--uninstall` — remove the deterministic install file set.
+- `--enable-hook` — install Claude Code SessionStart and Stop hooks that surface unacknowledged reviews (skip the TTY prompt).
+- `--no-hook` — skip hook installation regardless of TTY state.
 
 Examples:
 
 - `bv install-skill claude`
 - `bv install-skill claude --project`
+- `bv install-skill claude --enable-hook`
+
+## `bv review <list|get|acknowledge|request> [args...]`
+
+Manage reviews on review-enabled evidence sites.
+
+bv review list [--site <id>] [--unacknowledged] [--format json|ids] — list reviews for the calling tenant.
+
+bv review get <review-id> — print a single review with all annotations.
+
+bv review acknowledge <review-id> — mark a review acknowledged (idempotent).
+
+bv review request <site-id> --to <github-login> — invite a GitHub user to review the site.
+
+Examples:
+
+- `bv review list --unacknowledged`
+- `bv review list --unacknowledged --format=ids`
+- `bv review get rev_abc`
+- `bv review acknowledge rev_abc`
+- `bv review request abcd1234 --to ryanh`
 
 ## `bv whoami`
 
