@@ -154,6 +154,13 @@
     display: flex;
     flex-direction: column;
     gap: var(--bv-space-3);
+    /* Fill any height-constrained ancestor (e.g. carousel-mode shell)
+     * so the rail can flex-grow into the available viewport area. In
+     * unbounded contexts the column collapses to its children's
+     * natural height, so this is safe outside the locked-viewport
+     * shell as well. */
+    flex: 1;
+    min-height: 0;
   }
 
   .bv-carousel-rail {
@@ -162,11 +169,17 @@
     padding: 0;
     display: flex;
     overflow-x: auto;
+    overflow-y: hidden;
     scroll-snap-type: x mandatory;
     scrollbar-width: thin;
     /* Touch friction; honoring browser-default scroll-behavior so
      * reduced-motion users get instant snap. */
     -webkit-overflow-scrolling: touch;
+    /* Take all available vertical space inside the carousel column so
+     * each cell can size its asset against the viewport rather than
+     * the natural content height. */
+    flex: 1;
+    min-height: 0;
   }
   .bv-carousel-rail:focus-visible {
     outline: 2px solid var(--bv-accent);
@@ -182,6 +195,8 @@
     width: 100%;
     scroll-snap-align: start;
     scroll-snap-stop: always;
+    height: 100%;
+    min-height: 0;
   }
 
   .bv-carousel-dots {
