@@ -151,6 +151,7 @@
 <div
   class="bv-shell"
   class:bv-shell--with-review={reviewsEnabled && page === "evidence"}
+  class:bv-shell--carousel={layout === "carousel" && page === "evidence"}
 >
   <!-- Persistent topbar: sticky across both pages -->
   <GalleryHeader {manifest} bind:layout {page} onNavigate={navigateTo} />
@@ -217,6 +218,25 @@
     color: var(--bv-text);
   }
 
+  /* Carousel mode locks the page to the viewport: asset + panel must
+   * fit exactly with no vertical page scroll. Internal containers get
+   * min-height: 0 so the rail (and review rail) can shrink and scroll
+   * internally instead of growing the document. */
+  .bv-shell--carousel {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .bv-shell--carousel .bv-gallery-main {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .bv-shell--carousel .bv-gallery-review-rail {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
   /* Two-column desktop layout when reviews are active on the evidence page. */
   @media (min-width: 1024px) {
     .bv-shell--with-review {
@@ -231,6 +251,9 @@
     }
     .bv-shell--with-review > :global(.bv-topbar) {
       grid-column: 1 / -1;
+    }
+    .bv-shell--carousel.bv-shell--with-review {
+      grid-template-rows: auto 1fr;
     }
   }
 
@@ -279,5 +302,11 @@
   .bv-gallery-content:focus-visible {
     outline: 2px solid var(--bv-accent);
     outline-offset: -2px;
+  }
+  .bv-shell--carousel .bv-gallery-content {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 </style>

@@ -299,12 +299,44 @@
     padding: var(--bv-space-5);
     height: 100%;
     box-sizing: border-box;
+    /* In carousel mode the cell is height-constrained by the rail so
+     * the asset + panel must share the available viewport. Children
+     * use min-height: 0 to allow the media region to shrink below its
+     * natural content height. */
+    overflow: hidden;
+    gap: var(--bv-space-3);
   }
   @media (min-width: 720px) {
     .bv-item-carousel {
       flex-basis: 80%;
       max-width: 60rem;
     }
+  }
+  .bv-item-carousel .bv-item-header,
+  .bv-item-carousel :global(.bv-review-tools),
+  .bv-item-carousel :global(.bv-item-details) {
+    flex: 0 0 auto;
+  }
+  .bv-item-carousel .bv-item-media {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .bv-item-carousel .bv-item-media img,
+  .bv-item-carousel .bv-item-media video {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    max-width: 100%;
+    object-fit: contain;
+  }
+  .bv-item-carousel .bv-item-description {
+    flex: 0 1 auto;
+    max-height: 30%;
+    overflow-y: auto;
   }
 
   .bv-item-header {
