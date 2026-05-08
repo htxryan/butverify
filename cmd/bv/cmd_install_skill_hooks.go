@@ -1,21 +1,27 @@
 // Hook installation for `bv install-skill claude` (EV2-E-9a/b/c).
 //
-// One hook is written into the per-agent settings.json (Claude Code
+// Two hooks are written into the per-agent settings.json (Claude Code
 // `<root>/.claude/settings.json`):
 //
 //   - SessionStart — fires when a new agent session opens. Calls
 //     `bv review list --unacknowledged --format=ids`. If the call
 //     returns IDs, the hook prints a single advisory line so the agent
-//     and the human both see pending feedback at session start.
+//     and the human both see pending feedback at session start. Always
+//     exits 0 — review notifications are advisory and MUST NEVER block a
+//     session (EV2-U-13 + EV2-N-5).
 //
-// The SessionStart hook always exits 0 — review notifications are
-// advisory and MUST NEVER block a session (EV2-U-13 + EV2-N-5).
+//   - Stop — fires after each agent turn. Checks for uncommitted git
+//     changes: exits 2 with a blocking advisory message when any are
+//     found, exits 0 silently otherwise. The silent-exit-0 contract is
+//     critical: any stdout on exit 0 would be injected as a new
+//     conversation turn by Claude Code, causing the agent to respond,
+//     firing the hook again, indefinitely. The complementary behavioral
+//     rule in ~/.claude/CLAUDE.md tells the agent NOT to respond when the
+//     feedback panel shows only "No stderr output".
 //
-// NOTE: The Stop hook was removed because Claude Code always injects Stop
-// hook output as a new conversation turn in interactive mode, creating an
-// infinite feedback loop where the agent responds, the hook fires again,
-// and so on. uninstallHooks still cleans up Stop hook entries written by
-// older bv versions.
+// The Stop hook is script-based (written to
+// `<root>/.claude/hooks/bv-stop-hook.sh`) rather than inline, so the
+// git logic can be kept readable and testable.
 //
 // Idempotency: hooks are tagged with the sentinel `BV_HOOK_SENTINEL` so
 // repeated installs replace the previous entries instead of appending
@@ -141,14 +147,11 @@ type hookCommand struct {
 
 // installHooks reads <root>/.claude/settings.json (creating an empty
 // object if absent), removes any existing bv-sentinel entries from the
-// SessionStart array, appends a fresh entry, and writes the merged
-// settings back atomically. The merge is robust to a settings.json
-// that already contains other tools' hooks (e.g. compound-agent).
-//
-// Only the SessionStart hook is installed (inline shell command, always
-// exits 0). The Stop hook is NOT installed — Claude Code injects Stop
-// hook stdout as a new conversation turn in interactive mode, which
-// creates an infinite feedback loop.
+// SessionStart and Stop arrays, appends fresh entries, and writes the
+// merged settings back atomically. Also writes the stop hook script to
+// <root>/.claude/hooks/bv-stop-hook.sh. The merge is robust to a
+// settings.json that already contains other tools' hooks (e.g.
+// compound-agent).
 func installHooks(root string) error {
 	sp := settingsPath(root)
 	settings, err := readSettings(sp)
@@ -166,7 +169,7 @@ func installHooks(root string) error {
 	// Defense-in-depth: a wrongly-typed per-event value (e.g. somebody
 	// hand-edited hooks.SessionStart to be a string or object) must not
 	// be silently overwritten — surface a clear error instead.
-	for _, evt := range []string{"SessionStart"} {
+	for _, evt := range []string{"SessionStart", "Stop"} {
 		v, present := hooks[evt]
 		if !present {
 			continue
@@ -181,8 +184,18 @@ func installHooks(root string) error {
 		return err
 	}
 
+	scriptPath := stopHookScriptPath(root)
+	if err := writeStopHookScript(scriptPath); err != nil {
+		return err
+	}
+	stopCmd := bvStopHookShellCommand(scriptPath)
+
 	startStripped, _ := stripSentinelEntries(getEventArray(hooks, "SessionStart"))
 	hooks["SessionStart"] = appendHook(startStripped, buildHookEntryFromCommand(startCmd))
+
+	stopStripped, _ := stripSentinelEntries(getEventArray(hooks, "Stop"))
+	hooks["Stop"] = appendHook(stopStripped, buildStopHookEntry(stopCmd))
+
 	settings["hooks"] = hooks
 
 	return writeSettings(sp, settings)
@@ -456,10 +469,65 @@ func appendHook(arr []any, entry hookEntry) []any {
 
 // stopHookScriptPath returns the absolute path where the stop hook script
 // is installed: `<root>/.claude/hooks/bv-stop-hook.sh`.
-// Retained for use by uninstallHooks to clean up script files written by
-// older bv versions that installed the Stop hook.
 func stopHookScriptPath(root string) string {
 	return filepath.Join(root, ".claude", "hooks", "bv-stop-hook.sh")
+}
+
+// generateStopHookScript returns the content of bv-stop-hook.sh.
+// The script exits 0 silently when no uncommitted changes are detected.
+// It prints a single advisory line and exits 2 when uncommitted changes
+// are present, which Claude Code injects as a conversation turn that
+// prompts the agent to commit or run /butverify:prove-it before stopping.
+//
+// The complementary behavioral rule in ~/.claude/CLAUDE.md tells the
+// agent NOT to respond when the feedback panel shows only "No stderr
+// output", breaking the infinite-loop circuit on a clean exit.
+func generateStopHookScript() string {
+	return "#!/usr/bin/env bash\n" +
+		"# bv-stop-hook.sh — generated by bv agent-init. Do not edit by hand;\n" +
+		"# re-run bv agent-init --enable-hook --force to regenerate.\n" +
+		"#\n" +
+		"# IMPORTANT: this script must produce NO stdout output on exit 0.\n" +
+		"# Any stdout on a clean exit creates an infinite agent feedback loop.\n" +
+		"\n" +
+		"# Block on uncommitted changes so the agent runs /butverify:prove-it.\n" +
+		"if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then\n" +
+		"  if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then\n" +
+		"    printf '[butverify] Uncommitted changes detected \xe2\x80\x94 run /butverify:prove-it or commit before stopping.\\n'\n" +
+		"    exit 2\n" +
+		"  fi\n" +
+		"fi\n" +
+		"\n" +
+		"exit 0\n" +
+		"# " + bvHookSentinel + "\n"
+}
+
+// writeStopHookScript writes the stop hook script to scriptPath, creating
+// the parent directory if needed, and marks it executable (0755).
+func writeStopHookScript(scriptPath string) error {
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
+		return fmt.Errorf("install-skill: mkdir hooks dir: %w", err)
+	}
+	content := generateStopHookScript()
+	return atomicWriteMode(scriptPath, []byte(content), 0o755)
+}
+
+// bvStopHookShellCommand returns the settings.json command string for the
+// Stop hook. It references the script by absolute path so the hook works
+// regardless of the agent's current working directory.
+func bvStopHookShellCommand(scriptPath string) string {
+	return "bash " + shellSingleQuote(scriptPath) + " # " + bvHookSentinel
+}
+
+// buildStopHookEntry wraps cmd in the JSON shape Claude Code expects for
+// a Stop hook entry. Timeout is 5 s — more generous than SessionStart
+// since git status can be slower on large repos.
+func buildStopHookEntry(cmd string) hookEntry {
+	return hookEntry{
+		Hooks: []hookCommand{
+			{Type: "command", Command: cmd, Timeout: 5},
+		},
+	}
 }
 
 // buildHookEntryFromCommand wraps a precomputed shell command in the
