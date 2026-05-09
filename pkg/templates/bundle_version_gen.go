@@ -2,4 +2,4 @@
 // Updated automatically whenever evidence-app/ changes land on main.
 package templates
 
-const EvidenceBundleVersion = "1.0.4"
+const EvidenceBundleVersion = "1.0.6"
