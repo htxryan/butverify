@@ -13,6 +13,7 @@
 // re-loading. `not_found` covers all the 404 cases above (the page
 // surfaces "this review doesn't exist or isn't yours").
 
+import { parseApiError, type ReviewStatus } from "./api-base.js";
 import type {
   AnnotationDraft,
   AnnotationType,
@@ -20,7 +21,7 @@ import type {
   TextScope,
 } from "./annotations.js";
 
-export type ReviewStatus = "submitted" | "acknowledged";
+export type { ReviewStatus };
 
 // One annotation row as the server returns it. Mirrors the
 // AnnotationRow shape in apps/control-plane/src/db/reviews.ts. Optional
@@ -116,13 +117,6 @@ export function reviewAnnotationsAsDrafts(
   });
 }
 
-interface ApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-  };
-}
-
 function isReviewAnnotation(raw: unknown): raw is ReviewAnnotation {
   if (typeof raw !== "object" || raw === null) return false;
   const a = raw as Record<string, unknown>;
@@ -191,13 +185,7 @@ export async function getReviewDetail(
     return { ok: true, review: body };
   }
 
-  let parsed: ApiErrorBody = {};
-  try {
-    parsed = (await res.json()) as ApiErrorBody;
-  } catch {
-    // ignored
-  }
-  const message = parsed.error?.message ?? `HTTP ${res.status}`;
+  const { message } = await parseApiError(res);
   switch (res.status) {
     case 401:
       return { ok: false, kind: "unauthenticated", status: 401, message };

@@ -1,16 +1,6 @@
-// pebble-60yj — Viewer-side listing of own reviews on a site.
-//
-// Calls GET /v1/sites/:id/reviews (cookie auth). The control-plane
-// returns 0 or 1 reviews today (per the (site_id, reviewer_login)
-// UNIQUE) but the array contract leaves room for future revisions.
-//
-// Failure modes mirror the submit client: a structured `kind` field so
-// the UI can branch without parsing English. `unauthenticated` means
-// the viewer cookie expired or was never minted; the page should fall
-// back to "no past reviews" rather than presenting an error, since the
-// gallery itself is browseable without a cookie.
+import { parseApiError, type ReviewStatus } from "./api-base.js";
 
-export type ReviewStatus = "submitted" | "acknowledged";
+export type { ReviewStatus };
 
 export interface ViewerReview {
   review_id: string;
@@ -49,13 +39,6 @@ interface ListReviewsForViewerOptions {
   siteId: string;
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
-}
-
-interface ApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-  };
 }
 
 interface ApiSuccessBody {
@@ -109,13 +92,7 @@ export async function listReviewsForViewer(
     return { ok: true, reviews };
   }
 
-  let parsed: ApiErrorBody = {};
-  try {
-    parsed = (await res.json()) as ApiErrorBody;
-  } catch {
-    // ignored
-  }
-  const message = parsed.error?.message ?? `HTTP ${res.status}`;
+  const { message } = await parseApiError(res);
   switch (res.status) {
     case 401:
       return { ok: false, kind: "unauthenticated", status: 401, message };
