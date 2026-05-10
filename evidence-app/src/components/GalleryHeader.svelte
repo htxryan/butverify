@@ -75,7 +75,7 @@
   .bv-topbar-inner {
     width: 100%;
     padding: 0 var(--bv-space-3);
-    height: 3.25rem;
+    height: var(--bv-topbar-height);
     display: flex;
     align-items: center;
     gap: var(--bv-space-3);

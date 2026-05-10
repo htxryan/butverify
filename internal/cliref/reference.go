@@ -299,26 +299,91 @@ func NewFlagSet(name string, output io.Writer) (*flag.FlagSet, FlagValues, bool)
 	return fs, values, true
 }
 
+const helpBanner = "bv — the butverify.dev agent CLI"
+
+const (
+	topLevelTrailer   = "Run 'bv <command> --help' for command-specific help."
+	subcommandTrailer = "Run 'bv --help' for the full command list."
+)
+
+const commandsLeftWidth = 26
+
+type twoColRow struct {
+	left  string
+	right string
+}
+
+type helpBuilder struct {
+	b strings.Builder
+}
+
+func (h *helpBuilder) Banner(text string) {
+	h.b.WriteString(text)
+	h.b.WriteString("\n\n")
+}
+
+func (h *helpBuilder) Usage(line string) {
+	h.b.WriteString("Usage:\n  ")
+	h.b.WriteString(line)
+	h.b.WriteString("\n\n")
+}
+
+func (h *helpBuilder) Section(title string) {
+	h.b.WriteString(title)
+	h.b.WriteString(":\n")
+}
+
+func (h *helpBuilder) Para(text string) {
+	h.b.WriteString(text)
+	h.b.WriteString("\n\n")
+}
+
+func (h *helpBuilder) TwoCol(rows []twoColRow, leftWidth int) {
+	for _, row := range rows {
+		if len(row.left) > leftWidth {
+			fmt.Fprintf(&h.b, "  %s\n", row.left)
+			fmt.Fprintf(&h.b, "  %-*s %s\n", leftWidth, "", row.right)
+			continue
+		}
+		fmt.Fprintf(&h.b, "  %-*s %s\n", leftWidth, row.left, row.right)
+	}
+	h.b.WriteString("\n")
+}
+
+func (h *helpBuilder) Bullets(items []string) {
+	for _, item := range items {
+		h.b.WriteString("  ")
+		h.b.WriteString(item)
+		h.b.WriteString("\n")
+	}
+	h.b.WriteString("\n")
+}
+
+func (h *helpBuilder) Trailer(text string) {
+	h.b.WriteString(text)
+	h.b.WriteString("\n")
+}
+
+func (h *helpBuilder) String() string {
+	return h.b.String()
+}
+
 func UsageText() string {
 	ref := DefaultReference()
-	var b strings.Builder
-	b.WriteString("bv — the butverify.dev agent CLI\n\n")
-	b.WriteString("Usage:\n")
-	b.WriteString("  bv [--json] [--api-url URL] [--token TOK] <command> [args]\n\n")
-	b.WriteString("Commands:\n")
+	var h helpBuilder
+	h.Banner(helpBanner)
+	h.Usage("bv [--json] [--api-url URL] [--token TOK] <command> [args]")
+	h.Section("Commands")
+	rows := make([]twoColRow, 0, len(ref.Commands))
 	for _, command := range ref.Commands {
 		if command.Hidden {
 			continue
 		}
-		if len(command.Summary) > 26 {
-			fmt.Fprintf(&b, "  %s\n", command.Summary)
-			fmt.Fprintf(&b, "  %-26s %s\n", "", command.Description)
-			continue
-		}
-		fmt.Fprintf(&b, "  %-26s %s\n", command.Summary, command.Description)
+		rows = append(rows, twoColRow{left: command.Summary, right: command.Description})
 	}
-	b.WriteString("\nRun 'bv <command> --help' for command-specific help.\n")
-	return b.String()
+	h.TwoCol(rows, commandsLeftWidth)
+	h.Trailer(topLevelTrailer)
+	return h.String()
 }
 
 func CommandHelp(name string) string {
@@ -326,26 +391,37 @@ func CommandHelp(name string) string {
 	if !ok || command.Hidden {
 		return UsageText()
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "Usage: %s\n\n", command.Usage)
-	b.WriteString(command.Description)
-	b.WriteString("\n")
+	var h helpBuilder
+	h.Banner(helpBanner)
+	h.Usage(command.Usage)
+	h.Para(command.Description)
 	for _, detail := range command.Details {
-		b.WriteString("\n")
-		b.WriteString(detail)
-		b.WriteString("\n")
+		h.Para(detail)
 	}
 	if len(command.Flags) > 0 {
-		b.WriteString("\nFlags:\n\n")
-		writeFlagList(&b, command.Flags)
+		flagRows := make([]twoColRow, 0, len(command.Flags))
+		for _, f := range command.Flags {
+			label := f.Name
+			if f.Value != "" {
+				label += " " + f.Value
+			}
+			flagRows = append(flagRows, twoColRow{left: label, right: f.Description})
+		}
+		leftWidth := commandsLeftWidth
+		for _, row := range flagRows {
+			if len(row.left)+2 > leftWidth {
+				leftWidth = len(row.left) + 2
+			}
+		}
+		h.Section("Flags")
+		h.TwoCol(flagRows, leftWidth)
 	}
 	if len(command.Examples) > 0 {
-		b.WriteString("\nExamples:\n\n")
-		for _, example := range command.Examples {
-			fmt.Fprintf(&b, "- `%s`\n", example)
-		}
+		h.Section("Examples")
+		h.Bullets(command.Examples)
 	}
-	return b.String()
+	h.Trailer(subcommandTrailer)
+	return h.String()
 }
 
 func Markdown() string {

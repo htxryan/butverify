@@ -81,6 +81,11 @@
   --bv-max-content: 144rem;
   --bv-max-narrow: 44rem;
 
+  /* Sticky-topbar height. Consumed by GalleryHeader.svelte for the
+   * .bv-topbar-inner box and by ReviewPanel.svelte's desktop sticky
+   * rail so the panel never paints over the topbar when scrolling. */
+  --bv-topbar-height: 3.25rem;
+
   /* Motion. Honored only when prefers-reduced-motion is no-preference;
    * see base.css for the reduced-motion override. */
   --bv-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
