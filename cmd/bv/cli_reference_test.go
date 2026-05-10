@@ -22,7 +22,7 @@ func TestCommandHelpExitsZero(t *testing.T) {
 				t.Fatalf("bv %s --help failed: %v\n%s", command, err, out)
 			}
 			text := string(out)
-			want := "Usage: bv " + command
+			want := "Usage:\n  bv " + command
 			if !strings.Contains(text, want) {
 				t.Fatalf("help for %s missing %q:\n%s", command, want, text)
 			}
