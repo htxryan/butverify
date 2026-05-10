@@ -80,3 +80,34 @@ export function resolveApiBaseFromWindow(): string {
     protocol: window.location.protocol,
   });
 }
+
+// Shared types used by multiple API client modules.
+
+export interface ApiErrorBody {
+  error?: {
+    code?: string;
+    message?: string;
+    details?: Record<string, unknown>;
+  };
+}
+
+export type ReviewStatus = "submitted" | "acknowledged";
+
+// Parse a non-2xx response into a normalized error envelope. Tolerates
+// non-JSON bodies and missing `error` keys — both fall back to the HTTP
+// status. Callers map `status` to their own kind union.
+export async function parseApiError(
+  res: Response,
+): Promise<{ message: string; code: string; details: Record<string, unknown> | undefined }> {
+  let parsed: ApiErrorBody = {};
+  try {
+    parsed = (await res.json()) as ApiErrorBody;
+  } catch {
+    // Non-JSON body — fall through with an empty envelope.
+  }
+  return {
+    message: parsed.error?.message ?? `HTTP ${res.status}`,
+    code: parsed.error?.code ?? "",
+    details: parsed.error?.details,
+  };
+}

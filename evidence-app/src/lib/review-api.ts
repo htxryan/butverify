@@ -7,6 +7,7 @@
 // which carry domain codes in `error.code` so we don't have to
 // string-match on `message`.
 
+import { parseApiError } from "./api-base.js";
 import {
   toWireAnnotation,
   trimAnnotationForType,
@@ -50,14 +51,6 @@ interface SubmitReviewOptions {
   fetchImpl?: typeof fetch;
   // AbortSignal to cancel the request (e.g. component unmount).
   signal?: AbortSignal;
-}
-
-interface ApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-    details?: Record<string, unknown>;
-  };
 }
 
 export async function submitReview(opts: SubmitReviewOptions): Promise<SubmitReviewResult> {
@@ -106,20 +99,10 @@ export async function submitReview(opts: SubmitReviewOptions): Promise<SubmitRev
     };
   }
 
-  // Failure paths.
-  let parsed: ApiErrorBody = {};
-  try {
-    parsed = (await res.json()) as ApiErrorBody;
-  } catch {
-    // Server returned non-JSON; carry the status only.
-  }
-  const code = parsed.error?.code ?? "";
-  const message = parsed.error?.message ?? `HTTP ${res.status}`;
-
-  // Map to a kind. Domain codes (set by the control-plane in
-  // `error.code`) take precedence over the HTTP status because the
-  // server emits them precisely so clients can branch without parsing
+  // Domain codes (set in `error.code`) take precedence over HTTP status —
+  // the server emits them precisely so clients can branch without parsing
   // English messages.
+  const { code, message, details } = await parseApiError(res);
   const failure: SubmitReviewFailure = (() => {
     if (code === "site_not_accepting_reviews") {
       return { ok: false as const, kind: "site_not_accepting_reviews" as const, status: res.status, message };
@@ -139,8 +122,8 @@ export async function submitReview(opts: SubmitReviewOptions): Promise<SubmitRev
         return { ok: false as const, kind: "validation_failed" as const, status: 422, message };
       case 429: {
         const retry =
-          typeof parsed.error?.details?.retry_after_seconds === "number"
-            ? (parsed.error.details.retry_after_seconds as number)
+          typeof details?.retry_after_seconds === "number"
+            ? (details.retry_after_seconds as number)
             : undefined;
         const f: SubmitReviewFailure = {
           ok: false,
