@@ -12,7 +12,7 @@ import (
 )
 
 func TestCommandHelpExitsZero(t *testing.T) {
-	for _, command := range []string{"push", "report", "dashboard", "evidence", "login", "agent-init", "install-skill", "mode"} {
+	for _, command := range []string{"push", "report", "dashboard", "evidence", "login", "agent-init", "install-skill", "mode", "ls"} {
 		command := command
 		t.Run(command, func(t *testing.T) {
 			cmd := exec.Command("go", "run", ".", command, "--help")

@@ -312,6 +312,165 @@ func TestListSites(t *testing.T) {
 	}
 }
 
+// twoSiteListServer returns a fake control-plane that responds to GET
+// /v1/sites with one active site and one expired site. Used by the
+// default-filter, --expired-flag, and JSON-filter tests.
+func twoSiteListServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := newFakeServer(t)
+	srv.listSites = func(w http.ResponseWriter, r *http.Request) {
+		future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+		past := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"sites": []map[string]any{
+				{"site_id": "act00001", "tenant_id": "t_u42", "status": "active", "url": "https://act00001.butverify.dev", "manifest_url": "x", "expires_at": future, "bytes_used": 1024, "created_at": "x", "updated_at": "x"},
+				{"site_id": "exp00002", "tenant_id": "t_u42", "status": "expired", "url": "https://exp00002.butverify.dev", "manifest_url": "x", "expires_at": past, "bytes_used": 2048, "created_at": "x", "updated_at": "x"},
+			},
+		})
+	}
+	return httptest.NewServer(srv.handler())
+}
+
+func TestListSitesDefaultHidesExpired(t *testing.T) {
+	server := twoSiteListServer(t)
+	defer server.Close()
+	setupConfig(t, server.URL)
+	w, stdout, _ := newJSONWriter(t)
+	rc := runList(context.Background(), globalContext{w: w}, nil)
+	if rc != 0 {
+		t.Fatalf("rc: %d", rc)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "act00001") {
+		t.Errorf("active site missing from default output: %s", out)
+	}
+	if strings.Contains(out, "exp00002") {
+		t.Errorf("expired site leaked into default output: %s", out)
+	}
+}
+
+func TestListSitesExpiredFlagIncludesExpired(t *testing.T) {
+	server := twoSiteListServer(t)
+	defer server.Close()
+	setupConfig(t, server.URL)
+	w, stdout, _ := newJSONWriter(t)
+	rc := runList(context.Background(), globalContext{w: w}, []string{"--expired"})
+	if rc != 0 {
+		t.Fatalf("rc: %d", rc)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "act00001") {
+		t.Errorf("active site missing from --expired output: %s", out)
+	}
+	if !strings.Contains(out, "exp00002") {
+		t.Errorf("expired site missing from --expired output: %s", out)
+	}
+}
+
+// TestListSitesJSONRespectsExpiredFilter parses stdout as the JSON
+// envelope and asserts the filter applies symmetrically to the JSON
+// path. Reaching into the full envelope (rather than substring-matching
+// site IDs) makes the contract about the array length and contents
+// explicit.
+func TestListSitesJSONRespectsExpiredFilter(t *testing.T) {
+	server := twoSiteListServer(t)
+	defer server.Close()
+	setupConfig(t, server.URL)
+
+	t.Run("default hides expired", func(t *testing.T) {
+		w, stdout, _ := newJSONWriter(t)
+		rc := runList(context.Background(), globalContext{w: w}, nil)
+		if rc != 0 {
+			t.Fatalf("rc: %d", rc)
+		}
+		var envelope struct {
+			Sites []struct {
+				SiteID string `json:"site_id"`
+				Status string `json:"status"`
+			} `json:"sites"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode JSON: %v\n%s", err, stdout.String())
+		}
+		if len(envelope.Sites) != 1 {
+			t.Fatalf("expected 1 site, got %d: %+v", len(envelope.Sites), envelope.Sites)
+		}
+		if envelope.Sites[0].Status == "expired" {
+			t.Fatalf("expired site leaked into default JSON output: %+v", envelope.Sites)
+		}
+	})
+
+	t.Run("--expired includes expired", func(t *testing.T) {
+		w, stdout, _ := newJSONWriter(t)
+		rc := runList(context.Background(), globalContext{w: w}, []string{"--expired"})
+		if rc != 0 {
+			t.Fatalf("rc: %d", rc)
+		}
+		var envelope struct {
+			Sites []struct {
+				SiteID string `json:"site_id"`
+				Status string `json:"status"`
+			} `json:"sites"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode JSON: %v\n%s", err, stdout.String())
+		}
+		if len(envelope.Sites) != 2 {
+			t.Fatalf("expected 2 sites, got %d: %+v", len(envelope.Sites), envelope.Sites)
+		}
+	})
+}
+
+// TestListSitesExpiresColumnRendering exercises the human-readable
+// column rendering for three rows: an active site with a future
+// expiry, a pinned site with an empty expiry (em dash), and an expired
+// site with a past expiry (only visible under --expired). Assertions
+// are substring-based so the test stays portable across timezones.
+func TestListSitesExpiresColumnRendering(t *testing.T) {
+	srv := newFakeServer(t)
+	srv.listSites = func(w http.ResponseWriter, r *http.Request) {
+		future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+		past := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"sites": []map[string]any{
+				{"site_id": "act00001", "tenant_id": "t_u42", "status": "active", "url": "https://act00001.butverify.dev", "manifest_url": "x", "expires_at": future, "bytes_used": 1024, "created_at": "x", "updated_at": "x"},
+				{"site_id": "pin00003", "tenant_id": "t_u42", "status": "pinned", "url": "https://pin00003.butverify.dev", "manifest_url": "x", "expires_at": "", "bytes_used": 4096, "created_at": "x", "updated_at": "x"},
+				{"site_id": "exp00002", "tenant_id": "t_u42", "status": "expired", "url": "https://exp00002.butverify.dev", "manifest_url": "x", "expires_at": past, "bytes_used": 2048, "created_at": "x", "updated_at": "x"},
+			},
+		})
+	}
+	server := httptest.NewServer(srv.handler())
+	defer server.Close()
+	setupConfig(t, server.URL)
+
+	w, stdout, _ := newHumanWriter(t)
+	rc := runList(context.Background(), globalContext{w: w}, []string{"--expired"})
+	if rc != 0 {
+		t.Fatalf("rc: %d", rc)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"SITE",
+		"STATUS",
+		"EXPIRES",
+		"BYTES",
+		"URL",
+		"act00001",
+		"(one hour)",
+		"pin00003",
+		"—",
+		"exp00002",
+		"(2 hours)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("human output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "ago") {
+		t.Errorf("human output should not contain 'ago' suffix:\n%s", out)
+	}
+}
+
 func TestRemove(t *testing.T) {
 	srv := newFakeServer(t)
 	srv.delete = func(w http.ResponseWriter, r *http.Request, siteID string) {

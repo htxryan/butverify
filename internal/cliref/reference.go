@@ -116,7 +116,19 @@ func DefaultReference() Reference {
 					{Name: "--skip-gitleaks-check", Description: "skip the pre-upload gitleaks secret scan", Type: FlagBool, RuntimeHelp: "skip the pre-upload gitleaks secret scan"},
 				},
 			},
-			{Name: "ls", Summary: "ls", Usage: "bv ls", Description: "List sites for the authenticated tenant."},
+			{
+				Name:        "ls",
+				Summary:     "ls [--expired]",
+				Usage:       "bv ls [--expired]",
+				Description: "List sites for the authenticated tenant.",
+				Details: []string{
+					"By default, expired sites are hidden. Pass --expired to include them.",
+					"The EXPIRES column shows each site's expiry as an absolute timestamp in the user's local timezone, plus a humanized magnitude in parentheses. Pinned sites and sites without an expiry render as an em dash.",
+				},
+				Flags: []Flag{
+					{Name: "--expired", Description: "also include expired sites in the listing", Type: FlagBool, RuntimeHelp: "also include expired sites in the listing"},
+				},
+			},
 			{Name: "rm", Summary: "rm <site-id>", Usage: "bv rm <site-id>", Description: "Soft-delete a site."},
 			{Name: "cat", Summary: "cat <site-id> <path>", Usage: "bv cat <site-id> <path>", Description: "Print a single file from a site to stdout."},
 			{Name: "get", Summary: "get <site-id> <dest>", Usage: "bv get <site-id> <dest>", Description: "Download a site's files into a destination directory."},
