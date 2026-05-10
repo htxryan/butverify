@@ -180,3 +180,7 @@ Use CLI (`ca learn`) — never manual edits.
 
 See [documentation](https://github.com/Nathandela/compound-agent) for more details.
 <!-- compound-agent:end -->
+
+## Basic Memory
+
+This repository participates in the shared Basic Memory project **`butverify`**, hosted at `../butverify-service/docs/`. Use the `basic-memory` MCP server (configured at the user level for Claude Code and Codex CLI) — both this repo and `butverify-service` operate against the same knowledge base.
