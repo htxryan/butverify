@@ -491,6 +491,10 @@
     }
     .bv-shell--with-review > :global(.bv-topbar) {
       grid-column: 1 / -1;
+      /* Break out of the shell's padding-right so the topbar's right edge
+       * sits flush against the viewport's right edge. The rail's own
+       * padding on .bv-gallery-review-rail still gutters the rail content. */
+      margin-right: calc(-1 * var(--bv-space-5));
     }
     .bv-shell--carousel.bv-shell--with-review {
       grid-template-rows: auto 1fr;
