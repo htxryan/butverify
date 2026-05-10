@@ -309,13 +309,17 @@
   }
 
   /* Desktop: rail layout. The Gallery component wraps this in a
-   * grid container with this column at the right edge. */
+   * grid container with this column at the right edge. The top offset
+   * matches the sticky topbar height + a small gap so the panel never
+   * overlaps the topbar while scrolling, and z-index sits below the
+   * topbar's z-index: 20 as defense in depth. */
   @media (min-width: 1024px) {
     .bv-review-panel {
       position: sticky;
-      top: var(--bv-space-5);
+      top: calc(var(--bv-topbar-height) + var(--bv-space-3));
       bottom: auto;
       max-width: 22rem;
+      z-index: 10;
     }
   }
 </style>
