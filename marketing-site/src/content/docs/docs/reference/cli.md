@@ -60,9 +60,17 @@ Flags:
 - `--include-hidden` — include dot-files in the bundle.
 - `--skip-gitleaks-check` — skip the pre-upload gitleaks secret scan.
 
-## `bv ls`
+## `bv ls [--expired]`
 
 List sites for the authenticated tenant.
+
+By default, expired sites are hidden. Pass --expired to include them.
+
+The EXPIRES column shows each site's expiry as an absolute timestamp in the user's local timezone, plus a humanized magnitude in parentheses. Pinned sites and sites without an expiry render as an em dash.
+
+Flags:
+
+- `--expired` — also include expired sites in the listing.
 
 ## `bv rm <site-id>`
 
